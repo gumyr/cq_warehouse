@@ -1,0 +1,6 @@
+pyproject.toml
+setup.cfg
+src/cq_warehouse.egg-info/PKG-INFO
+src/cq_warehouse.egg-info/SOURCES.txt
+src/cq_warehouse.egg-info/dependency_links.txt
+src/cq_warehouse.egg-info/top_level.txt
