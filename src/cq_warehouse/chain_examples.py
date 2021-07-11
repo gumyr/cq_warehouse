@@ -1,10 +1,10 @@
 """
 
-Parametric Sprockets and Chains Examples
+Parametric Chains Examples
 
-name: sprocket_and_chain_examples.py
+name: chain_examples.py
 by:   Gumyr
-date: June 28th 2021
+date: July 11th 2021
 
 desc:
 
@@ -26,7 +26,8 @@ license:
 
 """
 import cadquery as cq
-from sprocket_and_chain import Sprocket, Chain
+from chain import Chain
+from sprocket import Sprocket
 
 MM = 1
 INCH = 25.4*MM
@@ -34,7 +35,7 @@ INCH = 25.4*MM
 #
 # Create a set of sprockets for these examples
 print("Creating sprockets...")
-spkt0 = Sprocket(
+spkt32 = Sprocket(
     num_teeth=32,
     clearance = 0.05,
     bolt_circle_diameter = 104*MM,
@@ -42,21 +43,18 @@ spkt0 = Sprocket(
     mount_bolt_diameter = 10*MM,
     bore_diameter = 80*MM
 )
-spkt1 = Sprocket(
+spkt10 = Sprocket(
     num_teeth=10,
     clearance = 0.05,
     num_mount_bolts = 0,
     bore_diameter = 5*MM
 )
-spkt2 = Sprocket(
+spkt16 = Sprocket(
     num_teeth=16,
     clearance = 0.05,
     num_mount_bolts = 0,
     bore_diameter = 30*MM
 )
-spkt0.cq_object.exportSvg('sprocket32.svg')
-spkt1.cq_object.exportSvg('sprocket10.svg')
-spkt2.cq_object.exportSvg('sprocket16.svg')
 #
 # Create a set of example transmissions
 print("Simple two sprocket example...")
@@ -66,7 +64,7 @@ two_sprocket_chain = Chain(
     spkt_locations=[ cq.Vector(-5*INCH,0,0), cq.Vector(+5*INCH,0,0) ],
 )
 two_sprocket_transmission = two_sprocket_chain.assemble_chain_transmission(
-    spkts = [spkt0.cq_object,spkt0.cq_object]
+    spkts = [spkt32.cq_object,spkt32.cq_object]
 )
 two_sprocket_transmission.save('two_sprocket.step')
 
@@ -82,7 +80,7 @@ derailleur_chain = Chain(
     ]
 )
 derailleur_transmission = derailleur_chain.assemble_chain_transmission(
-    spkts = [spkt0.cq_object,spkt1.cq_object,spkt1.cq_object,spkt2.cq_object]
+    spkts = [spkt32.cq_object,spkt10.cq_object,spkt10.cq_object,spkt16.cq_object]
 )
 derailleur_transmission.save('deraileur.step')
 
@@ -99,7 +97,7 @@ five_sprocket_chain = Chain(
     ]
 )
 five_sprocket_transmission = five_sprocket_chain.assemble_chain_transmission(
-    spkts = [spkt0.cq_object,spkt1.cq_object,spkt1.cq_object,spkt1.cq_object,spkt2.cq_object]
+    spkts = [spkt32.cq_object,spkt10.cq_object,spkt10.cq_object,spkt10.cq_object,spkt16.cq_object]
 )
 five_sprocket_transmission.save('five_sprocket.step')
 
@@ -110,7 +108,7 @@ relocated_transmission = Chain(
     spkt_locations = [ (-5*INCH,0), (+5*INCH,0) ]
 )
 relocated_transmission = relocated_transmission.assemble_chain_transmission(
-    spkts = [spkt0.cq_object,spkt0.cq_object]
+    spkts = [spkt32.cq_object,spkt32.cq_object]
 ).rotate(axis=(0,1,1),angle=45).translate((20,20,20))
 relocated_transmission.save('planeXZ.step')
 
@@ -120,4 +118,3 @@ if "show_object" in locals():
     show_object(five_sprocket_transmission,name="five_sprocket_transmission")
     show_object(derailleur_transmission,name="derailleur_transmission")
     show_object(relocated_transmission,name="relocated_transmission")
-    show_object(spkt0.cq_object,name="sprocket32")
