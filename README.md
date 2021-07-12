@@ -25,9 +25,7 @@ or CAM systems.
 ## Installation
 Install from github:
 ```
-  $ git clone https://github.com/gumyr/cq_warehouse.git
-  $ cd cq_warehouse
-  $ pip install -e .
+$ python -m pip install git+https://github.com/gumyr/cq_warehouse.git#egg=cq_warehouse
 ```
 ## Package Structure
 The cq_warehouse package contains the following sub-packages:
@@ -46,7 +44,7 @@ cq.exporters.export(sprocket32.cq_object,"sprocket.step")
 ```
 How does this code work?
 1. The first line imports cadquery CAD system with the alias cq
-2. The second line imports the Sprocket class from the sprocket_and_chain module
+2. The second line imports the Sprocket class from the sprocket sub-package of the cq_warehouse package
 3. The third line instantiates a 32 tooth sprocket named <q>sprocket32</q>
 4. The fourth line uses the cadquery exporter functionality to save the generated
 sprocket object in STEP format
