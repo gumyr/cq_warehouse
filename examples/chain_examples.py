@@ -6,7 +6,7 @@ name: chain_examples.py
 by:   Gumyr
 date: July 11th 2021
 
-desc:
+desc: Examples of building chains and entire transmissions
 
 license:
 
@@ -26,8 +26,8 @@ license:
 
 """
 import cadquery as cq
-from chain import Chain
-from sprocket import Sprocket
+from cq_warehouse.chain import *
+from cq_warehouse.sprocket import *
 
 MM = 1
 INCH = 25.4*MM

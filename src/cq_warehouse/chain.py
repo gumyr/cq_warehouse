@@ -45,7 +45,7 @@ import warnings
 from functools import cache
 from typing import Union, Tuple
 import cadquery as cq
-from sprocket import Sprocket
+from cq_warehouse.sprocket import Sprocket
 
 VectorLike = Union[Tuple[float, float], Tuple[float, float, float], cq.Vector]
 

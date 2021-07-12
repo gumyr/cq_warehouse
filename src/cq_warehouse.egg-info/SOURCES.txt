@@ -2,6 +2,10 @@ LICENSE
 README.md
 pyproject.toml
 setup.cfg
+src/cq_warehouse/__init__.py
+src/cq_warehouse/chain.py
+src/cq_warehouse/drafting.py
+src/cq_warehouse/sprocket.py
 src/cq_warehouse.egg-info/PKG-INFO
 src/cq_warehouse.egg-info/SOURCES.txt
 src/cq_warehouse.egg-info/dependency_links.txt
