@@ -102,12 +102,12 @@ five_sprocket_transmission = five_sprocket_chain.assemble_chain_transmission(
 five_sprocket_transmission.save('five_sprocket.step')
 
 print("Chains moved and rotated...")
-relocated_transmission = Chain(
+two_sprocket_chain = Chain(
     spkt_teeth = [32,32],
     positive_chain_wrap = [True,True],
     spkt_locations = [ (-5*INCH,0), (+5*INCH,0) ]
 )
-relocated_transmission = relocated_transmission.assemble_chain_transmission(
+relocated_transmission = two_sprocket_chain.assemble_chain_transmission(
     spkts = [spkt32.cq_object,spkt32.cq_object]
 ).rotate(axis=(0,1,1),angle=45).translate((20,20,20))
 relocated_transmission.save('planeXZ.step')

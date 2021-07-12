@@ -280,8 +280,13 @@ cq.Assembly.rotate(self, axis: VectorLike, angle: float):
 ```
 Once a chain or complete transmission has been generated it can be re-oriented as follows:
 ```python
-relocated_transmission = relocated_transmission.assemble_chain_transmission(
-    spkts = [spkt0.cq_object,spkt0.cq_object]
+two_sprocket_chain = Chain(
+    spkt_teeth = [32,32],
+    positive_chain_wrap = [True,True],
+    spkt_locations = [ (-5*INCH,0), (+5*INCH,0) ]
+)
+relocated_transmission = two_sprocket_chain.assemble_chain_transmission(
+    spkts = [spkt32.cq_object,spkt32.cq_object]
 ).rotate(axis=(0,1,1),angle=45).translate((20,20,20))
 ```
 ### Future Enhancements
