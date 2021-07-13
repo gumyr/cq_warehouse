@@ -3,19 +3,24 @@ Parametric Sprockets and Chains Unit Tests
 
 name: sprocket_and_chain_tests.py
 by:   Gumyr
-date: June 26th 2021
+date: July 13th 2021
 
-desc: Unit tests for the sprocket_and_chain module
-Name                                                           Stmts   Miss  Cover   Missing
---------------------------------------------------------------------------------------------
-sprocket_and_chain.py                                            225      0   100%
-sprocket_and_chain_tests.py                                      126      1    99%   297
+desc: Unit tests for the sprocket and chain sub-package of cq_warehouse
+Name                                                                                           Stmts   Miss  Cover   Missing
+----------------------------------------------------------------------------------------------------------------------------
+/home/roger/anaconda3/envs/cadquery-dev/lib/python3.9/site-packages/cq_warehouse/__init__.py       1      0   100%
+/home/roger/anaconda3/envs/cadquery-dev/lib/python3.9/site-packages/cq_warehouse/chain.py        153      0   100%
+/home/roger/anaconda3/envs/cadquery-dev/lib/python3.9/site-packages/cq_warehouse/drafting.py      66     66     0%   28-242
+/home/roger/anaconda3/envs/cadquery-dev/lib/python3.9/site-packages/cq_warehouse/sprocket.py      84      0   100%
+----------------------------------------------------------------------------------------------------------------------------
+TOTAL                                                                                            304     66    78%
 """
 import math
 import unittest
 from tests import BaseTest
 import cadquery as cq
-from sprocket_and_chain import Sprocket, Chain
+from cq_warehouse.sprocket import Sprocket
+from cq_warehouse.chain import Chain
 
 MM=1
 INCH=25.4*MM
