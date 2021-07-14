@@ -394,3 +394,109 @@ class Draft:
             )
 
         return t_box
+
+
+if __name__ == "__main__" or "show_object" in locals():
+    metric_drawing = Draft(decimal_precision=2)
+    print(metric_drawing.number_with_units(3.141))
+    print(metric_drawing.number_with_units(3.149))
+    print(metric_drawing.number_with_units(0))
+    imperial_drawing = Draft(units="imperial")
+    print(imperial_drawing.number_with_units((5 / 8) * INCH))
+    imperial_fractional_drawing = Draft(units="imperial", unit_display="fraction")
+    print(imperial_fractional_drawing.number_with_units((5 / 8) * INCH))
+    print(imperial_fractional_drawing.number_with_units(pi * INCH))
+    draft_obj = Draft(font_size=5, color=cq.Color(0.75, 0.25, 0.25))
+    draft_obj_y = Draft(
+        font_size=8, color=cq.Color(0.75, 0.25, 0.25), label_normal=cq.Vector(0, -1, 0),
+    )
+    test0 = draft_obj.dimension_line(
+        path=((0, 0, 0), (40 * cos(pi / 6), -40 * sin(pi / 6), 0))
+    )
+    test1 = imperial_fractional_drawing.dimension_line(path=((-40, 0, 0), (40, 0, 0)))
+    test2 = draft_obj_y.dimension_line(
+        label="test2",
+        path=cq.Edge.makeThreePointArc(
+            cq.Vector(-40, 0, 0),
+            cq.Vector(-40 * sqrt(2) / 2, 0, 40 * sqrt(2) / 2),
+            cq.Vector(0, 0, 40),
+        ),
+    )
+    test3 = draft_obj_y.dimension_line(
+        label="test3",
+        path=cq.Edge.makeThreePointArc(
+            cq.Vector(0, 0, 40),
+            cq.Vector(40 * sqrt(2) / 2, 0, 40 * sqrt(2) / 2),
+            cq.Vector(40, 0, 0),
+        ),
+    )
+    test4 = draft_obj.dimension_line(
+        label="test4",
+        path=cq.Edge.makeThreePointArc(
+            cq.Vector(-40, 0, 0), cq.Vector(0, -40, 0), cq.Vector(40, 0, 0)
+        ),
+    )
+    draft_obj_oblique = Draft(
+        font_size=8,
+        color=cq.Color(0.75, 0.25, 0.25),
+        label_normal=cq.Vector(0, -0.5, 1),
+    )
+    test5 = draft_obj_oblique.dimension_line(
+        label="test5",
+        path=cq.Edge.makeSpline(
+            [cq.Vector(-40, 0, 0), cq.Vector(35, 20, 10), cq.Vector(40, 0, 0)]
+        ),
+    )
+    test6 = draft_obj.dimension_line(
+        label="test6", arrow_heads=[False, True], path=(cq.Vector(40, 0, 0), (80, 0, 0))
+    )
+    test7 = draft_obj.dimension_line(
+        label="test7",
+        arrow_heads=[True, False],
+        path=((-80, 0, 0), cq.Vector(-40, 0, 0)),
+    )
+    test8 = draft_obj.dimension_line(
+        label="test8",
+        arrow_heads=[True, False],
+        path=(cq.Vertex.makeVertex(0, -80, 0), cq.Vertex.makeVertex(0, -40, 0)),
+    )
+    test9 = draft_obj.extension_line(
+        label="test9",
+        object_edge=(cq.Vertex.makeVertex(0, -80, 0), cq.Vertex.makeVertex(0, -40, 0)),
+        offset=10 * MM,
+    )
+    test10 = draft_obj.extension_line(
+        label="80mm", object_edge=((-40, 0, 0), (40, 0, 0)), offset=30 * MM,
+    )
+    test11 = draft_obj.text_box(label="two\nlines", location=(40, 40, 0))
+    test12 = draft_obj.text_box(
+        label="look\nhere", location=(40, -40, 0), point_at=(0, -40, 0)
+    )
+    # with cProfile.Profile() as pr:
+    #     test3 = dimension_line("test3",
+    #         path=cq.Edge.makeThreePointArc(
+    #             cq.Vector(0,0,40),
+    #             cq.Vector(40*sqrt(2)/2,0,40*sqrt(2)/2),
+    #             cq.Vector(40,0,0)
+    #         )
+    #     )
+    # stats = pstats.Stats(pr)
+    # stats.sort_stats(pstats.SortKey.TIME)
+    # stats.print_stats()
+
+
+# If running from within the cq-editor, show the dimension_line lines
+if "show_object" in locals():
+    show_object(test0, name="test0")
+    show_object(test1, name="test1")
+    show_object(test2, name="test2")
+    show_object(test3, name="test3")
+    show_object(test4, name="test4")
+    show_object(test5, name="test5")
+    show_object(test6, name="test6")
+    show_object(test7, name="test7")
+    show_object(test8, name="test8")
+    show_object(test9, name="test9")
+    show_object(test10, name="test10")
+    show_object(test11, name="test11")
+    show_object(test12, name="test12")
