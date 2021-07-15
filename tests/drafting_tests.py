@@ -39,14 +39,13 @@ class TestParsing(BaseTest):
     # def test_dimension_line(self):
     #     def test_extension_line(self):
     #     def test_text_box(self):
-    def test_number_with_units(self):
+    def test_draft_instantiation(self):
         with self.assertRaises(ValueError):
             Draft(units="normal")
         with self.assertRaises(ValueError):
             Draft(unit_display="normal")
         with self.assertRaises(ValueError):
             Draft(fractional_precision=37)
-        default_draft = Draft()
         line_edge = cq.Edge.makeLine(cq.Vector(0, 0, 0), cq.Vector(0, 0, 1))
         line_wire = cq.Wire.assembleEdges([line_edge])
         with self.assertRaises(ValueError):
@@ -59,6 +58,11 @@ class TestParsing(BaseTest):
             Draft.line_segment(path=line_edge, tip_pos=0.0, tail_pos=2.0)
         with self.assertRaises(TypeError):
             Draft.line_segment(path="line", tip_pos=0.0, tail_pos=1.0)
+
+    def test_draft_instantiation(self):
+        default_draft = Draft()
+        with self.assertRaises(ValueError):
+            default_draft.text_box(label="test", location=(0, 0, 0), justify="centre")
 
 
 class TestFunctionality(BaseTest):

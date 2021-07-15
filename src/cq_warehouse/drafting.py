@@ -37,6 +37,8 @@ INCH = 25.4 * MM
 
 # import cProfile
 # import pstats
+# TODO: label_norm = (1,0,0) fails
+# TODO: location and point_at should accept vertex
 
 VectorLike = Union[Tuple[float, float], Tuple[float, float, float], cq.Vector]
 
@@ -49,10 +51,12 @@ class Draft:
 
     Methods
     -------
-    dimension_line - 2 points
-    dimension_line - path
-    angular_dimension_line
-    label - target point, label point
+    dimension_line
+    extension_line
+    text_box
+    number_with_units
+    arrow_head
+    line_segment
 
     """
 
@@ -286,23 +290,26 @@ class Draft:
 
     @overload
     def extension_line(
-        self, label: str, object_edge: tuple[VectorLike, VectorLike], offset: float
+        self,
+        object_edge: tuple[VectorLike, VectorLike],
+        offset: float,
+        label: str = None,
     ):
         ...
 
     @overload
     def extension_line(
-        self, label: str, object_edge: Union[cq.Wire, cq.Edge], offset: float
+        self, object_edge: Union[cq.Wire, cq.Edge], offset: float, label: str = None
     ):
         ...
 
     @overload
     def extension_line(
-        self, label: str, object_edge: list[cq.Vertex], offset: float,
+        self, object_edge: list[cq.Vertex], offset: float, label: str = None
     ):
         ...
 
-    def extension_line(self, label: str, object_edge, offset: float):
+    def extension_line(self, object_edge, offset: float, label: str = None):
         """ Create a dimension line with two lines extending outward from the part to dimension """
         # Parse arguments
         if isinstance(object_edge, (cq.Edge, cq.Wire)):
@@ -340,13 +347,13 @@ class Draft:
         )
         ext_line1 = (
             cq.Workplane(dimension_plane)
-            .moveTo(1.5 * MM, -object_length)
-            .lineTo(offset + 3 * MM, -object_length)
+            .moveTo(1.5 * MM, object_length)
+            .lineTo(offset + 3 * MM, object_length)
         )
 
         p0 = ext_line0.val().positionAt(offset / (offset + 3 * MM))
         p1 = ext_line1.val().positionAt(offset / (offset + 3 * MM))
-        e_line = cq.Assembly(None, name=label + "_extension_line", color=self.color)
+        e_line = cq.Assembly(None, name="extension_line", color=self.color)
         e_line.add(ext_line0, name="extension_line0")
         e_line.add(ext_line1, name="extension_line1")
         e_line.add(
@@ -359,9 +366,14 @@ class Draft:
         label: str,
         location: VectorLike,
         point_at: VectorLike = None,
-        justify: Literal["left", "right"] = "left",
+        justify: Literal["left", "center", "right"] = "left",
     ):
         """ Create a text box that optionally points at something """
+        if justify in ["left", "center", "right"]:
+            self.unit_display = justify
+        else:
+            raise ValueError(f'justify must be one of {"left", "center", "right"}')
+
         text_plane = cq.Plane(
             origin=cq.Vector(location), xDir=cq.Vector(1, 0, 0), normal=self.label_norm,
         )
