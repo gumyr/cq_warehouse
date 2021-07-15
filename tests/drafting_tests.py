@@ -43,7 +43,7 @@ class TestParsing(BaseTest):
         with self.assertRaises(ValueError):
             Draft(units="normal")
         with self.assertRaises(ValueError):
-            Draft(unit_display="normal")
+            Draft(number_display="normal")
         with self.assertRaises(ValueError):
             Draft(fractional_precision=37)
         line_edge = cq.Edge.makeLine(cq.Vector(0, 0, 0), cq.Vector(0, 0, 1))
@@ -73,7 +73,7 @@ class TestFunctionality(BaseTest):
         self.assertEqual(metric_drawing.number_with_units(0), "0.00mm")
         imperial_drawing = Draft(units="imperial")
         self.assertEqual(imperial_drawing.number_with_units((5 / 8) * INCH), '0.62"')
-        imperial_fractional_drawing = Draft(units="imperial", unit_display="fraction")
+        imperial_fractional_drawing = Draft(units="imperial", number_display="fraction")
         self.assertEqual(
             imperial_fractional_drawing.number_with_units((5 / 8) * INCH), '5/8"'
         )
@@ -96,7 +96,7 @@ if __name__ == "__main__":
 #     print(metric_drawing.number_with_units(0))
 #     imperial_drawing = Draft(units="imperial")
 #     print(imperial_drawing.number_with_units((5 / 8) * INCH))
-#     imperial_fractional_drawing = Draft(units="imperial", unit_display="fraction")
+#     imperial_fractional_drawing = Draft(units="imperial", number_display="fraction")
 #     print(imperial_fractional_drawing.number_with_units((5 / 8) * INCH))
 #     print(imperial_fractional_drawing.number_with_units(pi * INCH))
 #     draft_obj = Draft(font_size=5, color=cq.Color(0.75, 0.25, 0.25))

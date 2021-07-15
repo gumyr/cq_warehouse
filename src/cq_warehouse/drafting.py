@@ -38,7 +38,16 @@ INCH = 25.4 * MM
 # import cProfile
 # import pstats
 # TODO: label_norm = (1,0,0) fails
-# TODO: location and point_at should accept vertex
+# TODO: location and point_at should accept vertex - done
+# TODO: callout to get a path input - done
+# TODO: add a flag to Draft to control display of units - done
+# TODO: add tolerances - done
+# TODO: flatten text - faces("<Z") eliminates text, made thinner
+# TODO: path point pair to list and polyline - done
+# TODO: add + and - methods to vertex - done
+# TODO: handle text too large
+# TODO: add fonts and styles to text
+# TODO: fix polyline
 
 VectorLike = Union[Tuple[float, float], Tuple[float, float, float], cq.Vector]
 
@@ -53,12 +62,14 @@ class Draft:
     -------
     dimension_line
     extension_line
-    text_box
+    callout
     number_with_units
     arrow_head
     line_segment
 
     """
+
+    unit_LUT = {"metric": "mm", "imperial": '"'}
 
     def __init__(
         self,
@@ -68,7 +79,8 @@ class Draft:
         arrow_length: float = None,
         label_normal: VectorLike = None,
         units: Literal["metric", "imperial"] = "metric",
-        unit_display: Literal["decimal", "fraction"] = "decimal",
+        number_display: Literal["decimal", "fraction"] = "decimal",
+        display_units: bool = True,
         decimal_precision: int = 2,
         fractional_precision: int = 64,
     ):
@@ -85,8 +97,8 @@ class Draft:
             self.units = units
         else:
             raise ValueError(f'units must be one of {"metric", "imperial"}')
-        if unit_display in ["decimal", "fraction"]:
-            self.unit_display = unit_display
+        if number_display in ["decimal", "fraction"]:
+            self.number_display = number_display
         else:
             raise ValueError(f'units must be one of {"decimal", "fraction"}')
         self.decimal_precision = decimal_precision
@@ -96,8 +108,22 @@ class Draft:
             raise ValueError(
                 f"fractional_precision values must be a factor of 2, {fractional_precision} provided"
             )
+        if isinstance(display_units, bool):
+            self.display_units = display_units
+        else:
+            raise TypeError(f"display_units is of type bool not {type(display_units)}")
 
-    def number_with_units(self, number: float) -> str:
+    @overload
+    def number_with_units(self, number: float, tolerance: float = None) -> str:
+        ...
+
+    @overload
+    def number_with_units(
+        self, number: float, tolerance: tuple[float, float] = None
+    ) -> str:
+        ...
+
+    def number_with_units(self, number: float, tolerance=None) -> str:
         """ Convert a raw number to a unit of measurement string based on the class settings """
 
         def simplify_fraction(numerator: int, denominator: int) -> tuple[int, int]:
@@ -107,10 +133,30 @@ class Draft:
                 int(denominator / greatest_common_demoninator),
             )
 
+        unit_str = Draft.unit_LUT[self.units] if self.display_units else ""
+        if tolerance is None:
+            tolerance_str = ""
+        elif isinstance(tolerance, float):
+            tolerance_str = f" ±{self.number_with_units(tolerance)}"
+        elif (
+            isinstance(tolerance, tuple)
+            and all(isinstance(t, float) for t in tolerance)
+            and len(tolerance) == 2
+        ):
+            tolerance_str = f" +{self.number_with_units(tolerance[0])} -{self.number_with_units(tolerance[1])}"
+        else:
+            raise TypeError(
+                "tolerance must be a single ± float or a tuple of (+float,-float)"
+            )
+
         if self.units == "metric":
-            return_value = f"{number / MM:.{self.decimal_precision}f}mm"
-        elif self.unit_display == "decimal":
-            return_value = f'{number / INCH:.{self.decimal_precision}f}"'
+            return_value = (
+                f"{number / MM:.{self.decimal_precision}f}{unit_str}{tolerance_str}"
+            )
+        elif self.number_display == "decimal":
+            return_value = (
+                f"{number / INCH:.{self.decimal_precision}f}{unit_str}{tolerance_str}"
+            )
         else:
             whole_part = floor(number / INCH)
             (numerator, demoninator) = simplify_fraction(
@@ -118,9 +164,11 @@ class Draft:
                 self.fractional_precision,
             )
             if whole_part == 0:
-                return_value = f'{numerator}/{demoninator}"'
+                return_value = f"{numerator}/{demoninator}{unit_str}{tolerance_str}"
             else:
-                return_value = f'{whole_part} {numerator}/{demoninator}"'
+                return_value = (
+                    f"{whole_part} {numerator}/{demoninator}{unit_str}{tolerance_str}"
+                )
 
         return return_value
 
@@ -182,55 +230,49 @@ class Draft:
     @overload
     def dimension_line(
         self,
-        path: tuple[VectorLike, VectorLike],
-        label: str = None,
-        arrow_heads: tuple[bool, bool] = None,
-    ) -> cq.Workplane:
-        ...
-
-    @overload
-    def dimension_line(
-        self,
         path: Union[cq.Wire, cq.Edge],
         label: str = None,
         arrow_heads: tuple[bool, bool] = None,
+        tolerance: Union[float, tuple[float, float]] = None,
     ) -> cq.Workplane:
         ...
 
     @overload
     def dimension_line(
         self,
-        path: list[cq.Vertex],
+        path: list[Union[cq.Vector, cq.Vertex]],
         label: str = None,
         arrow_heads: tuple[bool, bool] = None,
+        tolerance: Union[float, tuple[float, float]] = None,
     ) -> cq.Workplane:
         ...
 
-    def dimension_line(self, path, label=None, arrow_heads=None,) -> cq.Workplane:
+    def dimension_line(
+        self, path, label=None, arrow_heads=None, tolerance=None
+    ) -> cq.Workplane:
         """ Create a 3D engineering dimension_line line for documenting CAD designs """
 
-        # Parse arguments
+        # Create a wire modelling the path of the dimension lines from a variety of input types
         if isinstance(path, (cq.Edge, cq.Wire)):
             line_path = cq.Wire.assembleEdges([path])
-        elif all(isinstance(point, (cq.Vector, tuple)) for point in path):
-            line_path = cq.Wire.assembleEdges(
-                [cq.Edge.makeLine(cq.Vector(path[0]), cq.Vector(path[1]))]
-            )
-        elif all(isinstance(point, cq.Vertex) for point in path) and len(path) == 2:
-            line_path = cq.Wire.assembleEdges(
-                [
-                    cq.Edge.makeLine(
-                        cq.Vector(path[0].toTuple()), cq.Vector(path[1].toTuple())
-                    )
-                ]
-            )
+        elif isinstance(path, list):
+            if all(isinstance(point, (cq.Vector, tuple)) for point in path):
+                line_path = cq.Workplane().polyline([cq.Vector(p) for p in path]).val()
+            elif all(isinstance(point, cq.Vertex) for point in path):
+                line_path = (
+                    cq.Workplane()
+                    .polyline([cq.Vector(p.toTuple()) for p in path])
+                    .val()
+                )
         else:
             raise TypeError(
-                "path must be a tuple of vector, list of vertex, cq.Edge or cq.Wire"
+                "path must be a list of vertex/vector/tuple or either a cq.Edge or cq.Wire"
             )
         arrows = [True, True] if arrow_heads is None else arrow_heads
         line_length = line_path.Length()
-        label_str = self.number_with_units(line_length) if label is None else label
+        label_str = (
+            self.number_with_units(line_length, tolerance) if label is None else label
+        )
 
         # Determine the size of the label on the XY to avoid custom plane rotations
         label_xy_object = cq.Workplane("XY").text(
@@ -245,7 +287,7 @@ class Draft:
             normal=self.label_norm,
         )
         label_object = cq.Workplane(text_plane).text(
-            txt=label_str, fontsize=self.font_size, distance=self.font_size / 20
+            txt=label_str, fontsize=self.font_size, distance=self.font_size / 100
         )
 
         # Calculate the relative positions along the dimension_line line of the key features
@@ -291,48 +333,45 @@ class Draft:
     @overload
     def extension_line(
         self,
-        object_edge: tuple[VectorLike, VectorLike],
+        object_edge: Union[cq.Wire, cq.Edge],
         offset: float,
         label: str = None,
+        tolerance: Union[float, tuple[float, float]] = None,
     ):
         ...
 
     @overload
     def extension_line(
-        self, object_edge: Union[cq.Wire, cq.Edge], offset: float, label: str = None
+        self,
+        object_edge: list[Union[cq.Vector, cq.Vertex]],
+        offset: float,
+        label: str = None,
+        tolerance: Union[float, tuple[float, float]] = None,
     ):
         ...
 
-    @overload
     def extension_line(
-        self, object_edge: list[cq.Vertex], offset: float, label: str = None
+        self, object_edge, offset: float, label: str = None, tolerance=None
     ):
-        ...
-
-    def extension_line(self, object_edge, offset: float, label: str = None):
         """ Create a dimension line with two lines extending outward from the part to dimension """
-        # Parse arguments
+
+        # Create a wire modelling the path of the dimension lines from a variety of input types
         if isinstance(object_edge, (cq.Edge, cq.Wire)):
             object_path = cq.Wire.assembleEdges([object_edge])
-        elif all(isinstance(point, (cq.Vector, tuple)) for point in object_edge):
-            object_path = cq.Wire.assembleEdges(
-                [cq.Edge.makeLine(cq.Vector(object_edge[0]), cq.Vector(object_edge[1]))]
-            )
-        elif (
-            all(isinstance(point, cq.Vertex) for point in object_edge)
-            and len(object_edge) == 2
-        ):
-            object_path = cq.Wire.assembleEdges(
-                [
-                    cq.Edge.makeLine(
-                        cq.Vector(object_edge[0].toTuple()),
-                        cq.Vector(object_edge[1].toTuple()),
-                    )
-                ]
-            )
+        elif isinstance(object_edge, list):
+            if all(isinstance(point, (cq.Vector, tuple)) for point in object_edge):
+                object_path = (
+                    cq.Workplane().polyline([cq.Vector(p) for p in object_edge]).val()
+                )
+            elif all(isinstance(point, cq.Vertex) for point in object_edge):
+                object_path = (
+                    cq.Workplane()
+                    .polyline([cq.Vector(p.toTuple()) for p in object_edge])
+                    .val()
+                )
         else:
-            raise ValueError(
-                "object_edge must be a tuple of vector, list of vertex, cq.Edge or cq.Wire"
+            raise TypeError(
+                "object_edge must be a list of vertex/vector/tuple or either a cq.Edge or cq.Wire"
             )
 
         object_length = object_path.Length()
@@ -357,44 +396,93 @@ class Draft:
         e_line.add(ext_line0, name="extension_line0")
         e_line.add(ext_line1, name="extension_line1")
         e_line.add(
-            self.dimension_line(label=label, path=(p0, p1)), name="dimension_line",
+            self.dimension_line(label=label, path=[p0, p1], tolerance=tolerance),
+            name="dimension_line",
         )
         return e_line
 
-    def text_box(
+    @overload
+    def callout(
         self,
         label: str,
-        location: VectorLike,
-        point_at: VectorLike = None,
+        tail: Union[VectorLike, cq.Vertex],
         justify: Literal["left", "center", "right"] = "left",
     ):
+        ...
+
+    @overload
+    def callout(
+        self,
+        label: str,
+        tail: Union[cq.Edge, cq.Wire],
+        justify: Literal["left", "center", "right"] = "left",
+    ):
+        ...
+
+    @overload
+    def callout(
+        self,
+        label: str,
+        tail: list[Union[VectorLike, cq.Vertex]],
+        justify: Literal["left", "center", "right"] = "left",
+    ):
+        ...
+
+    def callout(
+        self, label: str, tail, justify: Literal["left", "center", "right"] = "left",
+    ):
         """ Create a text box that optionally points at something """
+
+        line_path = None
+        # Create a wire modelling the path of the tail from a variety of input types
+        if isinstance(tail, (cq.Edge, cq.Wire)):
+            line_path = cq.Wire.assembleEdges([tail])
+            text_origin = line_path.positionAt(0)
+        elif isinstance(tail, list):
+            if len(tail) > 1:
+                if all(isinstance(point, (cq.Vector, tuple)) for point in tail):
+                    line_path = (
+                        cq.Workplane().polyline([cq.Vector(p) for p in tail]).val()
+                    )
+                elif all(isinstance(point, cq.Vertex) for point in tail):
+                    line_path = (
+                        cq.Workplane()
+                        .polyline([cq.Vector(p.toTuple()) for p in tail])
+                        .val()
+                    )
+            text_origin = line_path.positionAt(0)
+        elif isinstance(tail, (cq.Vector, tuple)):
+            text_origin = cq.Vector(tail)
+        elif isinstance(tail, cq.Vertex):
+            text_origin = cq.Vector(tail.toTuple())
+        else:
+            raise TypeError(
+                "tail must be a point of type Vector/tuple, list of Vertex/Vector/tuple or either a cq.Edge or cq.Wire"
+            )
+
         if justify in ["left", "center", "right"]:
-            self.unit_display = justify
+            self.number_display = justify
         else:
             raise ValueError(f'justify must be one of {"left", "center", "right"}')
 
         text_plane = cq.Plane(
-            origin=cq.Vector(location), xDir=cq.Vector(1, 0, 0), normal=self.label_norm,
+            origin=text_origin, xDir=cq.Vector(1, 0, 0), normal=self.label_norm,
         )
-        t_box = cq.Assembly(None, name=label + "_text_box", color=self.color)
+        t_box = cq.Assembly(None, name=label + "_callout", color=self.color)
         label_text = cq.Workplane(text_plane).text(
             txt=label,
             fontsize=self.font_size,
-            distance=self.font_size / 20,
+            distance=self.font_size / 100,
             halign=justify,
         )
-        t_box.add(label_text, name="text_box_label")
-        if point_at is not None:
-            line_path = cq.Wire.assembleEdges(
-                [cq.Edge.makeLine(cq.Vector(location), cq.Vector(point_at))]
-            )
+        t_box.add(label_text, name="callout_label")
+        if line_path is not None:
             line_length = line_path.Length()
             t_box.add(
                 Draft.line_segment(
                     line_path, tip_pos=1.5 * MM / line_length, tail_pos=1.0
                 ),
-                name="text_box_line",
+                name="callout_line",
             )
             t_box.add(
                 self.arrow_head(
@@ -402,7 +490,63 @@ class Draft:
                     tip_pos=1.0,
                     tail_pos=1.0 - self.arrow_length / line_length,
                 ),
-                name="text_box_arrow",
+                name="callout_arrow",
             )
 
         return t_box
+
+
+def __vertex_add__(
+    self, other: Union[cq.Vertex, cq.Vector, Tuple[float, float, float]]
+) -> cq.Vertex:
+    if isinstance(other, cq.Vertex):
+        new_vertex = cq.Vertex.makeVertex(
+            self.X + other.X, self.Y + other.Y, self.Z + other.Z
+        )
+    elif isinstance(other, (cq.Vector, tuple)):
+        new_other = cq.Vector(other)
+        new_vertex = cq.Vertex.makeVertex(
+            self.X + new_other.x, self.Y + new_other.y, self.Z + new_other.z
+        )
+    else:
+        raise TypeError(
+            "Vertex addition only supports Vertex,Vector or tuple(float,float,float) as input"
+        )
+    return new_vertex
+
+
+cq.Vertex.__add__ = __vertex_add__
+
+
+def __vertex_sub__(self, other: Union[cq.Vertex, cq.Vector, tuple]) -> cq.Vertex:
+    if isinstance(other, cq.Vertex):
+        new_vertex = cq.Vertex.makeVertex(
+            self.X - other.X, self.Y - other.Y, self.Z - other.Z
+        )
+    elif isinstance(other, (cq.Vector, tuple)):
+        new_other = cq.Vector(other)
+        new_vertex = cq.Vertex.makeVertex(
+            self.X - new_other.x, self.Y - new_other.y, self.Z - new_other.z
+        )
+    else:
+        raise TypeError(
+            "Vertex subtraction only supports Vertex,Vector or tuple(float,float,float) as input"
+        )
+    return new_vertex
+
+
+cq.Vertex.__sub__ = __vertex_sub__
+
+
+def __vertex_str__(self) -> str:
+    return f"Vertex: ({self.X},{self.Y},{self.Z})"
+
+
+cq.Vertex.__str__ = __vertex_str__
+
+
+def _vertex_toVector(self) -> cq.Vector:
+    return cq.Vector(self.toTuple())
+
+
+cq.Vertex.toVector = _vertex_toVector
