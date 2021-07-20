@@ -38,7 +38,7 @@ INCH = 25.4 * MM
 class TestParsing(BaseTest):
     # def test_dimension_line(self):
     #     def test_extension_line(self):
-    #     def test_text_box(self):
+    #     def test_callout(self):
     def test_draft_instantiation(self):
         with self.assertRaises(ValueError):
             Draft(units="normal")
@@ -62,7 +62,7 @@ class TestParsing(BaseTest):
     def test_draft_instantiation(self):
         default_draft = Draft()
         with self.assertRaises(ValueError):
-            default_draft.text_box(label="test", location=(0, 0, 0), justify="centre")
+            default_draft.callout(label="test", location=(0, 0, 0), justify="centre")
 
 
 class TestFunctionality(BaseTest):
@@ -161,8 +161,8 @@ if __name__ == "__main__":
 #     test10 = draft_obj.extension_line(
 #         label="80mm", object_edge=((-40, 0, 0), (40, 0, 0)), offset=30 * MM,
 #     )
-#     test11 = draft_obj.text_box(label="two\nlines", location=(40, 40, 0))
-#     test12 = draft_obj.text_box(
+#     test11 = draft_obj.callout(label="two\nlines", location=(40, 40, 0))
+#     test12 = draft_obj.callout(
 #         label="look\nhere", location=(40, -40, 0), point_at=(0, -40, 0)
 #     )
 #     # with cProfile.Profile() as pr:

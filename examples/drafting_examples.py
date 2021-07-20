@@ -1,6 +1,6 @@
 """
 
-An example of a documented cadquery part with many dimension lines
+An example of a documented cadquery part with dimension lines
 
 name: drafting_examples.py
 by:   Gumyr
@@ -29,49 +29,109 @@ from cq_warehouse.drafting import Draft
 MM = 1
 INCH = 25.4 * MM
 
+
+def building_a_mystery() -> cq.Workplane:
+    """
+    Create the mystery part that will be documented with mixed metric and imperial sizes
+    emulating an object being imported from a STEP file.
+    """
+    mystery_object = (
+        cq.Workplane("XY")
+        .rect(100 * MM, 3 * INCH, centered=False)
+        .circle(25 * MM)
+        .translate((25 * MM, 25 * MM, 0))
+        .extrude(10 * MM)
+        .edges(">Z")
+        .chamfer(3 * MM)
+        .faces(">Z")
+        .workplane()
+        .center(85 * MM, 60 * MM)
+        .hole((37 / 64) * INCH)
+    )
+    return mystery_object
+
+
 #
-# Create the part that will be documented with mixed metric and imperial sizes
-center_diameter = 50 * MM
-hole_diameter = (37 / 64) * INCH
-test_object = (
-    cq.Workplane("XY")
-    .rect(100 * MM, 3 * INCH, centered=False)
-    .circle(center_diameter / 2)
-    .translate((25 * MM, 25 * MM, 0))
-    .extrude(10 * MM)
-    .edges(">Z")
-    .chamfer(3 * MM)
-    .faces(">Z")
-    .workplane()
-    .center(85 * MM, 60 * MM)
-    .hole(hole_diameter)
+# Create an instance of the mystery object
+mystery_object = building_a_mystery()
+
+#
+# Start by adding a title to the drawing with a callout where a single Vertex
+# (relative to a corner of the part) defines the origin of the callout.
+drawing_title = Draft(font_size=10, label_normal=(1, -1, 0))
+title = drawing_title.callout(
+    label="cq_warehouse.drafting",
+    origin=mystery_object.faces(">Z").vertices(">Y and <X").val() + (0, 0, 25 * MM),
+    justify="center",
 )
 
 #
-# Extract some key vertices from the part as inputs to drafting methods.
-# Circles only have one vertex so the extracted value will be combined
-# with the diameter to define the other side of the circle.
-# .. note these are type cq.Vertex are located at the bottom of the chamfer
+# When documenting measurements in the drawing, set the number of decimal
+# points in metric dimensions to one - use the options for the other inputs.
+metric_drawing = Draft(decimal_precision=1)
+
+#
+# Extract the vertices from the bottom edge along the x-axis and use them
+# to define the object_edge of an extension line. The offset is the distance
+# from the part edge to the dimension line. A tolerance is specified as
+# a separate + and - values.
+length_measure = metric_drawing.extension_line(
+    object_edge=mystery_object.faces("<Z").vertices("<Y").vals(),
+    offset=10.0,
+    tolerance=(+0.2, -0.1),
+)
+
+#
+# After some experimentation, the width was determined to be an imperial measurement
+# so create an instance of the Draft class for imperial measurements precise to a
+# thousandths of an inch. The tolerance is specified with a single ± float value.
+imperial_drawing = Draft(units="imperial", decimal_precision=3)
+width_measure = imperial_drawing.extension_line(
+    object_edge=mystery_object.faces("<Z").vertices(">X").vals(),
+    offset=(1 / 2) * INCH,
+    tolerance=0.001 * INCH,
+)
+
+#
+# To document the two holes the sizes need to be extracted as a circle has only one
+# vertex and can only be used to locate the hole. The `circle` edge selector is
+# used to extract the circles from the mystery object and with the help of a sorted set
+# the three unique radii of the object are exacted.
+(bolt_radius, hole_radius, chamfer_radius) = sorted(
+    {round(circle.radius(), 7) for circle in mystery_object.edges("%circle").vals()}
+)
+
+#
+# To locate a dimension line for the central hole, a hole vertex needs to
+# found. The RadiusNthSelector(1) selector is looking for circles from the ordered
+# list of radii (as was created above) so the `1` input refers to the hole_radius.
+# Note that `vertices().val()` is returning a single cq.Vertex object.
 center_pnt1 = (
-    test_object.faces(">Z[-1]")
-    .edges(cq.selectors.RadiusNthSelector(1))
-    .vertices()
-    .val()
+    mystery_object.faces("<Z").edges(cq.selectors.RadiusNthSelector(1)).vertices().val()
 )
-center_pnt0 = center_pnt1 - (center_diameter, 0, 0)
+# Knowing the size of the hole, the second vertex is easily determined
+center_pnt0 = center_pnt1 - (hole_radius * 2, 0, 0)
 
+#
+# Use a dimension_line to document an internal dimension
+diameter_measure = metric_drawing.dimension_line(path=[center_pnt0, center_pnt1])
+
+#
+# Use the same procedure to determine the location of the bolt hole
 hole_pnt0 = (
-    test_object.faces(">Z").edges(cq.selectors.RadiusNthSelector(0)).vertices().val()
+    mystery_object.faces(">Z").edges(cq.selectors.RadiusNthSelector(0)).vertices().val()
 )
-hole_pnt1 = hole_pnt0 + (hole_diameter, 0, 0)
+hole_pnt1 = hole_pnt0 + (bolt_radius * 2, 0, 0)
+#
+# The bolt hole is an imperial size so the fractional display is needed
+bolt_diameter_measure = Draft(
+    font_size=4, units="imperial", number_display="fraction"
+).extension_line(object_edge=[hole_pnt0, hole_pnt1], offset=-1 * INCH)
 
 #
-# Create an instance of the Draft class which specifies the text in the tapping instructions
-hole_drawing = Draft(label_normal=(0, 0, 1), font_size=5)
-#
-# Create the tappping instructions (a cq.Assembly) as a callout with a tail composed of two Vertices
+# Create the tappping instructions as a callout with a tail composed of two Vertices
 # .. note that addition and substraction methods have been added to the cq.Vertex class
-hole_instructions = hole_drawing.callout(
+hole_instructions = Draft(label_normal=(0, 0, 1), font_size=5).callout(
     label="tap to 5/8-18 NF",
     tail=[
         hole_pnt0 + (-1 * INCH, 1 * INCH, (1 / 2) * INCH),
@@ -80,66 +140,23 @@ hole_instructions = hole_drawing.callout(
     ],
     justify="right",
 )
-imperial_fractional_drawing = Draft(
-    font_size=2, units="imperial", number_display="fraction"
-)
-hole_diameter = imperial_fractional_drawing.extension_line(
-    object_edge=[hole_pnt0, hole_pnt1], offset=-25.0
-)
 
 #
-# Create an instance of the Draft class for metric measurements
-metric_drawing = Draft(decimal_precision=1)
-#
-# Extract the vertices from the bottom edge along the x-axis and use them
-# to define the object_edge of an extension line. The offset is the distance
-# from the part edge to the dimension line. The tolerance is specified as
-# a separate + and - values.
-length_measure = metric_drawing.extension_line(
-    object_edge=test_object.faces("<Z").vertices("<Y").vals(),
-    offset=10.0,
-    tolerance=(+0.2, -0.1),
-)
-#
-# Use a dimension_line to document an internal dimension
-diameter_measure = metric_drawing.dimension_line(path=[center_pnt0, center_pnt1])
-
-#
-# Create an instance of the Draft class for imperial measurements precise to a
-# thousandths of an inch. The tolerance is specified with a single ± float value.
-imperial_drawing = Draft(units="imperial", decimal_precision=3)
-width_measure = imperial_drawing.extension_line(
-    object_edge=test_object.faces("<Z").vertices(">X").vals(),
-    offset=(1 / 2) * INCH,
-    tolerance=0.001 * INCH,
-)
-
-#
-# Title the drawing with a callout where a single point tail defines
-# the origin of the callout. Note the callout origin is of type Vertex and
-# is specified relative to a corner of the part.
-title_drawing = Draft(font_size=10, label_normal=(1, -1, 0))
-title = title_drawing.callout(
-    label="cq_warehouse.drafting",
-    tail=test_object.faces(">Z").vertices(">Y and <X").val() + (0, 0, 25 * MM),
-    justify="center",
-)
-
-#
-# Finalling, create another callout with a description of the chamfer. In this
+# Finally, create another callout with a description of the chamfer. In this
 # case the tail is defined as an cq.Edge object (a spline in this case but any
 # Edge or Wire object can be used) which is also supported with all of the
 # dimension_line and extension_line paths.
-chamfer_drawing = Draft(label_normal=(1, -1, 0))
+chamfer_size = chamfer_radius - hole_radius
+chamfer_drawing = Draft(label_normal=(1, 0, 0))
 chamfer_measure = chamfer_drawing.callout(
-    label="3mm chamfer",
+    label=str(chamfer_size) + "mm chamfer",
     tail=cq.Edge.makeSpline(
         listOfVector=[
             (
-                test_object.faces(">Z").vertices("<Y and <X").val()
-                + (0, 25 * MM, 15 * MM)
+                mystery_object.faces(">Z").vertices("<Y and <X").val()
+                + (0, 15 * MM, 15 * MM)
             ).toVector(),
-            test_object.faces(">Z").vertices("<Y and <X").val().toVector(),
+            mystery_object.faces(">Z").vertices("<Y and <X").val().toVector(),
         ],
         tangents=[cq.Vector(0, -1, 0), cq.Vector(0, 0, -1)],
     ),
@@ -148,11 +165,11 @@ chamfer_measure = chamfer_drawing.callout(
 
 # If running from within the cq-editor, show the dimension_line lines
 if "show_object" in locals():
-    show_object(test_object, name="test_object")
+    show_object(mystery_object, name="mystery_object")
     show_object(length_measure, name="length_measure")
     show_object(width_measure, name="width_measure")
     show_object(diameter_measure, name="diameter_measure")
-    show_object(hole_diameter, name="hole_diameter")
+    show_object(bolt_diameter_measure, name="bolt_diameter")
     show_object(hole_instructions, name="hole_instructions")
     show_object(title, name="title")
     show_object(chamfer_measure, name="chamfer_measure")
