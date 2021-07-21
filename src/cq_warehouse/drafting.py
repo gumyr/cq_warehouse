@@ -27,32 +27,16 @@ license:
     limitations under the License.
 
 """
-from pydantic import BaseModel, PrivateAttr, validator, validate_arguments
-from math import floor, log2, gcd
+from math import floor, log2, gcd, pi
 from typing import Union, Tuple, Literal, Optional, ClassVar, Any
+
+# pylint: disable=no-name-in-module
+from pydantic import BaseModel, PrivateAttr, validator, validate_arguments
 from numpy import arange
 import cadquery as cq
 
 MM = 1
 INCH = 25.4 * MM
-
-# import cProfile
-# import pstats
-# TODO: label_norm = (1,0,0) fails - done
-# TODO: location and point_at should accept vertex - done
-# TODO: callout to get a path input - done
-# TODO: add a flag to Draft to control display of units - done
-# TODO: add tolerances - done
-# TODO: flatten text - faces("<Z") eliminates text, made thinner
-# TODO: path point pair to list and polyline - done
-# TODO: add + and - methods to vertex - done
-# TODO: handle text too large - partial, add case 'b'
-# TODO: add fonts and styles to text
-# TODO: fix polyline: done
-# TODO: add arc lines as dimension lines where the label is an angle
-# TODO: remove tail_pos from arrow_and_shaft - done
-# TODO: factor out label generation and return (label,length)
-# TODO: add arrows to extension_line
 
 VectorLike = Union[Tuple[float, float, float], cq.Vector]
 PathDescriptor = Union[
@@ -63,18 +47,67 @@ PointDescriptor = Union[cq.Vector, cq.Vertex, Tuple[float, float, float]]
 
 class Draft(BaseModel):
     """
-    Create 3D engineering dimension_line lines for documenting cadquery designs
+    Documenting cadquery designs with dimension and extension lines as well as callouts.
 
-    The class stores the style descriptor for the methods
+    Usage:
+        metric_drawing = Draft(decimal_precision=1)
+        length_dimension_line = metric_drawing.extension_line(
+            object_edge=mystery_object.faces("<Z").vertices("<Y").vals(),
+            offset=10.0,
+            tolerance=(+0.2, -0.1),
+        )
+
+    Attributes
+    ----------
+    font_size: float = 5.0
+        size of the text in dimension lines and callouts
+    color: Optional[cq.Color] = cq.Color(0.25, 0.25, 0.25)
+        color of text, extension lines and arrows
+    arrow_diameter: float = 1.0
+        maximum diameter of arrow heads
+    arrow_length: float = 3.0
+        arrow head length
+    label_normal: Optional[VectorLike] = cq.Vector(0, 0, 1)
+        text and extension line plane normal - default to XY plane
+    units: Literal["metric", "imperial"] = "metric"
+        unit of measurement
+    number_display: Literal["decimal", "fraction"] = "decimal"
+        display numbers as decimals or fractions
+    display_units: bool = True
+        control the display of units with numbers
+    decimal_precision: int = 2
+        number of decimal places when displaying numbers
+    fractional_precision: int = 64
+        maximum fraction denominator - must be a factor of 2
 
     Methods
     -------
-    dimension_line
-    extension_line
-    callout
-    number_with_units
-    arrow_and_shaft
-    line_segment
+    dimension_line(
+        path: PathDescriptor,
+        label: str = None,
+        arrows: Tuple[bool, bool] = (True, True),
+        tolerance: Optional[Union[float, Tuple[float, float]]] = None,
+        label_angle: bool = False,
+    ) -> cq.Assembly:
+        Create a dimension line between points or along path
+
+    extension_line(
+        object_edge: PathDescriptor,
+        offset: float,
+        label: str = None,
+        tolerance: Optional[Union[float, Tuple[float, float]]] = None,
+        label_angle: bool = False,
+    )-> cq.Assembly:
+        Create an extension line - a dimension line offset from the object
+        with lines extending from the object - between points or along path
+
+    callout(
+        label: str,
+        tail: Optional[PathDescriptor] = None,
+        origin: Optional[PointDescriptor] = None,
+        justify: Literal["left", "center", "right"] = "left",
+    ) -> cq.Assembly:
+        Create a callout at the origin with no tail, or at the root of the given tail
 
     """
 
@@ -83,6 +116,8 @@ class Draft(BaseModel):
 
     # Instance Attributes
     font_size: float = 5.0
+    # font_name: str = "Arial",                                     Errors in makeText or shapes.py
+    # font_style: Literal["regular", "bold", "italic"] = "regular",
     color: Optional[cq.Color] = None
     arrow_diameter: float = 1.0
     arrow_length: float = 3.0
@@ -116,11 +151,16 @@ class Draft(BaseModel):
         )
         self.color = cq.Color(0.25, 0.25, 0.25) if self.color is None else self.color
 
+    # pylint: disable=too-few-public-methods
     class Config:
+        """ Configurate pydantic to allow cadquery native types """
+
         arbitrary_types_allowed = True
 
     @validator("fractional_precision")
+    @classmethod
     def fractional_precision_power_two(cls, fractional_precision):
+        """ Fraction denominator must be a power of two """
         if not log2(fractional_precision).is_integer():
             raise ValueError(
                 f"fractional_precision values must be a factor of 2; provided {fractional_precision}"
@@ -128,7 +168,7 @@ class Draft(BaseModel):
         return fractional_precision
 
     @validate_arguments
-    def number_with_units(
+    def _number_with_units(
         self, number: float, tolerance: Union[float, Tuple[float, float]] = None
     ) -> str:
         """ Convert a raw number to a unit of measurement string based on the class settings """
@@ -145,9 +185,9 @@ class Draft(BaseModel):
         if tolerance is None:
             tolerance_str = ""
         elif isinstance(tolerance, float):
-            tolerance_str = f" ±{self.number_with_units(tolerance)}"
+            tolerance_str = f" ±{self._number_with_units(tolerance)}"
         else:
-            tolerance_str = f" +{self.number_with_units(tolerance[0])} -{self.number_with_units(tolerance[1])}"
+            tolerance_str = f" +{self._number_with_units(tolerance[0])} -{self._number_with_units(tolerance[1])}"
 
         if self.units == "metric":
             return_value = (
@@ -173,55 +213,42 @@ class Draft(BaseModel):
         return return_value
 
     @validate_arguments(config=dict(arbitrary_types_allowed=True))
-    def arrow_and_shaft(
+    def _make_arrow(
         self, path: Union[cq.Edge, cq.Wire], tip_pos: Literal["start", "end"] = "start"
     ) -> cq.Solid:
         """ Create an arrow head which follows the provided path """
 
-        if tip_pos == "start":
-            tip = 0.0
-            mid = 0.0 + self.arrow_length / (2 * cq.Wire.assembleEdges([path]).Length())
-            tail = 0.0 + self.arrow_length / cq.Wire.assembleEdges([path]).Length()
-        else:
-            tip = 1.0
-            mid = 1.0 - self.arrow_length / (2 * cq.Wire.assembleEdges([path]).Length())
-            tail = 1.0 - self.arrow_length / cq.Wire.assembleEdges([path]).Length()
-
-        arrow_tip = cq.Wire.assembleEdges(
-            [
-                cq.Edge.makeCircle(
-                    radius=0.0001, pnt=path.positionAt(tip), dir=path.tangentAt(tip),
-                )
-            ]
-        )
-        arrow_mid = cq.Wire.assembleEdges(
-            [
-                cq.Edge.makeCircle(
-                    radius=0.2 * self.arrow_diameter,
-                    pnt=path.positionAt(mid),
-                    dir=path.tangentAt(mid),
-                )
-            ]
-        )
-        arrow_tail = cq.Wire.assembleEdges(
-            [
-                cq.Edge.makeCircle(
-                    radius=self.arrow_diameter / 2,
-                    pnt=path.positionAt(tail),
-                    dir=path.tangentAt(tail),
-                )
-            ]
-        )
+        # Calculate the position along the path to create the arrow cross-sections
+        loft_pos = [0.0 if tip_pos == "start" else 1.0]
+        for i in [2, 1]:
+            loft_pos.append(
+                self.arrow_length / (i * cq.Wire.assembleEdges([path]).Length())
+                if tip_pos == "start"
+                else 1.0
+                - self.arrow_length / (i * cq.Wire.assembleEdges([path]).Length())
+            )
+        radius_lut = {0: 0.0001, 1: 0.2, 2: 0.5}
+        arrow_cross_sections = [
+            cq.Wire.assembleEdges(
+                [
+                    cq.Edge.makeCircle(
+                        radius=radius_lut[i] * self.arrow_diameter,
+                        pnt=path.positionAt(loft_pos[i]),
+                        dir=path.tangentAt(loft_pos[i]),
+                    )
+                ]
+            )
+            for i in range(3)
+        ]
         arrow = cq.Assembly(None, name="arrow")
         arrow.add(
-            cq.Solid.makeLoft([arrow_tip, arrow_mid, arrow_tail]),
-            name="arrow_and_shaft",
+            cq.Solid.makeLoft(arrow_cross_sections), name="arrow_and_shaft",
         )
         arrow.add(path, name="arrow_shaft")
         return arrow
 
     @staticmethod
-    def line_segment(
+    def _line_segment(
         path: Union[cq.Edge, cq.Wire], tip_pos: float, tail_pos: float
     ) -> cq.Workplane:
         """ Create a segment of a path between tip and tail (inclusive) """
@@ -241,7 +268,7 @@ class Draft(BaseModel):
         return sub_path
 
     @staticmethod
-    def path_to_wire(path: PathDescriptor) -> cq.Wire:
+    def _path_to_wire(path: PathDescriptor) -> cq.Wire:
         """ Convert a PathDescriptor into a cq.Wire """
         if isinstance(path, (cq.Edge, cq.Wire)):
             path_as_wire = cq.Wire.assembleEdges([path])
@@ -260,13 +287,29 @@ class Draft(BaseModel):
             )
         return path_as_wire
 
-    def label_size(self, label_str: str) -> float:
-
+    def _label_size(self, label_str: str) -> float:
+        """ Return the length of a text string given class parameters """
         label_xy_object = cq.Workplane("XY").text(
-            txt=label_str, fontsize=self.font_size, distance=self.font_size / 20
+            txt=label_str,
+            fontsize=self.font_size,
+            distance=self.font_size / 20,
+            # font=self.font_name,
+            # kind = self.font_style,
         )
         label_length = 2.25 * max([v.X for v in label_xy_object.vertices().vals()])
         return label_length
+
+    @staticmethod
+    def _find_center_of_arc(arc: cq.Edge) -> cq.Vector:
+        """ Given an arc find the center of the circle """
+        arc_radius = arc.radius()
+        arc_pnt = arc.positionAt(0.25)
+        chord_end_pnts = [arc.positionAt(t) for t in [0.0, 0.5]]
+        chord_line = cq.Edge.makeLine(*chord_end_pnts)
+        chord_center_pnt = chord_line.positionAt(0.5)
+        radial_tangent = cq.Edge.makeLine(arc_pnt, chord_center_pnt).tangentAt(0)
+        center = arc_pnt + radial_tangent * arc_radius
+        return center
 
     @validate_arguments(config=dict(arbitrary_types_allowed=True))
     def dimension_line(
@@ -275,32 +318,45 @@ class Draft(BaseModel):
         label: str = None,
         arrows: Tuple[bool, bool] = (True, True),
         tolerance: Optional[Union[float, Tuple[float, float]]] = None,
+        label_angle: bool = False,
     ) -> cq.Workplane:
         """
         Create a dimension line typically for internal measurements
         There are three options depending on the size of the text and length
         of the dimension line:
-        1) The label and arrows fit within the length of the path
-        2) The text fit within the path and the arrows go outside
-        3) Neither the text nor the arrows fit within the path
+        Type 1) The label and arrows fit within the length of the path
+        Type 2) The text fit within the path and the arrows go outside
+        Type 3) Neither the text nor the arrows fit within the path
         """
 
         # Create a wire modelling the path of the dimension lines from a variety of input types
-        line_wire = Draft.path_to_wire(path)
+        line_wire = Draft._path_to_wire(path)
         line_length = line_wire.Length()
 
-        label_str = (
-            self.number_with_units(line_length, tolerance) if label is None else label
-        )
-        label_length = self.label_size(label_str)
+        if label is not None:
+            label_str = label
+        elif label_angle:
+            arc_edge = cq.Workplane(line_wire).edges("%circle").val()
+            try:
+                arc_radius = arc_edge.radius()
+            except AttributeError as not_an_arc_error:
+                raise ValueError(
+                    "label_angle requested but the path is not part of a circle"
+                ) from not_an_arc_error
+            arc_size = 360 * line_length / (2 * pi * arc_radius)
+            label_str = f"{str(round(arc_size,self.decimal_precision))}°"
+        else:
+            label_str = self._number_with_units(line_length, tolerance)
+
+        label_length = self._label_size(label_str)
 
         # Determine the type of this dimension line
         if label_length + len(arrows) * self.arrow_length < line_length:
-            type = 1
+            dline_type = 1
         elif label_length < line_length:
-            type = 2
+            dline_type = 2
         else:
-            type = 3
+            dline_type = 3
 
         # Calculate the relative positions along the dimension_line line of the key features
         line_controls = [
@@ -309,16 +365,12 @@ class Draft(BaseModel):
             0.5 + (label_length / 2) / line_length,
             1.0,
         ]
-        if line_controls[0] > line_controls[1] or line_controls[2] > line_controls[3]:
-            raise ValueError(
-                f'Label "{label_str}" is too large for given dimension_line'
-            )
 
         # Compose an assembly with the component parts of the dimension_line line
         d_line = cq.Assembly(None, name=label_str + "_dimension_line", color=self.color)
         if arrows[0]:
-            if type == 1:
-                start_arrow_line = Draft.line_segment(
+            if dline_type == 1:
+                start_arrow_line = Draft._line_segment(
                     line_wire, tip_pos=line_controls[0], tail_pos=line_controls[1]
                 )
             else:
@@ -335,12 +387,11 @@ class Draft(BaseModel):
                 )
 
             d_line.add(
-                self.arrow_and_shaft(start_arrow_line, tip_pos="start"),
-                name="start_arrow",
+                self._make_arrow(start_arrow_line, tip_pos="start"), name="start_arrow",
             )
         if arrows[1]:
-            if type == 1:
-                end_arrow_line = Draft.line_segment(
+            if dline_type == 1:
+                end_arrow_line = Draft._line_segment(
                     line_wire, tip_pos=line_controls[2], tail_pos=line_controls[3]
                 )
             else:
@@ -352,23 +403,23 @@ class Draft(BaseModel):
                             normal=self._label_normal,
                         )
                     )
-                    .hLineTo(1.5 * self.font_size)
+                    .moveTo(1.5 * self.font_size, 0)
+                    .hLineTo(0)
                     .val()
                 )
             d_line.add(
-                self.arrow_and_shaft(end_arrow_line, tip_pos="start"), name="end_arrow",
+                self._make_arrow(end_arrow_line, tip_pos="end"), name="end_arrow",
             )
-        if type == 1:
-            # Create a plane aligned with the dimension_line to place the text
+        if dline_type in [1, 2]:
             text_plane = cq.Plane(
-                origin=cq.Vector(0, 0, 0),
+                origin=line_wire.positionAt(0.5),
                 xDir=line_wire.tangentAt(0.5),
                 normal=self._label_normal,
             )
             label_object = cq.Workplane(text_plane).text(
                 txt=label_str, fontsize=self.font_size, distance=self.font_size / 100
             )
-            d_line.add(label_object.translate(line_wire.positionAt(0.5)), name="label")
+            d_line.add(label_object, name="label")
         elif arrows[1]:
             text_plane = cq.Plane(
                 origin=cq.Vector(1.5 * MM, 0, 0),
@@ -395,6 +446,8 @@ class Draft(BaseModel):
                 fontsize=self.font_size,
                 distance=self.font_size / 100,
                 halign="right",
+                # font=self.font_name,
+                # kind = self.font_style,
             )
             d_line.add(
                 label_object.translate(start_arrow_line.positionAt(1.0)), name="label"
@@ -410,40 +463,74 @@ class Draft(BaseModel):
         offset: float,
         label: str = None,
         tolerance: Optional[Union[float, Tuple[float, float]]] = None,
-    ):
+        label_angle: bool = False,
+    ) -> cq.Assembly:
         """ Create a dimension line with two lines extending outward from the part to dimension """
 
         # Create a wire modelling the path of the dimension lines from a variety of input types
-        object_path = Draft.path_to_wire(object_edge)
+        object_path = Draft._path_to_wire(object_edge)
         object_length = object_path.Length()
 
-        extension_tangent = object_path.tangentAt(0).cross(self._label_normal)
-        dimension_plane = cq.Plane(
-            origin=object_path.positionAt(0),
-            xDir=extension_tangent,
-            normal=self._label_normal,
-        )
-        ext_line0 = (
-            cq.Workplane(dimension_plane).moveTo(1.5 * MM, 0).lineTo(offset + 3 * MM, 0)
-        )
-        ext_line1 = (
-            cq.Workplane(dimension_plane)
-            .moveTo(1.5 * MM, object_length)
-            .lineTo(offset + 3 * MM, object_length)
-        )
+        # Determine if the provided object edge is a circular arc and if so extract its radius
+        arc_edge = cq.Workplane(object_path).edges("%circle").val()
+        try:
+            arc_radius = arc_edge.radius()
+        except AttributeError:
+            is_arc = False
+        else:
+            is_arc = True
 
-        p0 = ext_line0.val().positionAt(
-            offset / (offset + (offset / abs(offset)) * 3 * MM)
-        )
-        p1 = ext_line1.val().positionAt(
-            offset / (offset + (offset / abs(offset)) * 3 * MM)
-        )
+        if is_arc:
+            # Create a new arc for the dimension line offset from the given one
+            arc_center = Draft._find_center_of_arc(arc_edge)
+            radial_directions = [
+                cq.Edge.makeLine(arc_center, object_path.positionAt(i)).tangentAt(1.0)
+                for i in [0.0, 0.5, 1.0]
+            ]
+            offset_arc_pts = [
+                arc_center + radial_directions[i] * (arc_radius + offset)
+                for i in range(3)
+            ]
+            extension_path = cq.Edge.makeThreePointArc(*offset_arc_pts)
+            # Create radial extension lines
+            ext_line = [
+                cq.Edge.makeLine(
+                    object_path.positionAt(i) + radial_directions[i * 2] * 1.5 * MM,
+                    object_path.positionAt(i)
+                    + radial_directions[i * 2] * (offset + 3.0 * MM),
+                )
+                for i in range(2)
+            ]
+        else:
+            extension_tangent = object_path.tangentAt(0).cross(self._label_normal)
+            dimension_plane = cq.Plane(
+                origin=object_path.positionAt(0),
+                xDir=extension_tangent,
+                normal=self._label_normal,
+            )
+            ext_line = [
+                (
+                    cq.Workplane(dimension_plane)
+                    .moveTo(1.5 * MM, l)
+                    .lineTo(offset + 3 * MM, l)
+                )
+                for l in [0, object_length]
+            ]
+            extension_path = object_path.translate(
+                extension_tangent.normalized() * offset
+            )
+
+        # Create the assembly
         e_line = cq.Assembly(None, name="extension_line", color=self.color)
-        e_line.add(ext_line0, name="extension_line0")
-        e_line.add(ext_line1, name="extension_line1")
-
+        e_line.add(ext_line[0], name="extension_line0")
+        e_line.add(ext_line[1], name="extension_line1")
         e_line.add(
-            self.dimension_line(label=label, path=[p0, p1], tolerance=tolerance),
+            self.dimension_line(
+                label=label,
+                path=extension_path,
+                tolerance=tolerance,
+                label_angle=label_angle,
+            ),
             name="dimension_line",
         )
         return e_line
@@ -455,7 +542,7 @@ class Draft(BaseModel):
         tail: Optional[PathDescriptor] = None,
         origin: Optional[PointDescriptor] = None,
         justify: Literal["left", "center", "right"] = "left",
-    ):
+    ) -> cq.Assembly:
         """ Create a text box that optionally points at something """
 
         if origin is not None:
@@ -465,7 +552,7 @@ class Draft(BaseModel):
                 else cq.Vector(origin.toTuple())
             )
         elif tail is not None:
-            line_wire = Draft.path_to_wire(tail)
+            line_wire = Draft._path_to_wire(tail)
             line_length = line_wire.Length()
             text_origin = line_wire.positionAt(0)
         else:
@@ -480,17 +567,19 @@ class Draft(BaseModel):
             fontsize=self.font_size,
             distance=self.font_size / 100,
             halign=justify,
+            # font=self.font_name,
+            # kind = self.font_style,
         )
         t_box.add(label_text, name="callout_label")
         if tail is not None:
             t_box.add(
-                Draft.line_segment(
+                Draft._line_segment(
                     line_wire, tip_pos=1.5 * MM / line_length, tail_pos=1.0
                 ),
                 name="callout_line",
             )
             t_box.add(
-                self.arrow_and_shaft(line_wire, tip_pos="end"), name="callout_arrow",
+                self._make_arrow(line_wire, tip_pos="end"), name="callout_arrow",
             )
 
         return t_box
@@ -545,8 +634,8 @@ def __vertex_str__(self) -> str:
 cq.Vertex.__str__ = __vertex_str__
 
 
-def _vertex_toVector(self) -> cq.Vector:
+def _vertex_to_vector(self) -> cq.Vector:
     return cq.Vector(self.toTuple())
 
 
-cq.Vertex.toVector = _vertex_toVector
+cq.Vertex.toVector = _vertex_to_vector
