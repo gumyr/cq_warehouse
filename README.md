@@ -21,7 +21,10 @@ or CAM systems.
     - [Methods](#methods-1)
     - [Future Enhancements](#future-enhancements)
   - [drafting sub-package](#drafting-sub-package)
-  - [gear sub-package](#gear-sub-package)
+    - [dimension_line](#dimension_line)
+    - [extension_line](#extension_line)
+    - [callout](#callout)
+    - [Vertex Extensions](#vertex-extensions)
 ## Installation
 Install from github:
 ```
@@ -31,7 +34,7 @@ $ python -m pip install git+https://github.com/gumyr/cq_warehouse.git#egg=cq_war
 The cq_warehouse package contains the following sub-packages:
 - **sprocket** : a parametric sprocket generator
 - **chain**  : a parametric chain generator
-- **drafting** : a set of object used for documenting a cadquery object
+- **drafting** : a set of methods used for documenting cadquery objects
 
 ## sprocket sub-package
 A sprocket can be generated and saved to a STEP file with just four lines
@@ -146,6 +149,9 @@ the size and locations of the sprockets, how the chain wraps and optionally the 
 
 For example, one can create the chain for a bicycle with a rear deraileur as follows:
 ```python
+import cadquery as cq
+import cq_warehouse.chain as Chain
+
 derailleur_chain = Chain(
     spkt_teeth=[32,10,10,16],
     positive_chain_wrap=[True,True,False,True],
@@ -156,6 +162,8 @@ derailleur_chain = Chain(
         (+205*MM,158.9*MM,50*MM)
     ]
 )
+if "show_object" in locals():
+    show_object(derailleur_chain, name="derailleur_chain")
 ```
 ### Input Parameters
 The complete set of inputs parameters are:
@@ -185,19 +193,10 @@ starting from the largest sprocket):
 
 ![chain direction](doc/chain_direction.png)
 
-Note that the chain is perfectly tight as it wraps around the sprockets and
-does not support any slack. Therefore, as the chain wraps back around to the
-first link it will either overlap or gap this link - this can be seen in the above
-figure at the top of the largest sprocket. To control this,
-the length of the chain in links is echoed to the console window and should
-have a small fractional value.  For example, 72.0037 is the value resulting
-from the default customizer values which results in a near perfect fit.  A
-value of 72.7 would result in a noticeable gap. Adjust the locations of the
-sprockets to control this value.
+Note that the chain is perfectly tight as it wraps around the sprockets and does not support any slack. Therefore, as the chain wraps back around to the first link it will either overlap or gap this link - this can be seen in the above figure at the top of the largest sprocket. Adjust the locations of the sprockets to control this value.
 
 ### Instance Variables
-In addition to all of the input parameters that are stored as instance variables
-within the Chain instance there are seven derived instance variables:
+In addition to all of the input parameters that are stored as instance variables within the Chain instance there are seven derived instance variables:
 - `pitch_radii` (list of float) : the radius of the circle formed by the center of the chain rollers on each sprocket
 - `chain_links` (float) : the length of the chain in links
 - `num_rollers` (int) : the number of link rollers in the entire chain
@@ -290,17 +289,98 @@ relocated_transmission = two_sprocket_chain.assemble_chain_transmission(
 ).rotate(axis=(0,1,1),angle=45).translate((20,20,20))
 ```
 ### Future Enhancements
-Two future enchancments are being considered:
-1. Non-planar chains - If the sprocket centers contain `z` values, the
-chain would follow the path of a spline between the sockets to approximate
-the path of a bicycle chain where the front and read sprockets are not
-in the same plane. Currently, the `z` values of the first sprocket defind
-the `z` offset of the entire chain.
-2. Sprocket Location Slots - Typically on or more of the sprockets in a chain
-transmission will be adjustable to allow the chain to be tight around the
+Two future enhancements are being considered:
+1. Non-planar chains - If the sprocket centers contain `z` values, the chain would follow the path of a spline between the sockets to approximate the path of a bicycle chain where the front and read sprockets are not in the same plane. Currently, the `z` values of the first sprocket define the `z` offset of the entire chain.
+2. Sprocket Location Slots - Typically on or more of the sprockets in a chain transmission will be adjustable to allow the chain to be tight around the
 sprockets. This could be implemented by allowing the user to specify a pair
 of locations defining a slot for a given sprocket indicating that the sprocket
 location should be selected somewhere along this slot to create a perfectly
 fitting chain.
 ## drafting sub-package
-## gear sub-package
+A class used to document cadquery designs by providing three methods that create objects that can be included into the design illustrating marked dimension_lines or notes.
+
+For example:
+```python
+import cadquery as cq
+from cq_warehouse.drafting import Draft
+
+# Import an object to be dimensioned
+mystery_object = cq.importers.importStep("mystery.step")
+
+# Create drawing instance with appropriate settings
+metric_drawing = Draft(decimal_precision=1)
+
+# Create an extension line from an edge of the part
+length_dimension_line = metric_drawing.extension_line(
+    object_edge=mystery_object.faces("<Z").edges("<Y").val(),
+    offset=10.0,
+    tolerance=(+0.2, -0.1),
+)
+
+if "show_object" in locals():
+    show_object(mystery_object, name="mystery_object")
+    show_object(length_dimension_line, name="length_dimension_line")
+
+```
+To illustrate some of the capabilities of the drafting package, a set of dimension lines, extension lines and callouts were applied to a cadquery part with no prior knowledge of any of the dimensions:
+![drafting](doc/drafting_example.png)
+One could define three instances of the Draft class, one for each of the XY, XZ and YZ planes and generate a set of dimensions on each one. By enabling one of these planes at a time and exporting svg images traditional drafting documents can be generated.
+
+When generating dimension lines there are three possibilities depending on the measurement and Draft attributes (described below):
+1. The label text (possibly including units and tolerances) and arrows fit within the measurement,
+2. The label text but not the arrows fit within the measurement, or
+3. Neither the text nor the arrows fit within the measurements.
+Cases 1 and 2 are shown in the above example. In case 3, the label will be attached to one of the external arrows.
+
+The Draft class contains a set of attributes used to describe subsequent dimension_line(s), extension_line(s) or callout(s). The full list is as follows:
+
+- `font_size` (float = 5.0) : the size of the text in dimension lines and callouts
+- `color` (Optional[cq.Color]) : the color of text, extension lines and arrows (defaults to (0.25, 0.25, 0.25))
+- `arrow_diameter` (float = 1.0) : the maximum diameter of the conical arrows - note that if a dimension line follows the provided path even if it's non-linear
+- `arrow_length` (float = 3.0) : arrow head length
+- `label_normal` (Optional[VectorLike]) : text and extension line plane normal - default to XY plane
+- `units` (Literal["metric", "imperial"]) : unit of measurement - default "metric"
+- `number_display` (Literal["decimal", "fraction"]) : display numbers as decimals or fractions - defaults to "decimal"
+- `display_units` (bool) : control the display of units with numbers - default to True
+- `decimal_precision` (int = 2) : number of decimal places when displaying numbers
+- `fractional_precision` (int = 64) : maximum fraction denominator - note it must be a factor of 2
+
+The three public methods that the Draft class defines are described below. Note that both dimension_line ane extension_line support arcs as well as linear measurements - to be exact, the shown measurement is the length of the input path or object edge which could be an arbitrary shape like a spline. If this path or object_edge is part of a circle the size of the arc in degrees may be displayed instead of the length.
+
+### dimension_line
+Typically used for (but not restricted to) inside dimensions, a dimension line often as arrows on either side of a dimension or label. The full set of input parameters are as follows:
+- `path` (PathDescriptor) : a very general type of input used to describe the path the dimension line will follow where `PathDescriptor = Union[
+cq.Wire, cq.Edge, list[Union[cq.Vector, cq.Vertex, Tuple[float, float, float]]]` - i.e. a list of points or cadquery edge or wire either extracted from a part or created by the user.
+- `label` (Optional[str]) : a text string which will replace the length (or arc length) that would otherwise be extracted from the provided path. Providing a label is useful when illustrating a parameterized input where the name of an argument is desired not an actual measurement.
+- `arrows` (Tuple[bool,bool]) : a pair of boolean values controlling the placement of the start and end arrows - both default to True.
+- `tolerance` (Optional[Union[float,Tuple[float,float]]]) : an optional tolerance value to add to the extracted length value. If a single tolerance value is provided it is shown as ± the provided value while a pair of values are shown as separate + and - values.
+- `label_angle` (bool) : a flag - defaulting to False - indicating that instead of an extracted length value, the size of the circular arc extracted from the path should be displayed in degrees.
+
+dimension_line returns a cadquery `Assembly` object.
+
+### extension_line
+Typically used for (but not restricted to) outside dimensions, with a pair of lines extending from the edge of a part to a dimension line. The full set of input parameters are as follows:
+- `object_edge` (PathDescriptor) : a very general type of input defining the object to be dimensioned. Typically this value would be extracted from the part but is not restricted to this use.
+- `offset` (float) : a distance to displace the dimension line from the edge of the object.
+- `label` (Optional[str]) : a text string which will replace the length (or arc length) that would otherwise be extracted from the provided path. Providing a label is useful when illustrating a parameterized input where the name of an argument is desired not an actual measurement.
+- `arrows` (Tuple[bool,bool]) : a pair of boolean values controlling the placement of the start and end arrows - both default to True.
+- `tolerance` (Optional[Union[float,Tuple[float,float]]]) : an optional tolerance value to add to the extracted length value. If a single tolerance value is provided it is shown as ± the provided value while a pair of values are shown as separate + and - values.
+- `label_angle` (bool) : a flag - defaulting to False - indicating that instead of an extracted length value, the size of the circular arc extracted from the path should be displayed in degrees.
+
+extension_line returns a cadquery `Assembly` object.
+
+### callout
+A text box with or without a tail pointing to another object used to provide extra information to the reader. The full set of input parameters are as follows:
+- `label` (str) : the text to place within the callout - note that including a `\n` in the text string will split the text over multiple lines.
+- `tail` (Optional[PathDescriptor]) : an optional tail defined as above - note that if provided the text origin will be the start of the tail.
+- `origin` (Optional[PointDescriptor]) : a very general definition of anchor point of the text defined as `PointDescriptor = Union[cq.Vector, cq.Vertex, Tuple[float, float, float]]`
+- `justify` (Literal["left", "center", "right"]) : text alignment which defaults to "left"
+
+callout returns a cadquery `Assembly` object.
+
+### Vertex Extensions
+To facilitate placement of drafting objects within a design the cadquery Vertex class has been extended with addition and subtraction methods so control points can be defined as follows:
+```python
+part.faces(">Z").vertices("<Y and <X").val() + (0, 0, 15 * MM)
+```
+which creates a new Vertex 15mm above one extracted from a part. One can add or subtract a cadquery Vertex, Vector or tuple of float values to a Vertex with the provided extensions.

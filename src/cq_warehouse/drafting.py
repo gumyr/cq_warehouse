@@ -248,9 +248,9 @@ class Draft(BaseModel):
         return arrow
 
     @staticmethod
-    def _line_segment(
+    def _segment_line(
         path: Union[cq.Edge, cq.Wire], tip_pos: float, tail_pos: float
-    ) -> cq.Workplane:
+    ) -> cq.Edge:
         """ Create a segment of a path between tip and tail (inclusive) """
 
         if not 0.0 <= tip_pos <= 1.0:
@@ -311,28 +311,15 @@ class Draft(BaseModel):
         center = arc_pnt + radial_tangent * arc_radius
         return center
 
-    @validate_arguments(config=dict(arbitrary_types_allowed=True))
-    def dimension_line(
+    def _label_to_str(
         self,
-        path: PathDescriptor,
-        label: str = None,
-        arrows: Tuple[bool, bool] = (True, True),
-        tolerance: Optional[Union[float, Tuple[float, float]]] = None,
-        label_angle: bool = False,
-    ) -> cq.Workplane:
-        """
-        Create a dimension line typically for internal measurements
-        There are three options depending on the size of the text and length
-        of the dimension line:
-        Type 1) The label and arrows fit within the length of the path
-        Type 2) The text fit within the path and the arrows go outside
-        Type 3) Neither the text nor the arrows fit within the path
-        """
-
-        # Create a wire modelling the path of the dimension lines from a variety of input types
-        line_wire = Draft._path_to_wire(path)
-        line_length = line_wire.Length()
-
+        label: str,
+        line_wire: cq.Wire,
+        label_angle: bool,
+        line_length: float,
+        tolerance: Optional[Union[float, Tuple[float, float]]],
+    ) -> str:
+        """ Create the str to use as the label text """
         if label is not None:
             label_str = label
         elif label_angle:
@@ -347,83 +334,75 @@ class Draft(BaseModel):
             label_str = f"{str(round(arc_size,self.decimal_precision))}°"
         else:
             label_str = self._number_with_units(line_length, tolerance)
+        return label_str
 
-        label_length = self._label_size(label_str)
-
-        # Determine the type of this dimension line
-        if label_length + len(arrows) * self.arrow_length < line_length:
-            dline_type = 1
-        elif label_length < line_length:
-            dline_type = 2
-        else:
-            dline_type = 3
+    def _make_arrow_shaft(
+        self,
+        label_length: float,
+        line_wire: cq.Wire,
+        internal: bool,
+        arrow_pos: Literal["start", "end"],
+    ) -> cq.Edge:
+        line_length = line_wire.Length()
 
         # Calculate the relative positions along the dimension_line line of the key features
-        line_controls = [
-            0.0,
-            0.5 - (label_length / 2) / line_length,
-            0.5 + (label_length / 2) / line_length,
-            1.0,
-        ]
+        if arrow_pos == "start":
+            line_controls = [
+                0.0,
+                0.5 - (label_length / 2) / line_length,
+            ]
+            line_wire_pos = 0.0
+            start_pnt = (0, 0)
+            end_pnt = -1.5 * self.font_size
 
-        # Compose an assembly with the component parts of the dimension_line line
-        d_line = cq.Assembly(None, name=label_str + "_dimension_line", color=self.color)
-        if arrows[0]:
-            if dline_type == 1:
-                start_arrow_line = Draft._line_segment(
-                    line_wire, tip_pos=line_controls[0], tail_pos=line_controls[1]
-                )
-            else:
-                start_arrow_line = (
-                    cq.Workplane(
-                        cq.Plane(
-                            origin=line_wire.positionAt(0.0),
-                            xDir=line_wire.tangentAt(0.0),
-                            normal=self._label_normal,
-                        )
-                    )
-                    .hLineTo(-1.5 * self.font_size)
-                    .val()
-                )
+        else:
+            line_controls = [
+                0.5 + (label_length / 2) / line_length,
+                1.0,
+            ]
+            line_wire_pos = 1.0
+            start_pnt = (1.5 * self.font_size, 0)
+            end_pnt = 0
 
-            d_line.add(
-                self._make_arrow(start_arrow_line, tip_pos="start"), name="start_arrow",
+        if internal:
+            arrow_shaft = Draft._segment_line(
+                line_wire, tip_pos=line_controls[0], tail_pos=line_controls[1]
             )
-        if arrows[1]:
-            if dline_type == 1:
-                end_arrow_line = Draft._line_segment(
-                    line_wire, tip_pos=line_controls[2], tail_pos=line_controls[3]
-                )
-            else:
-                end_arrow_line = (
-                    cq.Workplane(
-                        cq.Plane(
-                            origin=line_wire.positionAt(1.0),
-                            xDir=line_wire.tangentAt(1.0),
-                            normal=self._label_normal,
-                        )
+        else:
+            arrow_shaft = (
+                cq.Workplane(
+                    cq.Plane(
+                        origin=line_wire.positionAt(line_wire_pos),
+                        xDir=line_wire.tangentAt(line_wire_pos),
+                        normal=self._label_normal,
                     )
-                    .moveTo(1.5 * self.font_size, 0)
-                    .hLineTo(0)
-                    .val()
                 )
-            d_line.add(
-                self._make_arrow(end_arrow_line, tip_pos="end"), name="end_arrow",
+                .moveTo(*start_pnt)
+                .hLineTo(end_pnt)
+                .val()
             )
-        if dline_type in [1, 2]:
+
+        return arrow_shaft
+
+    def _str_to_object(
+        self,
+        position: Literal["start", "center", "end"],
+        label_str: str,
+        location_wire: cq.Wire,
+    ) -> cq.Solid:
+        if position == "center":
             text_plane = cq.Plane(
-                origin=line_wire.positionAt(0.5),
-                xDir=line_wire.tangentAt(0.5),
+                origin=location_wire.positionAt(0.5),
+                xDir=location_wire.tangentAt(0.5),
                 normal=self._label_normal,
             )
             label_object = cq.Workplane(text_plane).text(
                 txt=label_str, fontsize=self.font_size, distance=self.font_size / 100
             )
-            d_line.add(label_object, name="label")
-        elif arrows[1]:
+        elif position == "end":
             text_plane = cq.Plane(
-                origin=cq.Vector(1.5 * MM, 0, 0),
-                xDir=end_arrow_line.tangentAt(1.0),
+                origin=cq.Vector(1.5 * MM, 0, 0) + location_wire.positionAt(1.0),
+                xDir=location_wire.tangentAt(1.0),
                 normal=self._label_normal,
             )
             label_object = cq.Workplane(text_plane).text(
@@ -432,13 +411,10 @@ class Draft(BaseModel):
                 distance=self.font_size / 100,
                 halign="left",
             )
-            d_line.add(
-                label_object.translate(end_arrow_line.positionAt(1.0)), name="label"
-            )
-        elif arrows[0]:
+        else:  # position=="start"
             text_plane = cq.Plane(
-                origin=cq.Vector(-1.5 * MM, 0, 0),
-                xDir=start_arrow_line.tangentAt(1.0),
+                origin=cq.Vector(-1.5 * MM, 0, 0) + location_wire.positionAt(1.0),
+                xDir=location_wire.tangentAt(1.0),
                 normal=self._label_normal,
             )
             label_object = cq.Workplane(text_plane).text(
@@ -446,14 +422,72 @@ class Draft(BaseModel):
                 fontsize=self.font_size,
                 distance=self.font_size / 100,
                 halign="right",
-                # font=self.font_name,
-                # kind = self.font_style,
             )
-            d_line.add(
-                label_object.translate(start_arrow_line.positionAt(1.0)), name="label"
-            )
+        return label_object
+
+    @validate_arguments(config=dict(arbitrary_types_allowed=True))
+    def dimension_line(
+        self,
+        path: PathDescriptor,
+        label: Optional[str] = None,
+        arrows: Tuple[bool, bool] = (True, True),
+        tolerance: Optional[Union[float, Tuple[float, float]]] = None,
+        label_angle: bool = False,
+    ) -> cq.Assembly:
+        """
+        Create a dimension line typically for internal measurements
+
+        There are three options depending on the size of the text and length
+        of the dimension line:
+        Type 1) The label and arrows fit within the length of the path
+        Type 2) The text fit within the path and the arrows go outside
+        Type 3) Neither the text nor the arrows fit within the path
+        """
+
+        # Create a wire modelling the path of the dimension lines from a variety of input types
+        line_wire = Draft._path_to_wire(path)
+        line_length = line_wire.Length()
+
+        label_str = self._label_to_str(
+            label, line_wire, label_angle, line_length, tolerance
+        )
+        label_length = self._label_size(label_str)
+
+        # Determine the type of this dimension line
+        if label_length + arrows.count(True) * self.arrow_length < line_length:
+            dline_type = 1
+        elif label_length < line_length:
+            dline_type = 2
         else:
-            pass
+            dline_type = 3
+
+        if dline_type == 3 and arrows.count(True) == 0:
+            raise ValueError(
+                "No output - insufficient space for labels and no arrows selected"
+            )
+
+        # Compose an assembly with the component parts of the dimension_line line
+        d_line = cq.Assembly(None, name=label_str + "_dimension_line", color=self.color)
+
+        # For the start and end arrow generate complete arrows from shafts and the label object
+        for i, arrow_pos in enumerate(["start", "end"]):
+            if arrows[i]:
+                arrow_shaft = self._make_arrow_shaft(
+                    label_length, line_wire, dline_type == 1, arrow_pos
+                )
+                d_line.add(
+                    self._make_arrow(arrow_shaft, tip_pos=arrow_pos),
+                    name=arrow_pos + "_arrow",
+                )
+                label_object = self._str_to_object(arrow_pos, label_str, arrow_shaft)
+
+        # If the label is located along the input path generate a central label
+        if dline_type in [1, 2]:
+            label_object = self._str_to_object("center", label_str, line_wire)
+
+        # Finish off the assembly
+        d_line.add(label_object, name="label")
+
         return d_line
 
     @validate_arguments(config=dict(arbitrary_types_allowed=True))
@@ -462,6 +496,7 @@ class Draft(BaseModel):
         object_edge: PathDescriptor,
         offset: float,
         label: str = None,
+        arrows: Tuple[bool, bool] = (True, True),
         tolerance: Optional[Union[float, Tuple[float, float]]] = None,
         label_angle: bool = False,
     ) -> cq.Assembly:
@@ -528,6 +563,7 @@ class Draft(BaseModel):
             self.dimension_line(
                 label=label,
                 path=extension_path,
+                arrows=arrows,
                 tolerance=tolerance,
                 label_angle=label_angle,
             ),
@@ -573,7 +609,7 @@ class Draft(BaseModel):
         t_box.add(label_text, name="callout_label")
         if tail is not None:
             t_box.add(
-                Draft._line_segment(
+                Draft._segment_line(
                     line_wire, tip_pos=1.5 * MM / line_length, tail_pos=1.0
                 ),
                 name="callout_line",
