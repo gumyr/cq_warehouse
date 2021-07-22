@@ -1,15 +1,12 @@
-# cq_warehouse
-
-This python/cadquery package contains a set of parametric parts which can
+The cq_warehouse python/cadquery package contains a set of parametric parts which can
 be customized and used within your projects or saved to a CAD file
 in STEP or STL format for use in a wide variety of CAD
 or CAM systems.
 
-## Table of Contents
-- [cq_warehouse](#cq_warehouse)
-  - [Table of Contents](#table-of-contents)
-  - [Installation](#installation)
-  - [Package Structure](#package-structure)
+# Table of Contents
+- [Table of Contents](#table-of-contents)
+- [Installation](#installation)
+- [Package Structure](#package-structure)
   - [sprocket sub-package](#sprocket-sub-package)
     - [Input Parameters](#input-parameters)
     - [Instance Variables](#instance-variables)
@@ -25,12 +22,12 @@ or CAM systems.
     - [extension_line](#extension_line)
     - [callout](#callout)
     - [Vertex Extensions](#vertex-extensions)
-## Installation
+# Installation
 Install from github:
 ```
 $ python -m pip install git+https://github.com/gumyr/cq_warehouse.git#egg=cq_warehouse
 ```
-## Package Structure
+# Package Structure
 The cq_warehouse package contains the following sub-packages:
 - **sprocket** : a parametric sprocket generator
 - **chain**  : a parametric chain generator
