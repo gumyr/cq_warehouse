@@ -70,7 +70,7 @@ title_callout = drawing_title_callout.callout(
 )
 
 #
-# When documenting dimension_linements in the drawing, set the number of decimal
+# When documenting dimension_lines in the drawing, set the number of decimal
 # points in metric dimensions to one - use the options for the other inputs.
 metric_drawing = Draft(decimal_precision=1)
 
@@ -86,8 +86,8 @@ length_dimension_line = metric_drawing.extension_line(
 )
 
 #
-# After some experimentation, the width was determined to be an imperial dimension_linement
-# so create an instance of the Draft class for imperial dimension_linements precise to a
+# After some experimentation, the width was determined to be an imperial dimension_line
+# so create an instance of the Draft class for imperial dimension_lines precise to a
 # thousandths of an inch. The tolerance is specified with a single ± float value.
 imperial_drawing = Draft(units="imperial", decimal_precision=3)
 width_dimension_line = imperial_drawing.extension_line(
@@ -138,7 +138,7 @@ bolt_dimension_line = Draft(
 )
 
 #
-# Create the tappping instructions as a callout with a tail composed of two Vertices
+# Create the tapping instructions as a callout with a tail composed of two Vertices
 # .. note that addition and substraction methods have been added to the cq.Vertex class
 tap_instructions = Draft(label_normal=(0, 0, 1), font_size=5).callout(
     label="tap to 5/8-18 NF",
