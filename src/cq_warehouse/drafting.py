@@ -136,7 +136,6 @@ class Draft(BaseModel):
     # >>> color: cq.Color = cq.Color(0.25,0.25,0.25)
     # results in
     # >>> TypeError: cannot pickle 'OCP.Quantity.Quantity_ColorRGBA' object
-    # and to initialize the normal vector
     def __init__(self, **data: Any):
         super().__init__(**data)
         self._label_normal = (
@@ -167,36 +166,51 @@ class Draft(BaseModel):
             )
         return fractional_precision
 
+    def round_to_str(self, number: float) -> str:
+        """ Round a float but remove decimal if appropriate and convert to str """
+        return (
+            f"{round(number, self.decimal_precision):.{self.decimal_precision}f}"
+            if self.decimal_precision > 0
+            else str(int(round(number, self.decimal_precision)))
+        )
+
     @validate_arguments
     def _number_with_units(
-        self, number: float, tolerance: Union[float, Tuple[float, float]] = None
+        self,
+        number: float,
+        tolerance: Union[float, Tuple[float, float]] = None,
+        display_units: Optional[bool] = None,
     ) -> str:
         """ Convert a raw number to a unit of measurement string based on the class settings """
 
         def simplify_fraction(numerator: int, denominator: int) -> tuple[int, int]:
-            """ Mathimatically simplify a fraction given a numerator and demoninator """
+            """ Mathematically simplify a fraction given a numerator and demoninator """
             greatest_common_demoninator = gcd(numerator, denominator)
             return (
                 int(numerator / greatest_common_demoninator),
                 int(denominator / greatest_common_demoninator),
             )
 
-        unit_str = Draft.unit_LUT[self.units] if self.display_units else ""
+        if display_units is None:
+            if tolerance is None:
+                qualified_display_units = self.display_units
+            else:
+                qualified_display_units = False
+        else:
+            qualified_display_units = display_units
+
+        unit_str = Draft.unit_LUT[self.units] if qualified_display_units else ""
         if tolerance is None:
             tolerance_str = ""
         elif isinstance(tolerance, float):
             tolerance_str = f" ±{self._number_with_units(tolerance)}"
         else:
-            tolerance_str = f" +{self._number_with_units(tolerance[0])} -{self._number_with_units(tolerance[1])}"
+            tolerance_str = f" +{self._number_with_units(tolerance[0],display_units=False)} -{self._number_with_units(tolerance[1])}"
 
-        if self.units == "metric":
-            return_value = (
-                f"{number / MM:.{self.decimal_precision}f}{unit_str}{tolerance_str}"
-            )
-        elif self.number_display == "decimal":
-            return_value = (
-                f"{number / INCH:.{self.decimal_precision}f}{unit_str}{tolerance_str}"
-            )
+        if self.units == "metric" or self.number_display == "decimal":
+            unit_lut = {"metric": MM, "imperial": INCH}
+            measurement = self.round_to_str(number / unit_lut[self.units])
+            return_value = f"{measurement}{unit_str}{tolerance_str}"
         else:
             whole_part = floor(number / INCH)
             (numerator, demoninator) = simplify_fraction(
@@ -304,8 +318,8 @@ class Draft(BaseModel):
         """ Given an arc find the center of the circle """
         arc_radius = arc.radius()
         arc_pnt = arc.positionAt(0.25)
-        chord_end_pnts = [arc.positionAt(t) for t in [0.0, 0.5]]
-        chord_line = cq.Edge.makeLine(*chord_end_pnts)
+        chord_end_points = [arc.positionAt(t) for t in [0.0, 0.5]]
+        chord_line = cq.Edge.makeLine(*chord_end_points)
         chord_center_pnt = chord_line.positionAt(0.5)
         radial_tangent = cq.Edge.makeLine(arc_pnt, chord_center_pnt).tangentAt(0)
         center = arc_pnt + radial_tangent * arc_radius
@@ -316,10 +330,10 @@ class Draft(BaseModel):
         label: str,
         line_wire: cq.Wire,
         label_angle: bool,
-        line_length: float,
         tolerance: Optional[Union[float, Tuple[float, float]]],
     ) -> str:
         """ Create the str to use as the label text """
+        line_length = line_wire.Length()
         if label is not None:
             label_str = label
         elif label_angle:
@@ -331,7 +345,7 @@ class Draft(BaseModel):
                     "label_angle requested but the path is not part of a circle"
                 ) from not_an_arc_error
             arc_size = 360 * line_length / (2 * pi * arc_radius)
-            label_str = f"{str(round(arc_size,self.decimal_precision))}°"
+            label_str = f"{self.round_to_str(arc_size)}°"
         else:
             label_str = self._number_with_units(line_length, tolerance)
         return label_str
@@ -401,8 +415,9 @@ class Draft(BaseModel):
             )
         elif position == "end":
             text_plane = cq.Plane(
-                origin=cq.Vector(1.5 * MM, 0, 0) + location_wire.positionAt(1.0),
-                xDir=location_wire.tangentAt(1.0),
+                origin=location_wire.tangentAt(0.0) * -1.5 * MM
+                + location_wire.positionAt(0.0),
+                xDir=location_wire.tangentAt(0.0) * -1,
                 normal=self._label_normal,
             )
             label_object = cq.Workplane(text_plane).text(
@@ -413,8 +428,9 @@ class Draft(BaseModel):
             )
         else:  # position=="start"
             text_plane = cq.Plane(
-                origin=cq.Vector(-1.5 * MM, 0, 0) + location_wire.positionAt(1.0),
-                xDir=location_wire.tangentAt(1.0),
+                origin=location_wire.tangentAt(1.0) * 1.5 * MM
+                + location_wire.positionAt(1.0),
+                xDir=location_wire.tangentAt(1.0) * -1,
                 normal=self._label_normal,
             )
             label_object = cq.Workplane(text_plane).text(
@@ -448,9 +464,7 @@ class Draft(BaseModel):
         line_wire = Draft._path_to_wire(path)
         line_length = line_wire.Length()
 
-        label_str = self._label_to_str(
-            label, line_wire, label_angle, line_length, tolerance
-        )
+        label_str = self._label_to_str(label, line_wire, label_angle, tolerance)
         label_length = self._label_size(label_str)
 
         # Determine the type of this dimension line
@@ -556,19 +570,19 @@ class Draft(BaseModel):
             )
 
         # Create the assembly
-        e_line = cq.Assembly(None, name="extension_line", color=self.color)
+        d_line = self.dimension_line(
+            label=label,
+            path=extension_path,
+            arrows=arrows,
+            tolerance=tolerance,
+            label_angle=label_angle,
+        )
+        e_line = cq.Assembly(
+            None, name=d_line.name.replace("dimension", "extension"), color=self.color
+        )
         e_line.add(ext_line[0], name="extension_line0")
         e_line.add(ext_line[1], name="extension_line1")
-        e_line.add(
-            self.dimension_line(
-                label=label,
-                path=extension_path,
-                arrows=arrows,
-                tolerance=tolerance,
-                label_angle=label_angle,
-            ),
-            name="dimension_line",
-        )
+        e_line.add(d_line, name="dimension_line")
         return e_line
 
     @validate_arguments(config=dict(arbitrary_types_allowed=True))
@@ -589,7 +603,6 @@ class Draft(BaseModel):
             )
         elif tail is not None:
             line_wire = Draft._path_to_wire(tail)
-            line_length = line_wire.Length()
             text_origin = line_wire.positionAt(0)
         else:
             raise ValueError("Either origin or tail must be provided")
@@ -609,13 +622,7 @@ class Draft(BaseModel):
         t_box.add(label_text, name="callout_label")
         if tail is not None:
             t_box.add(
-                Draft._segment_line(
-                    line_wire, tip_pos=1.5 * MM / line_length, tail_pos=1.0
-                ),
-                name="callout_line",
-            )
-            t_box.add(
-                self._make_arrow(line_wire, tip_pos="end"), name="callout_arrow",
+                self._make_arrow(line_wire, tip_pos="end"), name="callout_tail",
             )
 
         return t_box
@@ -664,7 +671,7 @@ cq.Vertex.__sub__ = __vertex_sub__
 
 
 def __vertex_str__(self) -> str:
-    return f"Vertex: ({self.X},{self.Y},{self.Z})"
+    return f"Vertex: ({self.X}, {self.Y}, {self.Z})"
 
 
 cq.Vertex.__str__ = __vertex_str__
