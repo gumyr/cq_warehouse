@@ -324,9 +324,9 @@ mystery_object = cq.importers.importStep("mystery.step")
 # Create drawing instance with appropriate settings
 metric_drawing = Draft(decimal_precision=1)
 
-# Create an extension line from an edge of the part
+# Create an extension line from corners of the part
 length_dimension_line = metric_drawing.extension_line(
-    object_edge=mystery_object.faces("<Z").edges("<Y").val(),
+    object_edge=mystery_object.faces("<Z").vertices("<Y").vals(),
     offset=10.0,
     tolerance=(+0.2, -0.1),
 )
@@ -345,6 +345,10 @@ When generating dimension lines there are three possibilities depending on the m
 2. The label text but not the arrows fit within the measurement, or
 3. Neither the text nor the arrows fit within the measurements.
 Cases 1 and 2 are shown in the above example. In case 3, the label will be attached to one of the external arrows.
+
+These three possibilities are illustrated below with both linear and arc extension lines:
+![drafting](doc/drafting_types.png)
+Note that type 3b can only be created by disabling the end arrow - see the arrows parameter below.
 
 The Draft class contains a set of attributes used to describe subsequent dimension_line(s), extension_line(s) or callout(s). The full list is as follows:
 
@@ -397,6 +401,6 @@ To facilitate placement of drafting objects within a design the cadquery Vertex 
 ```python
 part.faces(">Z").vertices("<Y and <X").val() + (0, 0, 15 * MM)
 ```
-which creates a new Vertex 15mm above one extracted from a part. One can add or subtract a cadquery Vertex, Vector or tuple of float values to a Vertex with the provided extensions.
+which creates a new Vertex 15mm above one extracted from a part. One can add or subtract a cadquery `Vertex`, `Vector` or `tuple` of float values to a Vertex with the provided extensions.
 
 
