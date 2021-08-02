@@ -9,7 +9,7 @@ date: July 9th 2021
 desc:
 
     This python/cadquery code is a parameterized sprocket generator.
-    Given a chain pitch, a number of teeth and optionally other parameters, a
+    Given a chain pitch, a number of teeth and other optional parameters, a
     sprocket centered on the origin is generated.
 
 license:
@@ -86,9 +86,6 @@ class Sprocket(BaseModel):
     Methods
     -------
 
-    make_sprocket(self) -> cq.Workplane:
-        A cadquery Workplane sprocket as defined by class attributes
-
     sprocket_pitch_radius(num_teeth,chain_pitch) -> float:
         Calculate and return the pitch radius of a sprocket with the given number of teeth
         and chain pitch
@@ -111,6 +108,7 @@ class Sprocket(BaseModel):
 
     # Private Attributes
     _flat_teeth: bool = PrivateAttr()
+    _cq_object: cq.Workplane = PrivateAttr()
 
     # pylint: disable=no-self-argument
     # pylint: disable=no-self-use
@@ -150,9 +148,16 @@ class Sprocket(BaseModel):
     @property
     def cq_object(self):
         """ A cadquery Workplane sprocket as defined by class attributes """
-        return self.make_sprocket()
+        return self._cq_object
 
-    def make_sprocket(self) -> cq.Workplane:
+    def __init__(self, **data):
+        """ Validate inputs and create the chain assembly object """
+        # Use the BaseModel initializer to validate the attributes
+        super().__init__(**data)
+        # Create the sprocket
+        self._cq_object = self._make_sprocket()
+
+    def _make_sprocket(self) -> cq.Workplane:
         """ Create a new sprocket object as defined by the class attributes """
         sprocket = (
             cq.Workplane("XY")

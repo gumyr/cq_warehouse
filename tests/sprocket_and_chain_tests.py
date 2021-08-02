@@ -6,16 +6,17 @@ by:   Gumyr
 date: July 13th 2021
 
 desc: Unit tests for the sprocket and chain sub-package of cq_warehouse
-Name                                                              Stmts   Miss  Cover
--------------------------------------------------------------------------------------
-/home/roger/Documents/cq_warehouse/src/cq_warehouse/__init__.py       1      0   100%
-/home/roger/Documents/cq_warehouse/src/cq_warehouse/chain.py        153      0   100%
-/home/roger/Documents/cq_warehouse/src/cq_warehouse/sprocket.py     100      0   100%
-sprocket_and_chain_tests.py                                         133      1    99%
+Name                                            Stmts   Miss  Cover
+-------------------------------------------------------------------
+.../cq_warehouse/src/cq_warehouse/__init__.py       1      0   100%
+.../cq_warehouse/src/cq_warehouse/chain.py        203      0   100%
+.../cq_warehouse/src/cq_warehouse/sprocket.py     104      0   100%
+sprocket_and_chain_tests.py                       141      1    99%
 """
 import math
 import unittest
 from tests import BaseTest
+import pydantic
 import cadquery as cq
 from cq_warehouse.sprocket import Sprocket
 from cq_warehouse.chain import Chain
@@ -37,22 +38,46 @@ class TestParsing(BaseTest):
     def test_chain_input_parsing(self):
         """ Validate Chain input validation """
         with self.assertRaises(ValueError):  # Invalid chain
-            Chain([10, 10], chain_pitch=4, roller_diameter=5)
+            Chain(
+                spkt_teeth=[10, 10],
+                spkt_locations=[(0, 0, 0), (100, 0, 0)],
+                positive_chain_wrap=[True, True],
+                chain_pitch=4,
+                roller_diameter=5,
+            )
         with self.assertRaises(ValueError):  # Unequal list lengths
-            Chain([10, 10], [(0, 0), (1, 1)], [True])
-        with self.assertRaises(TypeError):  # Invalid locations
-            Chain([10, 10], [(0, 0), 1], [True, False])
-        with self.assertRaises(TypeError):  # Invalid teeth
+            Chain(
+                spkt_teeth=[10, 10],
+                spkt_locations=[(0, 0), (1, 1)],
+                positive_chain_wrap=[True],
+            )
+        with self.assertRaises(
+            pydantic.error_wrappers.ValidationError
+        ):  # Invalid locations
+            Chain(
+                spkt_teeth=[10, 10],
+                spkt_locations=[(0, 0), 1],
+                positive_chain_wrap=[True, False],
+            )
+        with self.assertRaises(ValueError):  # Same locations
+            Chain(
+                spkt_teeth=[10, 10],
+                spkt_locations=[(0, 0), (0, 0)],
+                positive_chain_wrap=[True, False],
+            )
+        with self.assertRaises(KeyError):  # Invalid teeth
             Chain(spkt_teeth=[12.5, 6])
-        with self.assertRaises(TypeError):  # Too few sprockets
+        with self.assertRaises(KeyError):  # Too few sprockets
             Chain(spkt_teeth=[16])
-        with self.assertRaises(TypeError):  # Teeth not list
+        with self.assertRaises(
+            pydantic.error_wrappers.ValidationError
+        ):  # Teeth not list
             Chain(spkt_teeth=12)
-        with self.assertRaises(TypeError):  # Too few locations
+        with self.assertRaises(KeyError):  # Too few locations
             Chain(spkt_locations=cq.Vector(0, 0, 0))
-        with self.assertRaises(TypeError):  # Wrap not a list
+        with self.assertRaises(KeyError):  # Wrap not a list
             Chain(positive_chain_wrap=True)
-        with self.assertRaises(TypeError):  # Wrap not bool
+        with self.assertRaises(KeyError):  # Wrap not bool
             Chain(positive_chain_wrap=["yes", "no"])
         with self.assertRaises(ValueError):  # Length mismatch
             Chain(
@@ -60,7 +85,7 @@ class TestParsing(BaseTest):
                 spkt_locations=[cq.Vector(0, 0, 0), cq.Vector(20, 0, 0)],
                 positive_chain_wrap=[True],
             )
-        with self.assertRaises(ValueError):  # Overlapping sprockets
+        with self.assertRaises(KeyError):  # Overlapping sprockets
             Chain(spkt_locations=[cq.Vector(0, 0, 0), cq.Vector(0, 0, 0)])
 
 
@@ -216,10 +241,12 @@ class TestChainShape(BaseTest):
         """ Validate the warning message generated when a gap in the chain is generated """
         with self.assertWarns(Warning):
             Chain(
+                spkt_teeth=[32, 32],
                 spkt_locations=[
                     cq.Vector(-4.9 * INCH, 0, 0),
                     cq.Vector(+5 * INCH, 0, 0),
-                ]
+                ],
+                positive_chain_wrap=[True, True],
             )
 
 
@@ -286,16 +313,26 @@ class TestChainMethods(BaseTest):
         chain = Chain(
             spkt_teeth=[16, 16],
             spkt_locations=[cq.Vector(-3 * INCH, 40, 50), cq.Vector(+3 * INCH, 40, 50)],
+            positive_chain_wrap=[True, True],
         )
-        with self.assertRaises(TypeError):
+        with self.assertRaises(pydantic.error_wrappers.ValidationError):
             chain.assemble_chain_transmission(spkt0.cq_object)
-        with self.assertRaises(TypeError):
+        with self.assertRaises(pydantic.error_wrappers.ValidationError):
             chain.assemble_chain_transmission([spkt0, spkt1.cq_object])
 
         """ Validate a transmission assembly composed of two sprockets and a chain """
         chain = Chain(
-            spkt_teeth=[16, 16], spkt_locations=[(-3 * INCH, 40), (+3 * INCH, 40)],
+            spkt_teeth=[16, 16],
+            spkt_locations=[(-3 * INCH, 40), (+3 * INCH, 40)],
+            positive_chain_wrap=[True, True],
+            chain_pitch=(1 / 2) * INCH,
+            roller_diameter=(5 / 16) * INCH,
         )
+        self.assertEqual(chain.cq_object.name, "chain_links")
+        self.assertAlmostEqual(chain.chain_links, 40.10327268479302, 7)
+        self.assertEqual(len(chain.cq_object.children), 40)
+        self.assertTupleAlmostEquals(chain.chain_angles[0], (0, 180), 7)
+        self.assertAlmostEqual(chain.spkt_initial_rotation[0], 11.25, 7)
         transmission = (
             chain.assemble_chain_transmission([spkt0.cq_object, spkt1.cq_object])
             .rotate((1, 0, 0), 90)
