@@ -33,6 +33,7 @@ from math import sin, asin, cos, pi, radians, sqrt
 from typing import Union, Tuple
 from pydantic import BaseModel, PrivateAttr, validator, validate_arguments, Field
 import cadquery as cq
+import cq_warehouse.extensions
 
 VectorLike = Union[Tuple[float, float], Tuple[float, float, float], cq.Vector]
 
@@ -375,61 +376,9 @@ cq.Workplane.tooth_outline = _tooth_outline
 
 #
 # Extensions to the Vector class
-def _vector_rotate_x(self, angle: float) -> cq.Vector:
-    """ cq.Vector rotate angle in degrees about x-axis """
-    return cq.Vector(
-        self.x,
-        self.y * cos(radians(angle)) - self.z * sin(radians(angle)),
-        self.y * sin(radians(angle)) + self.z * cos(radians(angle)),
-    )
-
-
-cq.Vector.rotateX = _vector_rotate_x
-
-
-def _vector_rotate_y(self, angle: float) -> cq.Vector:
-    """ cq.Vector rotate angle in degrees about y-axis """
-    return cq.Vector(
-        self.x * cos(radians(angle)) + self.z * sin(radians(angle)),
-        self.y,
-        -self.x * sin(radians(angle)) + self.z * cos(radians(angle)),
-    )
-
-
-cq.Vector.rotateY = _vector_rotate_y
-
-
-def _vector_rotate_z(self, angle: float) -> cq.Vector:
-    """ cq.Vector rotate angle in degrees about z-axis """
-    return cq.Vector(
-        self.x * cos(radians(angle)) - self.y * sin(radians(angle)),
-        self.x * sin(radians(angle)) + self.y * cos(radians(angle)),
-        self.z,
-    )
-
-
-cq.Vector.rotateZ = _vector_rotate_z
-
-
 def _vector_flip_y(self) -> cq.Vector:
     """ cq.Vector reflect across the XZ plane """
     return cq.Vector(self.x, -self.y, self.z)
 
 
 cq.Vector.flipY = _vector_flip_y
-
-
-def _point_to_vector(self, plane: str, offset: float = 0.0) -> cq.Vector:
-    """ map a 2D point on the XY plane to 3D space on the given plane at the offset """
-    if not isinstance(plane, str) or plane not in ["XY", "XZ", "YZ"]:
-        raise ValueError("plane " + str(plane) + " must be one of: XY,XZ,YZ")
-    if plane == "XY":
-        mapped_point = cq.Vector(self.x, self.y, offset)
-    elif plane == "XZ":
-        mapped_point = cq.Vector(self.x, offset, self.y)
-    else:  # YZ
-        mapped_point = cq.Vector(offset, self.x, self.y)
-    return mapped_point
-
-
-cq.Vector.pointToVector = _point_to_vector

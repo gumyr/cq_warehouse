@@ -34,6 +34,7 @@ from typing import Union, Tuple, Literal, Optional, ClassVar, Any
 from pydantic import BaseModel, PrivateAttr, validator, validate_arguments
 from numpy import arange
 import cadquery as cq
+import cq_warehouse.extensions
 
 MM = 1
 INCH = 25.4 * MM
@@ -626,59 +627,3 @@ class Draft(BaseModel):
             )
 
         return t_box
-
-
-def __vertex_add__(
-    self, other: Union[cq.Vertex, cq.Vector, Tuple[float, float, float]]
-) -> cq.Vertex:
-    if isinstance(other, cq.Vertex):
-        new_vertex = cq.Vertex.makeVertex(
-            self.X + other.X, self.Y + other.Y, self.Z + other.Z
-        )
-    elif isinstance(other, (cq.Vector, tuple)):
-        new_other = cq.Vector(other)
-        new_vertex = cq.Vertex.makeVertex(
-            self.X + new_other.x, self.Y + new_other.y, self.Z + new_other.z
-        )
-    else:
-        raise TypeError(
-            "Vertex addition only supports Vertex,Vector or tuple(float,float,float) as input"
-        )
-    return new_vertex
-
-
-cq.Vertex.__add__ = __vertex_add__
-
-
-def __vertex_sub__(self, other: Union[cq.Vertex, cq.Vector, tuple]) -> cq.Vertex:
-    if isinstance(other, cq.Vertex):
-        new_vertex = cq.Vertex.makeVertex(
-            self.X - other.X, self.Y - other.Y, self.Z - other.Z
-        )
-    elif isinstance(other, (cq.Vector, tuple)):
-        new_other = cq.Vector(other)
-        new_vertex = cq.Vertex.makeVertex(
-            self.X - new_other.x, self.Y - new_other.y, self.Z - new_other.z
-        )
-    else:
-        raise TypeError(
-            "Vertex subtraction only supports Vertex,Vector or tuple(float,float,float) as input"
-        )
-    return new_vertex
-
-
-cq.Vertex.__sub__ = __vertex_sub__
-
-
-def __vertex_str__(self) -> str:
-    return f"Vertex: ({self.X}, {self.Y}, {self.Z})"
-
-
-cq.Vertex.__str__ = __vertex_str__
-
-
-def _vertex_to_vector(self) -> cq.Vector:
-    return cq.Vector(self.toTuple())
-
-
-cq.Vertex.toVector = _vertex_to_vector

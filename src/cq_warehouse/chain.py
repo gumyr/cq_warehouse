@@ -49,6 +49,7 @@ from pydantic import (
     root_validator,
 )
 import cadquery as cq
+import cq_warehouse.extensions
 from cq_warehouse.sprocket import Sprocket
 
 VectorLike = Union[Tuple[float, float], Tuple[float, float, float], cq.Vector]
@@ -688,35 +689,3 @@ class Chain(BaseModel):
                 return_value = i
                 break
         return return_value
-
-
-#
-#  =============================== FUNCTIONS BOUND TO OTHER CLASSES ===============================
-#
-def _translate(self, vec: VectorLike):
-    """
-    Moves the current assembly (without making a copy) by the specified translation vector
-    :param vec: The translation vector
-    """
-    self.loc = self.loc * cq.Location(cq.Vector(vec))
-    return self
-
-
-cq.Assembly.translate = _translate
-
-
-def _rotate(self, axis: VectorLike, angle: float):
-    """
-    Rotates the current assembly (without making a copy) around the axis of rotation
-    by the specified angle
-
-    :param axis: The axis of rotation (starting at the origin)
-    :type axis: a 3-tuple of floats
-    :param angle: the rotation angle, in degrees
-    :type angle: float
-    """
-    self.loc = self.loc * cq.Location(cq.Vector(0, 0, 0), cq.Vector(axis), angle)
-    return self
-
-
-cq.Assembly.rotate = _rotate
