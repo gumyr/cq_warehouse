@@ -38,9 +38,9 @@ or CAM systems.
 # Installation
 Install from github:
 ```
-$ python -m pip install git+https://github.com/gumyr/cq_warehouse.git#egg=cq_warehouse
+python3 -m pip install git+https://github.com/gumyr/cq_warehouse.git#egg=cq_warehouse
 ```
-Note that cq_warehouse requires the development version of cadquery (see [Installing CadQuery](https://cadquerytest.readthedocs.io/en/readthedocs/installation.html)). Also note that cq_warehouse uses the pydantic package for input validation which requires parameters to be passed by value (i.e. `num_teeth=16`).
+Note that cq_warehouse requires the development version of cadquery (see [Installing CadQuery](https://cadquerytest.readthedocs.io/en/readthedocs/installation.html)). Also note that cq_warehouse uses the pydantic package for input validation which requires keyword arguments (e.g. `num_teeth=16`).
 # Package Structure
 The cq_warehouse package contains the following sub-packages:
 - **sprocket** : a parametric sprocket generator
