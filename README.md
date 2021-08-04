@@ -118,8 +118,7 @@ within the Sprocket instance there are four derived instance variables:
 - `cq_object` (cq.Workplane) : the cadquery sprocket object
 
 ### Methods
-The Sprocket class defines two static methods that may be of use when designing with
-systems with sprockets: calculation of the pitch radius and pitch circumference as follows:
+The Sprocket class defines two static methods that may be of use when designing systems with sprockets: calculation of the pitch radius and pitch circumference as follows:
 ```python
 @staticmethod
 def sprocket_pitch_radius(num_teeth:int, chain_pitch:float) -> float:
@@ -179,7 +178,7 @@ if "show_object" in locals():
     show_object(derailleur_chain.cq_object, name="derailleur_chain")
 ```
 ### Input Parameters
-The complete set of inputs parameters are:
+The complete set of input parameters are:
 - `spkt_teeth` (list of int) : a list of the number of teeth on each sprocket the chain will wrap around
 - `spkt_locations` (list of cq.Vector or tuple(x,y) or tuple(x,y,z)) : the location of the sprocket centers
 - `positive_chain_wrap` (list of bool) : the direction chain wraps around the sprockets, True for counter clock wise viewed from positive Z
