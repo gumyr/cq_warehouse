@@ -1,5 +1,5 @@
-<p align="center" style="font-size:30px">cq_warehouse</p>
 
+<img align="center" src="doc/cq_title_image.png">
 The cq_warehouse python/cadquery package contains a set of parametric parts which can
 be customized and used within your projects or saved to a CAD file
 in STEP or STL format for use in a wide variety of CAD
@@ -40,7 +40,7 @@ Install from github:
 ```
 $ python -m pip install git+https://github.com/gumyr/cq_warehouse.git#egg=cq_warehouse
 ```
-Note that cq_warehouse requires the development version of cadquery (see https://cadquerytest.readthedocs.io/en/readthedocs/installation.html) and it also uses the pydantic package.
+Note that cq_warehouse requires the development version of cadquery (see [Installing CadQuery](https://cadquerytest.readthedocs.io/en/readthedocs/installation.html)). Also note that cq_warehouse uses the pydantic package for input validation which requires parameters to be passed by value (i.e. `num_teeth=16`).
 # Package Structure
 The cq_warehouse package contains the following sub-packages:
 - **sprocket** : a parametric sprocket generator
@@ -176,7 +176,7 @@ derailleur_chain = Chain(
     ]
 )
 if "show_object" in locals():
-    show_object(derailleur_chain, name="derailleur_chain")
+    show_object(derailleur_chain.cq_object, name="derailleur_chain")
 ```
 ### Input Parameters
 The complete set of inputs parameters are:
