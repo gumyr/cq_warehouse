@@ -9,11 +9,11 @@ title_line = title_draft.extension_line(
     offset=-7,
     label="cq_warehouse",
 )
-svg_collection = cq.Assembly(None, name="collection")
-svg_collection.add(spkt.cq_object)
-svg_collection.add(title_line)
+image_collection = cq.Assembly(None, name="collection")
+image_collection.add(spkt.cq_object)
+image_collection.add(title_line)
 cq.exporters.export(
-    svg_collection.toCompound(),
+    image_collection.toCompound(),
     fname="cq_title_image.svg",
     opt={
         "width": 200,
