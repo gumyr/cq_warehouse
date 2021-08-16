@@ -258,44 +258,42 @@ class Thread:
         """
         # Step 1 - Create the 2D thread profile
         if external:
-            (threadProfile, threadRadius) = Thread.external_iso_thread_profile(
+            (thread_profile, thread_radius) = Thread.external_iso_thread_profile(
                 diameter, pitch
             )
-            sweep_offset = 0
         else:
-            (threadProfile, threadRadius) = Thread.internal_iso_thread_profile(
+            (thread_profile, thread_radius) = Thread.internal_iso_thread_profile(
                 diameter, pitch
             )
-            sweep_offset = -pitch
 
-        # Step 2: Sweep the profile along the threadPath and extract the outer wire
-        threadPath = cq.Wire.makeHelix(pitch=pitch, height=pitch, radius=threadRadius)
-        threadWire = (
+        # Step 2: Sweep the profile along the threadPath and extract the wires
+        thread_path = cq.Wire.makeHelix(pitch=pitch, height=pitch, radius=thread_radius)
+        thread_wire = (
             cq.Workplane("XY")
             .add(
-                threadProfile.sweep(
-                    path=cq.Workplane(threadPath), isFrenet=True
-                ).translate((0, 0, sweep_offset))
+                thread_profile.sweep(
+                    path=cq.Workplane(thread_path), isFrenet=True
+                ).translate((0, 0, -pitch))
             )
             .section()
-            .wires(selectors.AreaNthSelector(0))
-            .val()
+            .wires()
+            .vals()
         )
         if external:
-            outerWire = threadWire
-            innerWires = []
+            outer_wire = thread_wire[1]
+            inner_wires = []
         else:
-            outerWire = cq.Wire.makeCircle(
+            outer_wire = cq.Wire.makeCircle(
                 radius=diameter / 2 + 3 * Thread.thread_h_parameter(pitch) / 4,
                 center=cq.Vector(0, 0, 0),
                 normal=cq.Vector(0, 0, 1),
             )
-            innerWires = [threadWire]
+            inner_wires = [thread_wire[0]]
 
         # Step 3: Create thread by extruding thread wire
         thread = cq.Solid.extrudeLinearWithRotation(
-            outerWire=outerWire,
-            innerWires=innerWires,
+            outerWire=outer_wire,
+            innerWires=inner_wires,
             vecCenter=cq.Vector(0, 0, 0),
             vecNormal=cq.Vector(0, 0, length),
             angleDegrees=360 * (length / pitch),
@@ -662,14 +660,6 @@ class SocketHeadCapScrew:
 
         body_length = 0 if thread_length is None else length - thread_length
 
-        print(
-            thread_diameter,
-            thread_pitch,
-            head_diameter,
-            head_height,
-            socket_size,
-            socket_depth,
-        )
         thread_object = ExternalThread(
             major_diameter=thread_diameter,
             thread_pitch=thread_pitch,
@@ -688,9 +678,9 @@ class SocketHeadCapScrew:
             .workplane()
             .circle(head_diameter / 2)
             .extrude(head_height - socket_depth)
-            .faces(">Z")
-            .edges(cq.selectors.RadiusNthSelector(0))
-            .fillet(head_diameter / 20)
+            # .faces(">Z")
+            # .edges(cq.selectors.RadiusNthSelector(0))
+            # .fillet(head_diameter / 20)
         )
         if body_length != 0:
             screw = (
@@ -706,7 +696,7 @@ class SocketHeadCapScrew:
             thread_object.cq_object.translate((0, 0, head_height + body_length)),
             glue=True,
         )
-        return screw
+        return screw.val()
 
     # Size-Pitch: hd=Head Diameter, hh=Head Height, ss=Hexagon Socket Size, sd=Hexagon Socket Depth
     metric_socket_head_cap_screw_parametes = {
@@ -733,15 +723,18 @@ class SocketHeadCapScrew:
 # print(nut.cq_object.isValid())
 # cq.exporters.export(nut.cq_object, "nut.step")
 
-# screw = SocketHeadCapScrew("M4-0.7", length=20*MM)
-# print(screw.cq_object.isValid())
-# cq.exporters.export(screw.cq_object, "screw.step")
+screw = SocketHeadCapScrew("M4-0.7", length=20 * MM)
+print(screw.cq_object.isValid())
+cq.exporters.export(screw.cq_object, "screw.step")
 
-thread = ExternalThread(major_diameter=4, thread_pitch=0.7, thread_length=20 * MM)
+# thread = Thread.make_iso_thread(4, 0.7, 5, False)
+# thread = ExternalThread(major_diameter=4, thread_pitch=0.7, thread_length=20 * MM)
+
 if "show_object" in locals():
-    # show_object(t,name="thread")
+    pass
+    show_object(thread, name="thread")
     # show_object(nut.cq_object, name="nut")
-    show_object(screw.cq_object, name="screw")
+    # show_object(screw.cq_object, name="screw")
     # show_object(internal, name="internal")
     # show_object(external, name="external")
     # show_object(threadGuide,name="threadGuide")
