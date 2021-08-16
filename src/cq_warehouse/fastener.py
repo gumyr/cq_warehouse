@@ -35,20 +35,15 @@ license:
 # import csv
 # csvfile = csv.reader(open("airports.csv"))
 # airportCode = dict(csvfile)
-from os import major
 from typing import Literal, Tuple, Optional
-import cadquery as cq
-import math
-from math import sin, cos, tan, radians, pi, ceil
-import cProfile
-from cadquery import selectors
-from pydantic import BaseModel, PrivateAttr, validator, validate_arguments, Field
+from math import sin, cos, tan, radians, pi
 from functools import cache
+import cProfile
+import cadquery as cq
+from cadquery import selectors
 
 MM = 1
 IN = 25.4 * MM
-
-# from tqdm import tqdm
 
 
 imperial_numbered_sizes = {
@@ -78,10 +73,9 @@ def decode_imperial_size(size: str) -> Tuple[float, float]:
     sizes = size.split("-")
     if size[0] == "#":
         major_diameter = imperial_numbered_sizes[sizes[0]]
-        pitch = sizes[1] / IN
     else:
         major_diameter = imperial_size_to_float(sizes[0])
-        pitch = imperial_size_to_float(sizes[0]) / IN
+    pitch = float(sizes[1]) / IN
     return (major_diameter, pitch)
 
 
@@ -136,6 +130,8 @@ buttonHeadSocketCapScrew = {
 
 
 class Thread:
+    """ Common methods for the creation of ISO standard thread objects """
+
     @staticmethod
     def thread_h_parameter(pitch: float, thread_angle: float = 60) -> float:
         return (pitch / 2) / tan(radians(thread_angle / 2))
@@ -151,18 +147,17 @@ class Thread:
 
         thread_angle = 60  # ISO standard
         h = Thread.thread_h_parameter(pitch, thread_angle)
-        maxD = diameter
-        minR = (maxD - 2 * (5 / 8) * h) / 2
-        threadRadius = minR + 3 * h / 4
+        min_radius = (diameter - 2 * (5 / 8) * h) / 2
+        thread_radius = min_radius + 3 * h / 4
 
-        threadProfile = (
+        thread_profile = (
             cq.Workplane("XZ")
             # .moveTo(outer_radius, 0)
-            .lineTo(minR, 0)
-            .lineTo(minR, pitch / 8)
-            .lineTo(maxD / 2, 7 * pitch / 16)
+            .lineTo(min_radius, 0)
+            .lineTo(min_radius, pitch / 8)
+            .lineTo(diameter / 2, 7 * pitch / 16)
             .spline(
-                [(maxD / 2, 9 * pitch / 16)],
+                [(diameter / 2, 9 * pitch / 16)],
                 tangents=[
                     (
                         sin(radians(90 - thread_angle / 2)),
@@ -175,13 +170,13 @@ class Thread:
                 ],
                 includeCurrent=True,
             )
-            .lineTo(minR, 7 * pitch / 8)
-            .lineTo(minR, pitch)
+            .lineTo(min_radius, 7 * pitch / 8)
+            .lineTo(min_radius, pitch)
             .lineTo(0, pitch)
             # .lineTo(outer_radius, pitch)
             .close()
         )
-        return (threadProfile, threadRadius)
+        return (thread_profile, thread_radius)
 
     @staticmethod
     def external_iso_thread_profile(
@@ -194,15 +189,14 @@ class Thread:
         thread_angle = 60  # ISO standard
         h = Thread.thread_h_parameter(pitch, thread_angle)
 
-        maxD = diameter
-        minR = (maxD - 2 * (5 / 8) * h) / 2
-        threadRadius = minR - h / 4
+        min_radius = (diameter - 2 * (5 / 8) * h) / 2
+        thread_radius = min_radius - h / 4
 
-        threadProfile = (
+        thread_profile = (
             cq.Workplane("XZ")
-            .lineTo(minR - h / 12, 0)
+            .lineTo(min_radius - h / 12, 0)
             .spline(
-                [(minR, pitch / 8)],
+                [(min_radius, pitch / 8)],
                 tangents=[
                     (0, 1, 0),
                     (
@@ -212,11 +206,11 @@ class Thread:
                 ],
                 includeCurrent=True,
             )
-            .lineTo(maxD / 2, 7 * pitch / 16)
-            .lineTo(maxD / 2, 9 * pitch / 16)
-            .lineTo(minR, 7 * pitch / 8)
+            .lineTo(diameter / 2, 7 * pitch / 16)
+            .lineTo(diameter / 2, 9 * pitch / 16)
+            .lineTo(min_radius, 7 * pitch / 8)
             .spline(
-                [(minR - h / 12, pitch)],
+                [(min_radius - h / 12, pitch)],
                 tangents=[
                     (
                         -sin(radians(90 - thread_angle / 2)),
@@ -226,11 +220,11 @@ class Thread:
                 ],
                 includeCurrent=True,
             )
-            .lineTo(threadRadius, pitch)
+            .lineTo(thread_radius, pitch)
             .lineTo(0, pitch)
             .close()
         )
-        return (threadProfile, threadRadius)
+        return (thread_profile, thread_radius)
 
     @staticmethod
     def make_iso_thread(
@@ -305,6 +299,8 @@ class Thread:
 
 
 class InternalThread:
+    """ Create an internal (e.g. a nut) thread object """
+
     @cache
     def __init__(
         self, major_diameter: float, thread_pitch: float, thread_length: float
@@ -322,6 +318,8 @@ class InternalThread:
 
 
 class ExternalThread:
+    """ Create an external (e.g. a bolt) thread object """
+
     @cache
     def __init__(
         self, major_diameter: float, thread_pitch: float, thread_length: float
@@ -415,7 +413,7 @@ class Nut:
             # Chamfer between the hex tips and flats
             chamfer_size = (hex_diameter - width) / 2
             # The nutBody define the chamfered edges of the nut
-            nutBody = (
+            nut_body = (
                 cq.Workplane("XY")
                 .circle(hex_diameter / 2)  # Create a circle that contains the hexagon
                 .circle(thread_object.socket_radius)  # .. with a hole in the center
@@ -427,13 +425,13 @@ class Nut:
                 )
             )
         else:
-            nutBody = (
+            nut_body = (
                 cq.Workplane("XY")
                 .rect(width, width)
                 .circle(thread_object.socket_radius)
                 .extrude(thickness)
             )
-        nut = nutBody.union(thread_object.cq_object, glue=True).val()
+        nut = nut_body.union(thread_object.cq_object, glue=True).val()
         return nut
 
     # ISO Standard Metric Nut sizes
@@ -579,6 +577,8 @@ class SocketHeadCapScrew:
         socket_size: Optional[float] = None,
         socket_depth: Optional[float] = None,
     ):
+        """ Create an arbitrary sized socket head cap screw """
+        self.length = length
         if size is not None:
             (
                 self.thread_diameter,
@@ -587,6 +587,7 @@ class SocketHeadCapScrew:
                 self.head_height,
                 self.socket_size,
                 self.socket_depth,
+                self.max_thread_length,
             ) = SocketHeadCapScrew._extract_screw_parameters(size)
         else:
             self.thread_diameter = thread_diameter
@@ -595,15 +596,19 @@ class SocketHeadCapScrew:
             self.head_height = head_height
             self.socket_size = socket_size
             self.socket_depth = socket_depth
-        if thread_length is not None:
-            if thread_length > length:
-                raise ValueError(
-                    f"thread length ({thread_length}) must be less than of equal to length ({length})"
-                )
-            self.thread_length = thread_length
+            self.max_thread_length = thread_length
+
+        if thread_length is None:
+            self.body_length = max(0, length - self.max_thread_length)
+            self.thread_length = self.length - self.body_length
+        elif thread_length > length:
+            raise ValueError(
+                f"thread length ({thread_length}) must be less than of equal to length ({length})"
+            )
         else:
-            self.thread_length = length
-        self.length = length
+            self.thread_length = thread_length
+            self.body_length = self.length - self.thread_length
+
         self.cq_object = SocketHeadCapScrew.make_socket_head_cap_screw(
             self.thread_diameter,
             self.thread_pitch,
@@ -611,10 +616,11 @@ class SocketHeadCapScrew:
             self.head_height,
             self.socket_size,
             self.socket_depth,
-            self.length,
+            self.body_length,
             self.thread_length,
         )
 
+    @staticmethod
     def _extract_screw_parameters(
         size: str,
     ) -> Tuple[float, float, float, float, float, float]:
@@ -626,12 +632,16 @@ class SocketHeadCapScrew:
             head_height = nut_data["hh"]
             socket_size = nut_data["ss"]
             socket_depth = nut_data["sd"]
+            max_thread_length = nut_data["tl"]
             thread_diameter = float(size_parts[0][1:])
             thread_pitch = float(size_parts[1])
-        elif size in SocketHeadCapScrew.imperial_nut_parameters.keys():
-            nut_data = SocketHeadCapScrew.imperial_nut_parameters[size]
-            head_diameter = nut_data["wd"]
-            thickness = nut_data["ht"]
+        elif size in SocketHeadCapScrew.imperial_socket_head_cap_screw_parametes.keys():
+            nut_data = SocketHeadCapScrew.imperial_socket_head_cap_screw_parametes[size]
+            head_diameter = nut_data["hd"]
+            head_height = nut_data["hh"]
+            socket_size = nut_data["ss"]
+            socket_depth = nut_data["sd"]
+            max_thread_length = nut_data["tl"]
             (thread_diameter, thread_pitch) = decode_imperial_size(size)
         else:
             raise ValueError(
@@ -645,8 +655,10 @@ class SocketHeadCapScrew:
             head_height,
             socket_size,
             socket_depth,
+            max_thread_length,
         )
 
+    @staticmethod
     def make_socket_head_cap_screw(
         thread_diameter: float,
         thread_pitch: float,
@@ -654,12 +666,12 @@ class SocketHeadCapScrew:
         head_height: float,
         socket_size: float,
         socket_depth: float,
-        length: float,
+        body_length: float,
         thread_length: float,
     ):
+        """ Construct an arbitrary size socket head cap screw """
 
-        body_length = 0 if thread_length is None else length - thread_length
-
+        print(thread_diameter, thread_pitch, thread_length)
         thread_object = ExternalThread(
             major_diameter=thread_diameter,
             thread_pitch=thread_pitch,
@@ -678,9 +690,9 @@ class SocketHeadCapScrew:
             .workplane()
             .circle(head_diameter / 2)
             .extrude(head_height - socket_depth)
-            # .faces(">Z")
-            # .edges(cq.selectors.RadiusNthSelector(0))
-            # .fillet(head_diameter / 20)
+            .faces(">Z")
+            .edges(cq.selectors.RadiusNthSelector(0))
+            .fillet(head_diameter / 40)
         )
         if body_length != 0:
             screw = (
@@ -698,23 +710,316 @@ class SocketHeadCapScrew:
         )
         return screw.val()
 
-    # Size-Pitch: hd=Head Diameter, hh=Head Height, ss=Hexagon Socket Size, sd=Hexagon Socket Depth
+    # Size-Pitch: hd=Head Diameter, hh=Head Height, ss=Hexagon Socket Size,
+    #             sd=Hexagon Socket Depth, tl=Max Thread Length
     metric_socket_head_cap_screw_parametes = {
-        "M3-0.5": {"hd": 5.50, "hh": 3.00, "ss": 2.50, "sd": 1.50},
-        "M4-0.7": {"hd": 7.00, "hh": 4.00, "ss": 3.00, "sd": 2.00},
-        "M5-0.8": {"hd": 8.50, "hh": 5.00, "ss": 4.0, "sd": 2.50},
-        "M6-1.0": {"hd": 10.00, "hh": 6.00, "ss": 5.00, "sd": 3.00},
-        "M8-1.25": {"hd": 13.00, "hh": 8.00, "ss": 6.00, "sd": 4.00},
-        "M10-1.5": {"hd": 16.00, "hh": 10.00, "ss": 8.00, "sd": 5.00},
-        "M12-1.75": {"hd": 18.00, "hh": 12.00, "ss": 10.00, "sd": 6.00},
-        "M14-2.0": {"hd": 21.00, "hh": 14.00, "ss": 12.00, "sd": 7.00},
-        "M16-2.0": {"hd": 24.00, "hh": 16.00, "ss": 14.00, "sd": 8.00},
-        "M20-2.5": {"hd": 30.00, "hh": 20.00, "ss": 17.00, "sd": 10.00},
-        "M24-3.0": {"hd": 36.00, "hh": 24.00, "ss": 19.00, "sd": 12.00},
-        "M30-3.5": {"hd": 45.00, "hh": 30.00, "ss": 22.00, "sd": 15.00},
-        "M36-4.0": {"hd": 54.00, "hh": 36.00, "ss": 27.00, "sd": 18.00},
-        "M42-4.5": {"hd": 63.00, "hh": 42.00, "ss": 32.00, "sd": 21.00},
-        "M48-5.0": {"hd": 72.00, "hh": 48.00, "ss": 36.00, "sd": 24.00},
+        "M2-0.4": {"hd": 3.80, "hh": 2.00, "ss": 1.50, "sd": 1.00, "tl": 15},
+        "M2.5-0.45": {"hd": 4.50, "hh": 2.50, "ss": 2.00, "sd": 1.25, "tl": 15},
+        "M2.6-0.45": {"hd": 4.50, "hh": 2.60, "ss": 2.00, "sd": 1.30, "tl": 15},
+        "M3-0.5": {"hd": 5.50, "hh": 3.00, "ss": 2.50, "sd": 1.50, "tl": 18},
+        "M4-0.7": {"hd": 7.00, "hh": 4.00, "ss": 3.00, "sd": 2.00, "tl": 20},
+        "M5-0.8": {"hd": 8.50, "hh": 5.00, "ss": 4.0, "sd": 2.50, "tl": 22},
+        "M6-1.0": {"hd": 10.00, "hh": 6.00, "ss": 5.00, "sd": 3.00, "tl": 24},
+        "M8-1.25": {"hd": 13.00, "hh": 8.00, "ss": 6.00, "sd": 4.00, "tl": 28},
+        "M10-1.5": {"hd": 16.00, "hh": 10.00, "ss": 8.00, "sd": 5.00, "tl": 32},
+        "M12-1.75": {"hd": 18.00, "hh": 12.00, "ss": 10.00, "sd": 6.00, "tl": 36},
+        "M14-2.0": {"hd": 21.00, "hh": 14.00, "ss": 12.00, "sd": 7.00, "tl": 40},
+        "M16-2.0": {"hd": 24.00, "hh": 16.00, "ss": 14.00, "sd": 8.00, "tl": 44},
+        "M20-2.5": {"hd": 30.00, "hh": 20.00, "ss": 17.00, "sd": 10.00, "tl": 50},
+        "M24-3.0": {"hd": 36.00, "hh": 24.00, "ss": 19.00, "sd": 12.00, "tl": 55},
+        "M30-3.5": {"hd": 45.00, "hh": 30.00, "ss": 22.00, "sd": 15.00, "tl": 60},
+        "M36-4.0": {"hd": 54.00, "hh": 36.00, "ss": 27.00, "sd": 18.00, "tl": 65},
+        "M42-4.5": {"hd": 63.00, "hh": 42.00, "ss": 32.00, "sd": 21.00, "tl": 70},
+        "M48-5.0": {"hd": 72.00, "hh": 48.00, "ss": 36.00, "sd": 24.00, "tl": 80},
+    }
+    imperial_socket_head_cap_screw_parametes = {
+        "#0-80": {
+            "hd": 0.094 * IN,
+            "hh": 0.059 * IN,
+            "ss": 0.05 * IN,
+            "sd": 0.025 * IN,
+            "tl": 0.500 * IN,
+        },
+        "#1-64": {
+            "hd": 0.115 * IN,
+            "hh": 0.072 * IN,
+            "ss": (1 / 16) * IN,
+            "sd": 0.031 * IN,
+            "tl": 0.625 * IN,
+        },
+        "#1-72": {
+            "hd": 0.115 * IN,
+            "hh": 0.072 * IN,
+            "ss": (1 / 16) * IN,
+            "sd": 0.031 * IN,
+            "tl": 0.625 * IN,
+        },
+        "#2-56": {
+            "hd": 0.137 * IN,
+            "hh": 0.085 * IN,
+            "ss": (5 / 64) * IN,
+            "sd": 0.038 * IN,
+            "tl": 0.625 * IN,
+        },
+        "#2-64": {
+            "hd": 0.137 * IN,
+            "hh": 0.085 * IN,
+            "ss": (5 / 64) * IN,
+            "sd": 0.038 * IN,
+            "tl": 0.625 * IN,
+        },
+        "#3-48": {
+            "hd": 0.158 * IN,
+            "hh": 0.097 * IN,
+            "ss": (5 / 64) * IN,
+            "sd": 0.044 * IN,
+            "tl": 0.625 * IN,
+        },
+        "#3-56": {
+            "hd": 0.158 * IN,
+            "hh": 0.097 * IN,
+            "ss": (5 / 64) * IN,
+            "sd": 0.044 * IN,
+            "tl": 0.625 * IN,
+        },
+        "#4-36": {
+            "hd": 0.180 * IN,
+            "hh": 0.110 * IN,
+            "ss": (3 / 32) * IN,
+            "sd": 0.051 * IN,
+            "tl": 0.750 * IN,
+        },
+        "#4-40": {
+            "hd": 0.180 * IN,
+            "hh": 0.110 * IN,
+            "ss": (3 / 32) * IN,
+            "sd": 0.051 * IN,
+            "tl": 0.750 * IN,
+        },
+        "#4-48": {
+            "hd": 0.180 * IN,
+            "hh": 0.110 * IN,
+            "ss": (3 / 32) * IN,
+            "sd": 0.051 * IN,
+            "tl": 0.750 * IN,
+        },
+        "#5-40": {
+            "hd": 0.202 * IN,
+            "hh": 0.123 * IN,
+            "ss": (3 / 32) * IN,
+            "sd": 0.057 * IN,
+            "tl": 0.750 * IN,
+        },
+        "#5-44": {
+            "hd": 0.202 * IN,
+            "hh": 0.123 * IN,
+            "ss": (3 / 32) * IN,
+            "sd": 0.057 * IN,
+            "tl": 0.750 * IN,
+        },
+        "#6-32": {
+            "hd": 0.222 * IN,
+            "hh": 0.136 * IN,
+            "ss": (7 / 64) * IN,
+            "sd": 0.064 * IN,
+            "tl": 0.750 * IN,
+        },
+        "#6-40": {
+            "hd": 0.222 * IN,
+            "hh": 0.136 * IN,
+            "ss": (7 / 64) * IN,
+            "sd": 0.064 * IN,
+            "tl": 0.750 * IN,
+        },
+        "#8-32": {
+            "hd": 0.266 * IN,
+            "hh": 0.162 * IN,
+            "ss": (9 / 64) * IN,
+            "sd": 0.077 * IN,
+            "tl": 0.875 * IN,
+        },
+        "#8-36": {
+            "hd": 0.266 * IN,
+            "hh": 0.162 * IN,
+            "ss": (9 / 64) * IN,
+            "sd": 0.077 * IN,
+            "tl": 0.875 * IN,
+        },
+        "#10-24": {
+            "hd": 0.308 * IN,
+            "hh": 0.188 * IN,
+            "ss": (5 / 32) * IN,
+            "sd": 0.090 * IN,
+            "tl": 0.875 * IN,
+        },
+        "#10-32": {
+            "hd": 0.308 * IN,
+            "hh": 0.188 * IN,
+            "ss": (5 / 32) * IN,
+            "sd": 0.090 * IN,
+            "tl": 0.875 * IN,
+        },
+        '1/4"-20': {
+            "hd": 0.370 * IN,
+            "hh": 0.247 * IN,
+            "ss": (3 / 16) * IN,
+            "sd": 0.120 * IN,
+            "tl": 1.000 * IN,
+        },
+        '1/4"-28': {
+            "hd": 0.370 * IN,
+            "hh": 0.247 * IN,
+            "ss": (3 / 16) * IN,
+            "sd": 0.120 * IN,
+            "tl": 1.000 * IN,
+        },
+        '5/16"-18': {
+            "hd": 0.463 * IN,
+            "hh": 0.309 * IN,
+            "ss": (1 / 4) * IN,
+            "sd": 0.151 * IN,
+            "tl": 1.125 * IN,
+        },
+        '5/16"-24': {
+            "hd": 0.463 * IN,
+            "hh": 0.309 * IN,
+            "ss": (1 / 4) * IN,
+            "sd": 0.151 * IN,
+            "tl": 1.125 * IN,
+        },
+        '3/8"-16': {
+            "hd": 0.556 * IN,
+            "hh": 0.372 * IN,
+            "ss": (5 / 16) * IN,
+            "sd": 0.182 * IN,
+            "tl": 1.250 * IN,
+        },
+        '3/8"-24': {
+            "hd": 0.556 * IN,
+            "hh": 0.372 * IN,
+            "ss": (5 / 16) * IN,
+            "sd": 0.182 * IN,
+            "tl": 1.250 * IN,
+        },
+        '7/16"-14': {
+            "hd": 0.649 * IN,
+            "hh": 0.434 * IN,
+            "ss": (3 / 8) * IN,
+            "sd": 0.213 * IN,
+            "tl": 1.375 * IN,
+        },
+        '7/16"-20': {
+            "hd": 0.649 * IN,
+            "hh": 0.434 * IN,
+            "ss": (3 / 8) * IN,
+            "sd": 0.213 * IN,
+            "tl": 1.375 * IN,
+        },
+        '1/2"-13': {
+            "hd": 0.743 * IN,
+            "hh": 0.496 * IN,
+            "ss": (3 / 8) * IN,
+            "sd": 0.245 * IN,
+            "tl": 1.500 * IN,
+        },
+        '1/2"-20': {
+            "hd": 0.743 * IN,
+            "hh": 0.496 * IN,
+            "ss": (3 / 8) * IN,
+            "sd": 0.245 * IN,
+            "tl": 1.500 * IN,
+        },
+        '5/8"-11': {
+            "hd": 0.930 * IN,
+            "hh": 0.621 * IN,
+            "ss": (1 / 2) * IN,
+            "sd": 0.307 * IN,
+            "tl": 1.750 * IN,
+        },
+        '5/8"-18': {
+            "hd": 0.930 * IN,
+            "hh": 0.621 * IN,
+            "ss": (1 / 2) * IN,
+            "sd": 0.307 * IN,
+            "tl": 1.750 * IN,
+        },
+        '3/4"-10': {
+            "hd": 1.116 * IN,
+            "hh": 0.745 * IN,
+            "ss": (5 / 8) * IN,
+            "sd": 0.370 * IN,
+            "tl": 2.000 * IN,
+        },
+        '3/4"-16': {
+            "hd": 1.116 * IN,
+            "hh": 0.745 * IN,
+            "ss": (5 / 8) * IN,
+            "sd": 0.370 * IN,
+            "tl": 2.000 * IN,
+        },
+        '7/8"-14': {
+            "hd": 1.303 * IN,
+            "hh": 0.870 * IN,
+            "ss": (3 / 4) * IN,
+            "sd": 0.432 * IN,
+            "tl": 2.250 * IN,
+        },
+        '7/8"-9': {
+            "hd": 1.303 * IN,
+            "hh": 0.870 * IN,
+            "ss": (3 / 4) * IN,
+            "sd": 0.432 * IN,
+            "tl": 2.250 * IN,
+        },
+        '1"-8': {
+            "hd": 1.490 * IN,
+            "hh": 0.994 * IN,
+            "ss": (3 / 4) * IN,
+            "sd": 0.495 * IN,
+            "tl": 2.500 * IN,
+        },
+        '1"-12': {
+            "hd": 1.490 * IN,
+            "hh": 0.994 * IN,
+            "ss": (3 / 4) * IN,
+            "sd": 0.495 * IN,
+            "tl": 2.500 * IN,
+        },
+        '1"-14': {
+            "hd": 1.490 * IN,
+            "hh": 0.994 * IN,
+            "ss": (3 / 4) * IN,
+            "sd": 0.495 * IN,
+            "tl": 2.500 * IN,
+        },
+        '1 1/4"-7': {
+            "hd": 1.864 * IN,
+            "hh": 1.243 * IN,
+            "ss": (7 / 8) * IN,
+            "sd": 0.620 * IN,
+            "tl": 2.750 * IN,
+        },
+        '1 1/4"-12': {
+            "hd": 1.864 * IN,
+            "hh": 1.243 * IN,
+            "ss": (7 / 8) * IN,
+            "sd": 0.620 * IN,
+            "tl": 2.750 * IN,
+        },
+        '1 1/2"-6': {
+            "hd": 2.237 * IN,
+            "hh": 1.493 * IN,
+            "ss": 1 * IN,
+            "sd": 0.745 * IN,
+            "tl": 3.000 * IN,
+        },
+        '1 1/2"-12': {
+            "hd": 2.237 * IN,
+            "hh": 1.493 * IN,
+            "ss": 1 * IN,
+            "sd": 0.745 * IN,
+            "tl": 3.000 * IN,
+        },
     }
 
 
@@ -723,7 +1028,8 @@ class SocketHeadCapScrew:
 # print(nut.cq_object.isValid())
 # cq.exporters.export(nut.cq_object, "nut.step")
 
-screw = SocketHeadCapScrew("M4-0.7", length=20 * MM)
+# screw = SocketHeadCapScrew("M4-0.7", length=20 * MM)
+screw = SocketHeadCapScrew("#10-32", length=2 * IN)
 print(screw.cq_object.isValid())
 cq.exporters.export(screw.cq_object, "screw.step")
 
@@ -731,10 +1037,9 @@ cq.exporters.export(screw.cq_object, "screw.step")
 # thread = ExternalThread(major_diameter=4, thread_pitch=0.7, thread_length=20 * MM)
 
 if "show_object" in locals():
-    pass
-    show_object(thread, name="thread")
+    # show_object(thread, name="thread")
     # show_object(nut.cq_object, name="nut")
-    # show_object(screw.cq_object, name="screw")
+    show_object(screw.cq_object, name="screw")
     # show_object(internal, name="internal")
     # show_object(external, name="external")
     # show_object(threadGuide,name="threadGuide")
