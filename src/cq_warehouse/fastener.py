@@ -9,11 +9,12 @@ date: August 14th 2021
 desc:
 
     This python/cadquery code is a parameterized threaded fastener generator.
-    Currently the following is supported:
-    - external ISO threads
-    - internal ISO threads
-    - nuts
-    - caphead bolts
+    Currently the following classes are defined:
+    - Thread
+    - HexNut
+    - SquareNut
+    - SocketHeadCapScrew
+    - HexBolt
 
 license:
 
@@ -34,15 +35,15 @@ license:
 """
 from typing import Literal, Tuple, Optional
 from math import sin, cos, tan, radians, pi
-from functools import cache, cached_property
-import cProfile
-import cadquery as cq
-from cadquery import selectors
-import cq_warehouse
-from pydantic import BaseModel, PrivateAttr
-
+from functools import cache
 import csv
 import importlib.resources as pkg_resources
+from pydantic import BaseModel, PrivateAttr
+import cadquery as cq
+import cq_warehouse
+
+# import cProfile
+# from functools import cache, cached_property
 
 MM = 1
 IN = 25.4 * MM
@@ -69,14 +70,33 @@ def is_safe(value: str) -> bool:
 
 
 def imperial_str_to_float(measure: str) -> float:
+    """ Convert an imperial measurement (possibly a fraction) to a float value """
     if not is_safe(measure):
-        raise ValueError(f"The provided measurement {measure} is not safe to eval()")
-    return eval(measure.replace(" ", "+")) * IN
+        raise ValueError(f"{measure} is not a valid measurement")
+    # pylint: disable=eval-used
+    # Before eval() is called the string extracted from the csv file is verified as safe
+    return eval(measure.strip().replace(" ", "+")) * IN
+
+
+def decode_imperial_size(size: str) -> Tuple[float, float]:
+    """ Extract the major diameter and pitch from an imperial size """
+
+    sizes = size.split("-")
+    if size[0] == "#":
+        major_diameter = imperial_numbered_sizes[sizes[0]]
+    else:
+        major_diameter = imperial_str_to_float(sizes[0])
+    pitch = float(sizes[1]) / IN
+    return (major_diameter, pitch)
 
 
 def metric_str_to_float(measure: str) -> float:
+    """ Convert a metric measurement to a float value """
+
     if not is_safe(measure):
-        raise ValueError(f"The provided measurement {measure} is not safe to eval()")
+        raise ValueError(f"{measure} is not a valid measurement")
+    # pylint: disable=eval-used
+    # Before eval() is called the string, extracted from the csv file, is verified as safe
     return eval(measure)
 
 
@@ -99,6 +119,7 @@ def evaluate_parameter_dict(
     return measurements
 
 
+# Imperial # sizes to diameters
 imperial_numbered_sizes = {
     "#0000": 0.0210 * IN,
     "#000": 0.0340 * IN,
@@ -123,19 +144,6 @@ metric_hex_parameters = evaluate_parameter_dict(
 imperial_hex_parameters = evaluate_parameter_dict(
     read_fastener_parameters_from_csv("imperial_hex_parameters.csv"), units="imperial"
 )
-
-
-def decode_imperial_size(size: str) -> Tuple[float, float]:
-    """ Extract the major diameter and pitch from an imperial size """
-
-    sizes = size.split("-")
-    if size[0] == "#":
-        major_diameter = imperial_numbered_sizes[sizes[0]]
-    else:
-        major_diameter = imperial_str_to_float(sizes[0])
-    pitch = float(sizes[1]) / IN
-    return (major_diameter, pitch)
-
 
 # Size,Diameter,Pitch,Knurl & Cup Point Diameter,Flat Point Diameter,Oval Point Radius,
 # Half Dog Point Diameter,Half Dog Point Length,Hexagon Socket Size,Key Engagement
@@ -190,12 +198,12 @@ button_head_socket_cap_screw = {
 
 
 class Thread(BaseModel):
-    """ Common methods for the creation of thread objects """
+    """ Parametric Thread Objects """
 
     major_diameter: float
     pitch: float
     length: float
-    external: Optional[bool] = True
+    hand: Literal["right", "left"] = "right"
     thread_angle: Optional[float] = 60.0  # Default to ISO standard
 
     # Private Attributes
@@ -217,69 +225,132 @@ class Thread(BaseModel):
 
     @property
     def thread_radius(self) -> float:
-        """ The center of the thread radius or pitch radius """
-        return (
-            self.min_radius - self.h_parameter / 4
-            if self.external
-            else self.min_radius + 3 * self.h_parameter / 4
-        )
-
-    @property
-    def internal_thread_socket_radius(self) -> float:
-        """ The radius of an internal thread object used to size an appropriate hole """
-        return (
-            None
-            if self.external
-            else self.major_diameter / 2 + 3 * self.h_parameter / 4
-        )
+        """ The center of the thread radius or pitch radius
+            Replaced by child class implementation """
+        return None
 
     @property
     # @cached_property
     def cq_object(self):
         """ A cadquery Solid thread as defined by class attributes """
         return self._cq_object
-        # return self.make_iso_thread()
+        # return self.make_thread()
 
     def __init__(self, **data):
         """ Validate inputs and create the chain assembly object """
         # Use the BaseModel initializer to validate the attributes
         super().__init__(**data)
         # Create the thread
-        self._cq_object = self.make_iso_thread()
+        self._cq_object = self.make_thread()
 
-    def internal_iso_thread_profile(self) -> cq.Workplane:
-        """
-        Generae a 2D profile of a single internal thread based on this diagram:
-        https://en.wikipedia.org/wiki/ISO_metric_screw_thread#/media/File:ISO_and_UTS_Thread_Dimensions.svg
-        """
+    def thread_profile(self) -> cq.Workplane:
+        """ Replaced by child class implementation """
 
-        thread_profile = (
-            cq.Workplane("XZ")
-            .lineTo(self.min_radius, 0)
-            .lineTo(self.min_radius, self.pitch / 8)
-            .lineTo(self.major_diameter / 2, 7 * self.pitch / 16)
-            .spline(
-                [(self.major_diameter / 2, 9 * self.pitch / 16)],
-                tangents=[
-                    (
-                        sin(radians(90 - self.thread_angle / 2)),
-                        cos(radians(90 - self.thread_angle / 2)),
-                    ),
-                    (
-                        -sin(radians(90 - self.thread_angle / 2)),
-                        cos(radians(90 - self.thread_angle / 2)),
-                    ),
-                ],
-                includeCurrent=True,
-            )
-            .lineTo(self.min_radius, 7 * self.pitch / 8)
-            .lineTo(self.min_radius, self.pitch)
-            .lineTo(0, self.pitch)
-            .close()
+    def revolve_wires(self, thread_wire) -> Tuple[cq.Wire, cq.Wire]:
+        """ Replaced by child class implementation """
+
+    def make_thread(self) -> cq.Solid:
+        """
+        Create a Solid thread object.
+
+        External threads would typically be combined with other objects via a union() into a bolt.
+        Internal threads would typically be placed into an appropriately sized hole and combined
+        with other objects via a union(). This construction method allows the OCCT core to
+        successfully build threaded objects and does so significantly faster if the 'glue' mode of
+        the union method is used (glue requires non-overlapping shapes). Other build techniques,
+        like using the cut() method to remove an internal thread from an object, often fails or
+        takes an excessive amount of time.
+
+        The thread is created in three steps:
+        1) Generate the 2D profile of an external thread with the given parameters on XZ plane
+        2) Sweep the thread profile creating a single thread then extract the outer wire on XY plane
+        3) extrudeLinearWithRotation the outer wire to the desired length
+
+        This process is used to avoid the OCCT core issues with sweeping the thread profile
+        such that it contacts itself as the helix makes a full loop.
+
+        """
+        # Step 1 - Create the 2D thread profile
+        # pylint: disable=assignment-from-no-return
+        # thread_profile() defined in child class
+        thread_profile = self.thread_profile()
+
+        # Step 2: Sweep the profile along the threadPath and extract the wires
+        thread_path = cq.Wire.makeHelix(
+            pitch=self.pitch,
+            height=self.pitch / 2,
+            radius=self.thread_radius,
+            lefthand=self.hand == "left",
         )
-        return thread_profile
+        half_thread = cq.Workplane("XY").add(
+            thread_profile.sweep(path=cq.Workplane(thread_path), isFrenet=True)
+        )
+        # Frustratingly, sweep() is inconsistent in the vertical alignment of the object
+        # so the center needs to be determined and the thread vertically aligned
+        z_offset = (
+            half_thread.vertices(">Z").val().Z + half_thread.vertices("<Z").val().Z
+        ) / 2 - self.pitch / 4
+        half_thread = half_thread.translate((0, 0, -z_offset))
+        all_edges = half_thread.section().edges()
+        # Select all the edges on the perimeter of the thread as there are edges
+        # that radiate from the center to the perimeter in all_edges
+        outside_edges = [
+            e
+            for e in all_edges.vals()
+            if e.positionAt(0).Length >= self.thread_radius - self.h_parameter
+            and e.positionAt(1).Length >= self.thread_radius - self.h_parameter
+        ]
+        partial_thread_wire = cq.Wire.assembleEdges(outside_edges)
+        # Create the other half of the thread outline
+        thread_wire = cq.Wire.combine(
+            [partial_thread_wire, partial_thread_wire.mirror("XZ")]
+        )[0]
 
-    def external_iso_thread_profile(self) -> cq.Workplane:
+        # Step 3: Create thread by rotating while extruding thread wire
+        # pylint: disable=assignment-from-no-return
+        # revolve_wires() defined in child class
+        (outer_wire, inner_wires) = self.revolve_wires(thread_wire)
+
+        sign = 1 if self.hand == "right" else -1
+        thread = cq.Solid.extrudeLinearWithRotation(
+            outerWire=outer_wire,
+            innerWires=inner_wires,
+            vecCenter=cq.Vector(0, 0, 0),
+            vecNormal=cq.Vector(0, 0, self.length),
+            angleDegrees=sign * 360 * (self.length / self.pitch),
+        )
+
+        return thread
+
+    def make_shank(
+        self, body_length: float, body_diameter: Optional[float] = None
+    ) -> cq.Solid:
+        """ Create a bolt shank consisting of an optional non-threaded body & threaded section """
+        if body_length > 0:
+            if body_diameter is not None:
+                diameter = body_diameter
+                chamfer_size = (body_diameter - self.major_diameter) / 2
+            else:
+                diameter = self.major_diameter
+                chamfer_size = None
+            shank = cq.Workplane("XY").circle(diameter / 2).extrude(-body_length)
+            if chamfer_size is not None and chamfer_size != 0:
+                shank = shank.faces("<Z").chamfer(chamfer_size)
+            shank = shank.union(self.cq_object.mirror().translate((0, 0, -body_length)))
+        else:
+            shank = self.cq_object
+        return shank
+
+
+class ExternalThread(Thread):
+    """ Create a thread object used in a bolt """
+
+    @property
+    def thread_radius(self) -> float:
+        """ The center of the thread radius or pitch radius """
+        return self.min_radius - self.h_parameter / 4
+
+    def thread_profile(self) -> cq.Workplane:
         """
         Generae a 2D profile of a single external thread based on this diagram:
         https://en.wikipedia.org/wiki/ISO_metric_screw_thread#/media/File:ISO_and_UTS_Thread_Dimensions.svg
@@ -319,92 +390,66 @@ class Thread(BaseModel):
         )
         return thread_profile
 
-    def make_iso_thread(self) -> cq.Solid:
+    def revolve_wires(self, thread_wire) -> Tuple:
+        return (thread_wire, [])
+
+
+class InternalThread(Thread):
+    """ Create a thread object used in a nut """
+
+    @property
+    def thread_radius(self) -> float:
+        """ The center of the thread radius or pitch radius """
+        return self.min_radius + 3 * self.h_parameter / 4
+
+    @property
+    def internal_thread_socket_radius(self) -> float:
+        """ The radius of an internal thread object used to size an appropriate hole """
+        return self.major_diameter / 2 + 3 * self.h_parameter / 4
+
+    def thread_profile(self) -> cq.Workplane:
         """
-        Create a Solid thread object.
-
-        External threads would typically be combined with other objects via a union() into a bolt.
-        Internal threads would typically be placed into an appropriately sized hole and combined
-        with other objects via a union(). This construction method allows the OCCT core to
-        successfully build threaded objects and does so significantly faster if the 'glue' mode of
-        the union method is used (glue requires non-overlapping shapes). Other build techniques,
-        like using the cut() method to remove an internal thread from an object, often fails or
-        takes an excessive amount of time.
-
-        The thread is created in three steps:
-        1) Generate the 2D profile of an external thread with the given parameters on XZ plane
-        2) Sweep the thread profile creating a single thread then extract the outer wire on XY plane
-        3) extrudeLinearWithRotation the outer wire to the desired length
-
-        This process is used to avoid the OCCT core issues with sweeping the thread profile
-        such that it contacts itself as the helix makes a full loop.
-
+        Generae a 2D profile of a single internal thread based on this diagram:
+        https://en.wikipedia.org/wiki/ISO_metric_screw_thread#/media/File:ISO_and_UTS_Thread_Dimensions.svg
         """
-        # Step 1 - Create the 2D thread profile
-        if self.external:
-            thread_profile = self.external_iso_thread_profile()
-        else:
-            thread_profile = self.internal_iso_thread_profile()
 
-        # Step 2: Sweep the profile along the threadPath and extract the wires
-        thread_path = cq.Wire.makeHelix(
-            pitch=self.pitch, height=self.pitch, radius=self.thread_radius
-        )
-        thread_wire = (
-            cq.Workplane("XY")
-            .add(
-                thread_profile.sweep(
-                    path=cq.Workplane(thread_path), isFrenet=True
-                ).translate((0, 0, -self.pitch))
+        thread_profile = (
+            cq.Workplane("XZ")
+            .lineTo(self.min_radius, 0)
+            .lineTo(self.min_radius, self.pitch / 8)
+            .lineTo(self.major_diameter / 2, 7 * self.pitch / 16)
+            .spline(
+                [(self.major_diameter / 2, 9 * self.pitch / 16)],
+                tangents=[
+                    (
+                        sin(radians(90 - self.thread_angle / 2)),
+                        cos(radians(90 - self.thread_angle / 2)),
+                    ),
+                    (
+                        -sin(radians(90 - self.thread_angle / 2)),
+                        cos(radians(90 - self.thread_angle / 2)),
+                    ),
+                ],
+                includeCurrent=True,
             )
-            .section()
-            .wires()
-            .vals()
+            .lineTo(self.min_radius, 7 * self.pitch / 8)
+            .lineTo(self.min_radius, self.pitch)
+            .lineTo(0, self.pitch)
+            .close()
         )
-        if self.external:
-            outer_wire = thread_wire[1]
-            inner_wires = []
-        else:
-            outer_wire = cq.Wire.makeCircle(
-                radius=self.major_diameter / 2 + 3 * self.h_parameter / 4,
-                center=cq.Vector(0, 0, 0),
-                normal=cq.Vector(0, 0, 1),
-            )
-            inner_wires = [thread_wire[0]]
+        return thread_profile
 
-        # Step 3: Create thread by extruding thread wire
-        thread = cq.Solid.extrudeLinearWithRotation(
-            outerWire=outer_wire,
-            innerWires=inner_wires,
-            vecCenter=cq.Vector(0, 0, 0),
-            vecNormal=cq.Vector(0, 0, self.length),
-            angleDegrees=360 * (self.length / self.pitch),
+    def revolve_wires(self, thread_wire) -> Tuple:
+        outer_wire = cq.Wire.makeCircle(
+            radius=self.major_diameter / 2 + 3 * self.h_parameter / 4,
+            center=cq.Vector(0, 0, 0),
+            normal=cq.Vector(0, 0, 1),
         )
-
-        return thread
-
-    def make_shank(
-        self, body_length: float, body_diameter: Optional[float] = None
-    ) -> cq.Solid:
-        """ Create a bolt shank consisting of an optional non-threaded body & threaded section """
-        if body_length > 0:
-            if body_diameter is not None:
-                diameter = body_diameter
-                chamfer_size = (body_diameter - self.major_diameter) / 2
-            else:
-                diameter = self.major_diameter
-                chamfer_size = None
-            shank = cq.Workplane("XY").circle(diameter / 2).extrude(-body_length)
-            if chamfer_size is not None and chamfer_size != 0:
-                shank = shank.faces("<Z").chamfer(chamfer_size)
-            shank = shank.union(self.cq_object.mirror().translate((0, 0, -body_length)))
-        else:
-            shank = self.cq_object
-        return shank
+        return (outer_wire, [thread_wire])
 
 
 class Nut:
-    """ Create standard or custom nuts with ISO standard threads """
+    """ Parent Class used to create standard or custom threaded nuts """
 
     @cache
     def __init__(
@@ -414,13 +459,9 @@ class Nut:
         thread_diameter: Optional[float] = None,
         thread_pitch: Optional[float] = None,
         thickness: Optional[float] = None,
-        shape: Optional[Literal["hex", "square"]] = "hex",
+        hand: Literal["right", "left"] = "right",
     ):
-
-        if shape in ["hex", "square"]:
-            self.shape = shape
-        else:
-            raise ValueError('shape must be one of "hex" or "square"')
+        self.hand = hand
         if size is not None:
             self.size = size
             self._extract_nut_parameters()
@@ -451,43 +492,65 @@ class Nut:
                 f"{list(metric_hex_parameters.keys())+list(imperial_hex_parameters.keys())}"
             )
 
-    def make_nut(self) -> cq.Solid:
-        """ Create an arbitrary sized hex or square nut """
+    def make_nut_body(self, internal_thread_socket_radius) -> cq.Workplane:
+        """ Replaced by child class implementation """
+        # pass
 
-        thread = Thread(
+    def make_nut(self) -> cq.Solid:
+        """ Create an arbitrary sized nut """
+
+        thread = InternalThread(
             major_diameter=self.thread_diameter,
             pitch=self.thread_pitch,
             length=self.thickness,
-            external=False,
+            # external=False,
+            hand=self.hand,
         )
-        if self.shape == "hex":
-            # Distance across the tips of the hex
-            hex_diameter = self.width / cos(pi / 6)
-            # Chamfer between the hex tips and flats
-            chamfer_size = (hex_diameter - self.width) / 2
-            # The nutBody define the chamfered edges of the nut
-            nut_body = (
-                cq.Workplane("XY")
-                .circle(hex_diameter / 2)  # Create a circle that contains the hexagon
-                .circle(
-                    thread.internal_thread_socket_radius
-                )  # .. with a hole in the center
-                .extrude(self.thickness)
-                .edges(selectors.RadiusNthSelector(1))
-                .chamfer(chamfer_size / 2, chamfer_size)  # Chamfer the outside edges
-                .intersect(
-                    cq.Workplane("XY").polygon(6, hex_diameter).extrude(self.thickness)
-                )
-            )
-        else:
-            nut_body = (
-                cq.Workplane("XY")
-                .rect(self.width, self.width)
-                .circle(thread.internal_thread_socket_radius)
-                .extrude(self.thickness)
-            )
-        nut = nut_body.union(thread.cq_object, glue=True).val()
+        nut = (
+            self.make_nut_body(thread.internal_thread_socket_radius)
+            .union(thread.cq_object, glue=True)
+            .val()
+        )
         return nut
+
+
+class HexNut(Nut):
+    """ Create a hex nut """
+
+    def make_nut_body(self, internal_thread_socket_radius) -> cq.Workplane:
+        """ Create a hex nut body with chamferred top and bottom """
+
+        # Distance across the tips of the hex
+        hex_diameter = self.width / cos(pi / 6)
+        # Chamfer between the hex tips and flats
+        chamfer_size = (hex_diameter - self.width) / 2
+
+        nut_body = (
+            cq.Workplane("XY")
+            .circle(hex_diameter / 2)  # Create a circle that contains the hexagon
+            .circle(internal_thread_socket_radius)  # .. with a hole in the center
+            .extrude(self.thickness)
+            .edges(cq.selectors.RadiusNthSelector(1))
+            .chamfer(chamfer_size / 2, chamfer_size)  # Chamfer the circular edges
+            .intersect(
+                cq.Workplane("XY").polygon(6, hex_diameter).extrude(self.thickness)
+            )
+        )
+        return nut_body
+
+
+class SquareNut(Nut):
+    """ Create a square nut """
+
+    def make_nut_body(self, internal_thread_socket_radius) -> cq.Workplane:
+
+        nut_body = (
+            cq.Workplane("XY")
+            .rect(self.width, self.width)
+            .circle(internal_thread_socket_radius)
+            .extrude(self.thickness)
+        )
+        return nut_body
 
 
 class SocketHeadCapScrew:
@@ -548,7 +611,7 @@ class SocketHeadCapScrew:
         self.cq_object = (
             self.make_socket_cap_screw_head()
             .union(
-                Thread(
+                ExternalThread(
                     major_diameter=self.thread_diameter,
                     pitch=self.thread_pitch,
                     length=self.thread_length,
@@ -615,23 +678,137 @@ class SocketHeadCapScrew:
         return screw_head
 
 
-nut = Nut("M4-0.7")
-# nut = Nut("M4-0.7", shape="square")
-print(nut.cq_object.isValid())
-cq.exporters.export(nut.cq_object, "nut.step")
+class HexBolt:
+    """ Create a sock head cap screw as described either by a size sting or a set of parameters """
 
-# screw = SocketHeadCapScrew("M4-0.7", length=20 * MM)
-screw = SocketHeadCapScrew("#10-32", length=2 * IN)
-print(screw.cq_object.isValid())
-cq.exporters.export(screw.cq_object, "screw.step")
+    @cache
+    def __init__(
+        self,
+        size: Optional[str] = None,
+        length: float = None,
+        hand: Literal["right", "left"] = "right",
+        head_width: Optional[float] = None,
+        head_height: Optional[float] = None,
+        thread_diameter: Optional[float] = None,
+        thread_pitch: Optional[float] = None,
+        thread_length: Optional[float] = None,
+    ):
+        """ Create an arbitrary sized socket head cap screw """
+        self.length = length
+        self.hand = hand
+        if size is not None:
+            self.size = size
+            self._extract_bolt_parameters()
+        else:
+            self.thread_diameter = thread_diameter
+            self.thread_pitch = thread_pitch
+            self.width = head_width
+            self.height = head_height
+            self.max_thread_length = thread_length
 
-# thread = Thread.make_iso_thread(4, 0.7, 5, False)
-# thread = ExternalThread(major_diameter=4, thread_pitch=0.7, thread_length=20 * MM)
+        if thread_length is None:
+            self.body_length = max(0, length - self.max_thread_length)
+            self.thread_length = self.length - self.body_length
+        elif thread_length > length:
+            raise ValueError(
+                f"thread length ({thread_length}) must be less than of equal to length ({length})"
+            )
+        else:
+            self.thread_length = thread_length
+            self.body_length = self.length - self.thread_length
 
-if "show_object" in locals():
-    # show_object(thread, name="thread")
-    show_object(nut.cq_object, name="nut")
-    # show_object(screw.cq_object, name="screw")
-    # show_object(internal, name="internal")
-    # show_object(external, name="external")
-    # show_object(threadGuide,name="threadGuide")
+        self.cq_object = (
+            self.make_hex_bolt_head()
+            .union(
+                ExternalThread(
+                    major_diameter=self.thread_diameter,
+                    pitch=self.thread_pitch,
+                    length=self.thread_length,
+                    hand=self.hand,
+                ).make_shank(self.body_length)
+            )
+            .val()
+        )
+
+    def _extract_bolt_parameters(self):
+        """ Parse the bolt size string into width, height, major_diameter, pitch and thickness """
+        size_parts = self.size.split("-")
+        if self.size in metric_hex_parameters.keys():
+            bolt_parameters = metric_hex_parameters[self.size]
+            self.thread_diameter = float(size_parts[0][1:])
+            self.thread_pitch = float(size_parts[1])
+        elif self.size in imperial_hex_parameters.keys():
+            bolt_parameters = imperial_hex_parameters[self.size]
+            (self.thread_diameter, self.thread_pitch) = decode_imperial_size(self.size)
+        else:
+            raise ValueError(
+                "Invalid socket head cap screw size, must be one of:"
+                f"{list(metric_hex_parameters.keys())}"
+                f"{list(imperial_hex_parameters.keys())}"
+            )
+        self.width = bolt_parameters["Width"]
+        self.height = bolt_parameters["Height"]
+        if "Max_Thread_Length" in bolt_parameters.keys():
+            self.max_thread_length = bolt_parameters["Max_Thread_Length"]
+        else:
+            self.max_thread_length = self.length
+
+    def make_hex_bolt_head(self):
+        """ Construct an arbitrary size hex bolt head """
+        # Distance across the tips of the hex
+        hex_diameter = self.width / cos(pi / 6)
+        # Chamfer between the hex tips and flats
+        chamfer_size = (hex_diameter - self.width) / 2
+        bolt_head = (
+            cq.Workplane("XY")
+            .circle(hex_diameter / 2)  # Create a circle that contains the hexagon
+            .extrude(self.height)
+            .edges()
+            .chamfer(chamfer_size / 2, chamfer_size)  # Chamfer the outside edges
+            .intersect(cq.Workplane("XY").polygon(6, hex_diameter).extrude(self.height))
+        )
+
+        return bolt_head
+
+
+def main():
+    """ main """
+    # nut = Nut("M4-0.7")
+    # # nut = Nut("M4-0.7", shape="square")
+    # print(nut.cq_object.isValid())
+    # cq.exporters.export(nut.cq_object, "nut.step")
+
+    # screw = SocketHeadCapScrew("M4-0.7", length=20 * MM)
+    # screw = SocketHeadCapScrew("#10-32", length=2 * IN)
+    # print(screw.cq_object.isValid())
+    # cq.exporters.export(screw.cq_object, "screw.step")
+
+    # # bolt = HexBolt("#10-32", length=2 * IN)
+    # bolt = HexBolt("#10-32", length=30 * MM)
+    nut = HexNut("M4-0.7")
+    # nut = Nut("M4-0.7", shape="square")
+    print(nut.cq_object.isValid())
+    cq.exporters.export(nut.cq_object, "nut.step")
+
+    bolt = HexBolt("M8-1.25", length=30 * MM)
+    print(bolt.cq_object.isValid())
+    cq.exporters.export(bolt.cq_object, "bolt.step")
+
+    # thread = Thread.make_iso_thread(4, 0.7, 5, False)
+    # thread = ExternalThread(major_diameter=4, thread_pitch=0.7, thread_length=20 * MM)
+
+    # thread = Thread(major_diameter=8, pitch=1.25, length=10, external=True, hand="right",)
+    # cq.exporters.export(thread.cq_object, "thread.step")
+    # print(thread)
+
+
+if __name__ == "__main__":
+    main()
+
+# if "show_object" in locals():
+#     show_object(thread.cq_object, name="thread")
+#     # show_object(nut.cq_object, name="nut")
+#     # show_object(screw.cq_object, name="screw")
+#     # show_object(internal, name="internal")
+#     # show_object(external, name="external")
+#     # show_object(threadGuide,name="threadGuide")
