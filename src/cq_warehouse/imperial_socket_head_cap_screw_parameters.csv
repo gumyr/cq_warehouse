@@ -1,4 +1,4 @@
-Size-TPI,Head_Diameter,Head_Height,Socket_Size,Socket_Depth,Max_Thread_Length
+Size,Head_Diameter,Head_Height,Socket_Size,Socket_Depth,Max_Thread_Length
 #0-80, 0.094, 0.059, 0.05, 0.025, 0.500
 #1-64, 0.115, 0.072, 1/16, 0.031, 0.625
 #1-72, 0.115, 0.072, 1/16, 0.031, 0.625
