@@ -385,17 +385,17 @@ callout returns a cadquery `Assembly` object.
 
 ## fastener sub-package
 Many mechanical designs will contain threaded fasteners of some kind, either in a threaded hole or threaded screws or bolts holding two or more parts together. The fastener sub-package provides a set of classes with which raw threads can be created such that they can be integrated into other parts as well as a set of classes that create many different types of nuts, screws or bolts. Here is a list of the classes provided:
-- `Nut` - the parent nut class
-- `HexNut` - a child class providing hexagonal nuts
-- `SquareNut` - a child class providing square nuts
-- `Screw` - the parent screw class
-- `SocketHeadCapScrew` - a child class providing socket head cap screws
-- `ButtonHeadCapScrew` - a child class providing button head cap screws
-- `HexBolt` - a child class providing hexagonal bolts
-- `SetScrew` - a child class providing setscrews
-- `Thread` - the parent thread class
-- `ExternalThread` - a child class providing threads on screws
-- `InternalThread` - a child class providing threads on nuts
+- [Nut](#nut) - the parent nut class
+- [HexNut](#hexnut) - a child class providing hexagonal nuts
+- [SquareNut](#squarenut) - a child class providing square nuts
+- [Screw](#screw) - the parent screw class
+- [SocketHeadCapScrew](#socketheadcapscrew) - a child class providing socket head cap screws
+- [ButtonHeadCapScrew](#buttonheadcapscrew) - a child class providing button head cap screws
+- [HexBolt](#hexbolt)- a child class providing hexagonal bolts
+- [SetScrew](#setscrew) - a child class providing setscrews
+- [Thread](#thread) - the parent thread class
+- [ExternalThread](#externalthread) - a child class providing threads on screws
+- [InternalThread](#internalthread) - a child class providing threads on nuts
 
 Use of the parent classes is only required by those wishing to create new types of nuts or screws. See [Extending the fastener sub-package](#Extending-the-fastener-sub-package) for guidance on how to easily add new sized or entirely new types of fasteners.
 
@@ -407,8 +407,8 @@ MM = 1
 IN = 25.4 * MM
 
 nut = HexNut(size="1/4-20")
-setscrew = SetScrew(size="#6-32",length=(1/4)*IN)
-capscrew = SocketHeadCapScrew(size="M3-0.5",length=10*MM)
+setscrew = SetScrew(size="#6-32", length=(1 / 4) * IN)
+capscrew = SocketHeadCapScrew(size="M3-0.5", length=10 * MM)
 ```
 Threaded parts are complex for CAD systems to create and significantly increase the storage requirements thus making the system slow and difficult to use. To minimize these requirements all of the fastener classes have a `simple` boolean parameter that when `True` doesn't create actual threads at all. Such simple parts have the same overall dimensions and such that they can be used to check for fitment without dramatically impacting performance.
 
@@ -425,6 +425,8 @@ The following sections describe each of the provided classes.
 ### Nut
 As the parent class of all other nut classes it isn't intended for end users.
 ### HexNut
+![HexNut](doc/hexnut.png)
+
 HexNut creates hexagonal nuts of either standard or custom sizes. Standard sizes are described by the 'imperial_hex_parameters.csv' or 'metric_hex_parameters.csv' files. The parameters are:
 - `size` (str) : standard sizes
 - `hand` (Literal["right", "left"] = "right") : thread direction
@@ -441,6 +443,8 @@ This class exposes instance variables for the detailed input parameters as well 
 
 
 ### SquareNut
+![SquareNut](doc/squarenut.png)
+
 SquareNut creates square nuts of either standard or custom sizes. Standard sizes are described by the 'imperial_hex_parameters.csv' or 'metric_hex_parameters.csv' files as the width across the flat sections is the same as for hex nuts. The parameters are:
 - `size` (str) : standard sizes
 - `hand` (Literal["right", "left"] = "right") : thread direction
@@ -458,6 +462,8 @@ This class exposes instance variables for the detailed input parameters as well 
 ### Screw
 As the parent class of all other screw and bolt classes it isn't intended for end users.
 ### SocketHeadCapScrew
+![SocketHeadCapScrew](doc/socketheadcapscrew.png)
+
 SocketHeadCapScrew creates socket head cap screws of either standard or custom sizes. Standard sizes are described by the 'imperial_socket_head_cap_screw_parameters.csv' or 'metric_socket_head_cap_screw_parameters.csv' files. The parameters are:
 - `size` (str) : standard sizes
 - `length` (float) : distance from base of head to tip of thread
@@ -479,6 +485,8 @@ This class exposes instance variables for the detailed input parameters as well 
 - `head` (cq.Solid) : the screw head cadquery Solid object
 - `shank` (cq.Solid) : the shank cadquery Solid object
 ### ButtonHeadCapScrew
+![ButtonHeadCapScrew](doc/buttonheadcapscrew.png)
+
 ButtonHeadCapScrew creates button head cap screws of either standard or custom sizes. Standard sizes are described by the 'imperial_button_head_cap_screw_parameters.csv' or 'metric_button_head_cap_screw_parameters.csv' files. The parameters are:
 - `size` (str) : standard sizes
 - `length` (float) : distance from base of head to tip of thread
@@ -500,6 +508,8 @@ This class exposes instance variables for the detailed input parameters as well 
 - `head` (cq.Solid) : the screw head cadquery Solid object
 - `shank` (cq.Solid) : the shank cadquery Solid object
 ### HexBolt
+![HexBolt](doc/hexbolt.png)
+
 HexBolt creates hexagonal bolts of either standard or custom sizes. Standard sizes are described by the 'imperial_hex_parameters.csv' or 'metric_hex_parameters.csv' files. The parameters are:
 - `size` (str) : standard sizes
 - `length` (float) : distance from base of head to tip of thread
@@ -519,6 +529,8 @@ This class exposes instance variables for the detailed input parameters as well 
 - `head` (cq.Solid) : the screw head cadquery Solid object
 - `shank` (cq.Solid) : the shank cadquery Solid object
 ### SetScrew
+![SetScrew](doc/setscrew.png)
+
 SetScrew creates setscrews of either standard or custom sizes. Standard sizes are described by the 'imperial_set_screw_parameters.csv' or 'metric_set_screw_parameters.csv' files. The parameters are:
 - `size` (str) : standard sizes
 - `length` (float) : distance from base of head to tip of thread
@@ -545,6 +557,8 @@ All thread objects are complex and therefore can be difficult for the OCCT core 
 ```
 Other build techniques, such as using the `cut()` method to remove an internal thread from an object, often fails or takes an excessive amount of time.
 ### ExternalThread
+![ExternalThread](doc/externalthread.png)
+
 This child class of Thread creates external thread object as are found on screws and bolts. The parameters are:
 - `major_diameter` (float)
 - `pitch` (float)
@@ -560,6 +574,8 @@ This class exposes instance variables for the input parameters as well as:
 - `cq_object` (cq.Solid) : cadquery Solid object
 
 ### InternalThread
+![InternalThread](doc/internalthread.png)
+
 This child class of Thread creates internal thread object as are found on nuts. These objects look like a washer with the thread cut into the inside of the object such that it can be efficiently included into another object by placing it into an appropriately sized hole. The parameters are:
 - `major_diameter` (float)
 - `pitch` (float)
