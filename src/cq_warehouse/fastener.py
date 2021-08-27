@@ -146,6 +146,7 @@ class Thread(BaseModel):
     pitch: float
     length: float
     hand: Literal["right", "left"] = "right"
+    hollow: bool = False
     thread_angle: Optional[float] = 60.0  # Default to ISO standard
 
     # Private Attributes
@@ -309,6 +310,15 @@ class ExternalThread(Thread):
         """ The center of the thread radius or pitch radius """
         return self.min_radius - self.h_parameter / 4
 
+    @property
+    def external_thread_core_radius(self) -> float:
+        """ The radius of an internal thread object used to size an appropriate hole """
+        if self.hollow:
+            value = self.major_diameter / 2 - 7 * self.h_parameter / 8
+        else:
+            value = None
+        return value
+
     def thread_profile(self) -> cq.Workplane:
         """
         Generae a 2D profile of a single external thread based on this diagram:
@@ -352,7 +362,17 @@ class ExternalThread(Thread):
         return thread_profile
 
     def revolve_wires(self, thread_wire) -> Tuple:
-        return (thread_wire, [])
+        if self.hollow:
+            inner_wires = [
+                cq.Wire.makeCircle(
+                    radius=self.major_diameter / 2 - 7 * self.h_parameter / 8,
+                    center=cq.Vector(0, 0, 0),
+                    normal=cq.Vector(0, 0, 1),
+                )
+            ]
+        else:
+            inner_wires = []
+        return (thread_wire, inner_wires)
 
 
 class InternalThread(Thread):
@@ -854,17 +874,7 @@ class SetScrew(Screw):
     @property
     def cq_object(self):
         """ A cadquery Solid thread as defined by class attributes """
-        thread = ExternalThread(
-            major_diameter=self.thread_diameter,
-            pitch=self.thread_pitch,
-            length=self.thread_length,
-            hand=self.hand,
-        )
-        return (
-            self.make_blank()
-            .intersect(thread.cq_object.translate((0, 0, -self.thread_length)))
-            .val()
-        )
+        return self.make_setscrew()
 
     @overload
     def __init__(
@@ -878,7 +888,6 @@ class SetScrew(Screw):
         length: float,
         thread_diameter: float,
         thread_pitch: float,
-        thread_length: float,
         socket_size: float,
         socket_depth: float,
         hand: Literal["right", "left"] = "right",
@@ -892,29 +901,45 @@ class SetScrew(Screw):
         self.set_parameters()
         super().__init__()
 
-    def make_blank(self) -> cq.Workplane:
-        """ Construct set screw head """
+    def make_setscrew(self) -> cq.Workplane:
+        """ Construct set screw shape """
 
-        return (
+        chamfer_size = self.thread_diameter / 4
+        thread = ExternalThread(
+            major_diameter=self.thread_diameter,
+            pitch=self.thread_pitch,
+            length=self.length - chamfer_size,
+            hollow=True,
+            hand=self.hand,
+        )
+        core = (
             cq.Workplane("XY")
-            .circle(self.thread_diameter / 2)
+            .circle(thread.external_thread_core_radius)
             .polygon(6, self.socket_size / cos(pi / 6))  # pylint: disable=no-member
             .extrude(self.socket_depth)  # pylint: disable=no-member
             .faces(">Z")
             .workplane()
-            .circle(self.thread_diameter / 2)
+            .circle(thread.external_thread_core_radius)
             .extrude(
                 # pylint: disable=no-member
-                self.thread_length
+                self.length
                 - self.socket_depth
             )
             .faces(">Z")
-            .chamfer(self.thread_diameter / 4)
+            .chamfer(chamfer_size)
             .mirror()
         )
+        return core.union(
+            thread.cq_object.translate((0, 0, -thread.length)), glue=True
+        ).val()
 
 
-screw = SocketHeadCapScrew(size="M3-0.5", length=10 * MM)
+nut = SquareNut(size="1/4-20")
+cq.exporters.export(nut.cq_object, "nut.step")
+# SetScrew.set_parameters()
+# min_length = SetScrew.metric_parameters["M3-0.5"]["Socket_Depth"] * 1.5
+# screw = SetScrew(size="M3-0.5", length=min_length)
+# cq.exporters.export(screw.cq_object, "setscrew.step")
 
 if "show_object" in locals():
     # show_object(thread.cq_object, name="thread")
