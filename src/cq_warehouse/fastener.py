@@ -36,6 +36,7 @@ license:
     limitations under the License.
 
 """
+from os import major
 from typing import Literal, Tuple, Optional, overload, List
 from math import sin, cos, tan, radians, pi, degrees
 from functools import cache
@@ -147,6 +148,7 @@ class Thread(BaseModel):
     length: float
     hand: Literal["right", "left"] = "right"
     hollow: bool = False
+    simple: bool = False
     thread_angle: Optional[float] = 60.0  # Default to ISO standard
 
     # Private Attributes
@@ -173,11 +175,9 @@ class Thread(BaseModel):
         return None
 
     @property
-    # @cached_property
     def cq_object(self):
         """ A cadquery Solid thread as defined by class attributes """
         return self._cq_object
-        # return self.make_thread()
 
     def __init__(self, **data):
         """ Validate inputs and create the chain assembly object """
@@ -232,51 +232,63 @@ class Thread(BaseModel):
         such that it contacts itself as the helix makes a full loop.
 
         """
-        # print(self.__dict__.items())
 
-        # Step 1 - Create the 2D thread profile
-        # pylint: disable=assignment-from-no-return
-        # thread_profile() defined in child class
-        thread_profile = self.thread_profile()
+        if self.simple:
+            thread_wire = cq.Wire.makeCircle(
+                radius=self.major_diameter / 2,
+                center=cq.Vector(0, 0, 0),
+                normal=cq.Vector(0, 0, 1),
+            )
+            (outer_wire, inner_wires) = self.revolve_wires(thread_wire)
+            thread = cq.Solid.extrudeLinear(
+                outerWire=outer_wire,
+                innerWires=inner_wires,
+                vecNormal=cq.Vector(0, 0, self.length),
+            )
+        else:
+            # Step 1 - Create the 2D thread profile
+            # pylint: disable=assignment-from-no-return
+            # thread_profile() defined in child class
+            thread_profile = self.thread_profile()
 
-        # Step 2: Sweep the profile along the threadPath and extract the wires
-        thread_path = cq.Wire.makeHelix(
-            pitch=self.pitch,
-            height=self.pitch / 2,
-            radius=self.thread_radius,
-            lefthand=self.hand == "left",
-        )
-        half_thread = cq.Workplane("XY").add(
-            thread_profile.sweep(path=cq.Workplane(thread_path), isFrenet=True)
-        )
-        # Frustratingly, sweep() is inconsistent in the vertical alignment of the object
-        # so the thread needs to centered vertically
-        half_thread = half_thread.translate(
-            (0, 0, -half_thread.val().Center().z + self.pitch / 4)
-        )
-        all_edges = half_thread.section().edges()
-        # Select all the edges on the perimeter of the thread as there are edges
-        # that radiate from the center to the perimeter in all_edges
-        outside_edges = Thread.find_perimeter_edges(all_edges.vals())
-        partial_thread_wire = cq.Wire.assembleEdges(outside_edges)
-        # Create the other half of the thread outline
-        thread_wire = cq.Wire.combine(
-            [partial_thread_wire, partial_thread_wire.mirror("XZ")]
-        )[0]
+            # Step 2: Sweep the profile along the threadPath and extract the wires
+            thread_path = cq.Wire.makeHelix(
+                pitch=self.pitch,
+                height=self.pitch / 2,
+                radius=self.thread_radius,
+                lefthand=self.hand == "left",
+            )
+            half_thread = cq.Workplane("XY").add(
+                thread_profile.sweep(path=cq.Workplane(thread_path), isFrenet=True)
+            )
+            # Frustratingly, sweep() is inconsistent in the vertical alignment of the object
+            # so the thread needs to centered vertically
+            half_thread = half_thread.translate(
+                (0, 0, -half_thread.val().Center().z + self.pitch / 4)
+            )
+            all_edges = half_thread.section().edges()
+            # Select all the edges on the perimeter of the thread as there are edges
+            # that radiate from the center to the perimeter in all_edges
+            outside_edges = Thread.find_perimeter_edges(all_edges.vals())
+            partial_thread_wire = cq.Wire.assembleEdges(outside_edges)
+            # Create the other half of the thread outline
+            thread_wire = cq.Wire.combine(
+                [partial_thread_wire, partial_thread_wire.mirror("XZ")]
+            )[0]
 
-        # Step 3: Create thread by rotating while extruding thread wire
-        # pylint: disable=assignment-from-no-return
-        # revolve_wires() defined in child class
-        (outer_wire, inner_wires) = self.revolve_wires(thread_wire)
+            # Step 3: Create thread by rotating while extruding thread wire
+            # pylint: disable=assignment-from-no-return
+            # revolve_wires() defined in child class
+            (outer_wire, inner_wires) = self.revolve_wires(thread_wire)
 
-        sign = 1 if self.hand == "right" else -1
-        thread = cq.Solid.extrudeLinearWithRotation(
-            outerWire=outer_wire,
-            innerWires=inner_wires,
-            vecCenter=cq.Vector(0, 0, 0),
-            vecNormal=cq.Vector(0, 0, self.length),
-            angleDegrees=sign * 360 * (self.length / self.pitch),
-        )
+            sign = 1 if self.hand == "right" else -1
+            thread = cq.Solid.extrudeLinearWithRotation(
+                outerWire=outer_wire,
+                innerWires=inner_wires,
+                vecCenter=cq.Vector(0, 0, 0),
+                vecNormal=cq.Vector(0, 0, self.length),
+                angleDegrees=sign * 360 * (self.length / self.pitch),
+            )
 
         return thread
 
@@ -439,6 +451,15 @@ class Nut:
         cls.metric_parameters = {}  # Empty metric data to be replaced by child
         cls.imperial_parameters = {}  # Empty imperial data to be replaced by child
 
+    @classmethod
+    def standard_sizes(cls) -> str:
+        """ Return a list of the standard screw sizes """
+        if not hasattr(cls, "metric_parameters"):
+            cls.set_parameters()
+        metric = list(cls.metric_parameters.keys())
+        imperial = list(cls.imperial_parameters.keys())
+        return metric + imperial
+
     @cache
     def __init__(
         self,
@@ -448,9 +469,11 @@ class Nut:
         thread_pitch: Optional[float] = None,
         thickness: Optional[float] = None,
         hand: Literal["right", "left"] = "right",
+        simple: bool = False,
     ):
         self.set_parameters()
         self.hand = hand
+        self.simple = simple
         if size is not None:
             self.size = size
             self._extract_nut_parameters()
@@ -493,10 +516,11 @@ class Nut:
             pitch=self.thread_pitch,
             length=self.thickness,
             hand=self.hand,
+            simple=self.simple,
         )
         nut = (
             self.make_nut_body(thread.internal_thread_socket_radius)
-            # .union(thread.cq_object, glue=True)
+            .union(thread.cq_object, glue=True)
             .val()
         )
         return nut
@@ -581,7 +605,17 @@ class Screw:
             pitch=self.thread_pitch,
             length=self.thread_length,
             hand=self.hand,
+            simple=self.simple,
         ).make_shank(self.body_length)
+
+    @classmethod
+    def standard_sizes(cls) -> str:
+        """ Return a list of the standard screw sizes """
+        if not hasattr(cls, "metric_parameters"):
+            cls.set_parameters()
+        metric = list(cls.metric_parameters.keys())
+        imperial = list(cls.imperial_parameters.keys())
+        return metric + imperial
 
     @property
     def cq_object(self):
@@ -663,7 +697,11 @@ class SocketHeadCapScrew(Screw):
 
     @overload
     def __init__(
-        self, size: str, length: float, hand: Literal["right", "left"] = "right"
+        self,
+        size: str,
+        length: float,
+        hand: Literal["right", "left"] = "right",
+        simple: bool = False,
     ):
         ...
 
@@ -679,6 +717,7 @@ class SocketHeadCapScrew(Screw):
         socket_size: float,
         socket_depth: float,
         hand: Literal["right", "left"] = "right",
+        simple: bool = False,
     ):
         ...
 
@@ -934,7 +973,7 @@ class SetScrew(Screw):
         ).val()
 
 
-nut = SquareNut(size="1/4-20")
+nut = SquareNut(size="1/4-20", simple=True)
 cq.exporters.export(nut.cq_object, "nut.step")
 # SetScrew.set_parameters()
 # min_length = SetScrew.metric_parameters["M3-0.5"]["Socket_Depth"] * 1.5
@@ -942,9 +981,32 @@ cq.exporters.export(nut.cq_object, "nut.step")
 # cq.exporters.export(screw.cq_object, "setscrew.step")
 
 if "show_object" in locals():
-    # show_object(thread.cq_object, name="thread")
-    # show_object(nut.cq_object, name="nut")
-    show_object(screw.cq_object, name="screw")
-    # show_object(internal, name="internal")
-    # show_object(external, name="external")
-    # show_object(threadGuide,name="threadGuide")
+    # show_object(HexNut(size="#10-32").cq_object, name="HexNut")
+    # show_object(SquareNut(size="M8-1.25").cq_object, name="SquareNut")
+    # show_object(
+    #     SocketHeadCapScrew(size="M4-0.7", length=10 * MM).cq_object,
+    #     name="SocketHeadCapScrew",
+    # )
+    # show_object(
+    #     ButtonHeadCapScrew(size="M3-0.5", length=10 * MM).cq_object,
+    #     name="ButtonHeadCapScrew",
+    # )
+    # show_object(SetScrew(size="#6-32", length=(1 / 4) * IN).cq_object, name="SetScrew")
+    # show_object(HexBolt(size="M5-0.8", length=10 * MM).cq_object, name="HexBolt")
+    # show_object(
+    #     ExternalThread(
+    #         major_diameter=(1 / 4) * IN, pitch=IN / 20, length=(1 / 4) * IN
+    #     ).cq_object,
+    #     name="ExternalThread",
+    # )
+    show_object(
+        InternalThread(major_diameter=3 * MM, pitch=0.5, length=3 * MM).cq_object,
+        name="InternalThread",
+    )
+
+# show_object(thread.cq_object, name="thread")
+# show_object(nut.cq_object, name="nut")
+# show_object(internal, name="internal")
+# show_object(external, name="external")
+# show_object(threadGuide,name="threadGuide")
+

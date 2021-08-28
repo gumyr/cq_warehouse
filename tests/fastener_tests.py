@@ -83,10 +83,7 @@ class TestFunctionality(BaseTest):
     def test_hexnut(self):
         """ Simple validity check for all the stand sized hex head nuts """
 
-        HexNut.set_parameters()
-        test_set = list(HexNut.metric_parameters.keys()) + list(
-            HexNut.imperial_parameters.keys()
-        )
+        test_set = HexNut.standard_sizes()
         for i, size in enumerate(test_set):
             if VERBOSE:
                 print(f"Testing HexNut size {size} - {i+1} of {len(test_set)}")
@@ -96,10 +93,7 @@ class TestFunctionality(BaseTest):
     def test_squarenut(self):
         """ Simple validity check for all the stand sized square head nuts """
 
-        SquareNut.set_parameters()
-        test_set = list(SquareNut.metric_parameters.keys()) + list(
-            SquareNut.imperial_parameters.keys()
-        )
+        test_set = SquareNut.standard_sizes()
         for i, size in enumerate(test_set):
             if size in ["M6-1"]:
                 continue
@@ -111,10 +105,7 @@ class TestFunctionality(BaseTest):
     def test_hexbolt(self):
         """ Simple validity check for all the stand sized hex head bolts """
 
-        HexBolt.set_parameters()
-        test_set = list(HexBolt.metric_parameters.keys()) + list(
-            HexBolt.imperial_parameters.keys()
-        )
+        test_set = HexBolt.standard_sizes()
         for i, size in enumerate(test_set):
             if size in ["M6-1"]:
                 continue
@@ -126,10 +117,7 @@ class TestFunctionality(BaseTest):
     def test_socket_head_cap_screw(self):
         """ Simple validity check for all the stand sized socket head cap screws """
 
-        SocketHeadCapScrew.set_parameters()
-        test_set = list(SocketHeadCapScrew.metric_parameters.keys()) + list(
-            SocketHeadCapScrew.imperial_parameters.keys()
-        )
+        test_set = SocketHeadCapScrew.standard_sizes()
         for i, size in enumerate(test_set):
             if VERBOSE:
                 print(
@@ -141,10 +129,7 @@ class TestFunctionality(BaseTest):
     def test_button_head_cap_screw(self):
         """ Simple validity check for all the stand sized button head cap screws """
 
-        ButtonHeadCapScrew.set_parameters()
-        test_set = list(ButtonHeadCapScrew.metric_parameters.keys()) + list(
-            ButtonHeadCapScrew.imperial_parameters.keys()
-        )
+        test_set = ButtonHeadCapScrew.standard_sizes()
         for i, size in enumerate(test_set):
             if VERBOSE:
                 print(
@@ -156,10 +141,7 @@ class TestFunctionality(BaseTest):
     def test_setscrew(self):
         """ Simple validity check for all the stand sized setscrews """
 
-        SetScrew.set_parameters()
-        test_set = list(SetScrew.metric_parameters.keys()) + list(
-            SetScrew.imperial_parameters.keys()
-        )
+        test_set = SetScrew.standard_sizes()
         for i, size in enumerate(test_set):
             if VERBOSE:
                 print(f"Testing SetScrew size {size} - {i+1} of {len(test_set)}")
