@@ -547,8 +547,8 @@ or
 This class exposes instance variables for the detailed input parameters as well as:
 - `cq_object` (cq.Solid) : cadquery Solid object
 ### Thread
-As the parent class of the other thread classes it isn't intended for end users. Both external and internal threads are ISO standard by default as shown in the following diagram:
-![ISO_and_UTS_Thread_Dimensions](https://en.wikipedia.org/wiki/ISO_metric_screw_thread#/media/File:ISO_and_UTS_Thread_Dimensions.svg)
+As the parent class of the other thread classes it isn't intended for end users. Both external and internal threads are ISO standard by default as shown in the following diagram (from https://en.wikipedia.org/wiki/ISO_metric_screw_thread):
+![ISO_and_UTS_Thread_Dimensions](https://upload.wikimedia.org/wikipedia/commons/4/4b/ISO_and_UTS_Thread_Dimensions.svg)
 
 All thread objects are complex and therefore can be difficult for the OCCT core to work with. To aid in this both the internal and external thread objects are created such that they can be combined with the `glue` option of the `union()` method, as such:
 ```python
