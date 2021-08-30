@@ -9,15 +9,6 @@ date: August 14th 2021
 desc:
 
     This python/cadquery code is a parameterized threaded fastener generator.
-    Currently the following classes are defined:
-    - Thread
-    - HexNut
-    - SquareNut
-    - Screw
-    - SocketHeadCapScrew
-    - ButtonHeadCapScrew
-    - HexBolt
-    - SetScrew
 
 license:
 
@@ -36,18 +27,13 @@ license:
     limitations under the License.
 
 """
-from os import major
 from typing import Literal, Tuple, Optional, overload, List
 from math import sin, cos, tan, radians, pi, degrees
 from functools import cache
 import csv
 import importlib.resources as pkg_resources
-from pydantic import BaseModel, PrivateAttr
 import cadquery as cq
 import cq_warehouse
-
-# import cProfile
-# from functools import cache, cached_property
 
 MM = 1
 IN = 25.4 * MM
@@ -140,19 +126,38 @@ def evaluate_parameter_dict(
     return measurements
 
 
-class Thread(BaseModel):
+class _ThreadOuterEdgeSelector(cq.Selector):
+    """ A custom cadquery selector that filters the edges in a thread cross section
+        to just those on the periphery """
+
+    # pylint: disable=too-few-public-methods
+    def __init__(self):
+        pass
+
+    def filter(self, objectList: List[cq.Edge]) -> List[cq.Edge]:
+        """ Filter the edge list to those on the exterior of the thread section """
+
+        # Filter out edges that radiate from the origin
+        outside_edges = [
+            edge
+            for edge in objectList
+            if abs(degrees(edge.positionAt(0).getAngle(edge.tangentAt(0))) - 90) < 20
+        ]
+        min_radius = min([e.positionAt(0).Length for e in outside_edges])
+        # Filter out edges in the inner ring
+        outside_edges = [
+            edge
+            for edge in outside_edges
+            if edge.positionAt(0).Length > 1.2 * min_radius
+        ]
+        return outside_edges
+
+
+cq.selectors.ThreadOuterEdgeSelector = _ThreadOuterEdgeSelector
+
+
+class Thread:
     """ Parametric Thread Objects """
-
-    major_diameter: float
-    pitch: float
-    length: float
-    hand: Literal["right", "left"] = "right"
-    hollow: bool = False
-    simple: bool = False
-    thread_angle: Optional[float] = 60.0  # Default to ISO standard
-
-    # Private Attributes
-    _cq_object: cq.Workplane = PrivateAttr()
 
     @property
     def h_parameter(self) -> float:
@@ -172,46 +177,42 @@ class Thread(BaseModel):
     def thread_radius(self) -> float:
         """ The center of the thread radius or pitch radius
             Replaced by child class implementation """
-        return None
 
     @property
     def cq_object(self):
         """ A cadquery Solid thread as defined by class attributes """
         return self._cq_object
 
-    def __init__(self, **data):
-        """ Validate inputs and create the chain assembly object """
-        # Use the BaseModel initializer to validate the attributes
-        super().__init__(**data)
+    def __init__(
+        self,
+        major_diameter: float,
+        pitch: float,
+        length: float,
+        hand: Literal["right", "left"] = "right",
+        hollow: bool = False,
+        simple: bool = False,
+        thread_angle: Optional[float] = 60.0,  # Default to ISO standard
+    ):
+        """ Validate inputs and create the thread object """
+        if hand not in ["right", "left"]:
+            raise ValueError(f'hand must be one of "right" or "left" not {hand}')
+        self.hand = hand
+        self.major_diameter = major_diameter
+        self.pitch = pitch
+        self.length = length
+        self.hollow = hollow
+        self.simple = simple
+        self.thread_angle = thread_angle
         # Create the thread
         if self.simple:
             self._cq_object = self.make_simple_thread()
         else:
             self._cq_object = self.make_thread()
 
-    @staticmethod
-    def find_perimeter_edges(all_edges: List[cq.Edge]) -> List[cq.Edge]:
-        """ Filter the edge list to those on the exterior of the thread section """
-
-        # Filter out edges that radiate from the origin
-        outside_edges = [
-            edge
-            for edge in all_edges
-            if abs(degrees(edge.positionAt(0).getAngle(edge.tangentAt(0))) - 90) < 20
-        ]
-        min_radius = min([e.positionAt(0).Length for e in outside_edges])
-        # Filter out edges in the inner ring
-        outside_edges = [
-            edge
-            for edge in outside_edges
-            if edge.positionAt(0).Length > 1.2 * min_radius
-        ]
-        return outside_edges
-
     def thread_profile(self) -> cq.Workplane:
         """ Replaced by child class implementation """
 
-    def revolve_wires(self, thread_wire) -> Tuple[cq.Wire, cq.Wire]:
+    def prepare_revolve_wires(self, thread_wire) -> Tuple[cq.Wire, cq.Wire]:
         """ Replaced by child class implementation """
 
     def make_simple_thread(self) -> cq.Solid:
@@ -221,7 +222,8 @@ class Thread(BaseModel):
             center=cq.Vector(0, 0, 0),
             normal=cq.Vector(0, 0, 1),
         )
-        (outer_wire, inner_wires) = self.revolve_wires(thread_wire)
+        # pylint: disable=assignment-from-no-return
+        (outer_wire, inner_wires) = self.prepare_revolve_wires(thread_wire)
         thread = cq.Solid.extrudeLinear(
             outerWire=outer_wire,
             innerWires=inner_wires,
@@ -250,9 +252,8 @@ class Thread(BaseModel):
         such that it contacts itself as the helix makes a full loop.
 
         """
-        # print(self.__dict__.items())
-
         # Step 1 - Create the 2D thread profile
+
         # pylint: disable=assignment-from-no-return
         # thread_profile() defined in child class
         thread_profile = self.thread_profile()
@@ -272,21 +273,23 @@ class Thread(BaseModel):
         half_thread = half_thread.translate(
             (0, 0, -half_thread.val().Center().z + self.pitch / 4)
         )
-        all_edges = half_thread.section().edges()
         # Select all the edges on the perimeter of the thread as there are edges
         # that radiate from the center to the perimeter in all_edges
-        outside_edges = Thread.find_perimeter_edges(all_edges.vals())
-        partial_thread_wire = cq.Wire.assembleEdges(outside_edges)
-        # Create the other half of the thread outline
-        thread_wire = cq.Wire.combine(
-            [partial_thread_wire, partial_thread_wire.mirror("XZ")]
-        )[0]
+        partial_thread_wire = half_thread.section().edges(
+            cq.selectors.ThreadOuterEdgeSelector()
+        )
+        # The thread is symmetric so mirror to create the complete outside wire
+        thread_wire = cq.Wire.assembleEdges(
+            partial_thread_wire.add(partial_thread_wire.mirror("XZ")).vals()
+        )
 
         # Step 3: Create thread by rotating while extruding thread wire
-        # pylint: disable=assignment-from-no-return
-        # revolve_wires() defined in child class
-        (outer_wire, inner_wires) = self.revolve_wires(thread_wire)
 
+        # pylint: disable=assignment-from-no-return
+        # prepare_revolve_wires() defined in child class
+        (outer_wire, inner_wires) = self.prepare_revolve_wires(thread_wire)
+
+        # thread = cq.Workplane("XY").add(outer_wire).add(inner_wires).revolve()
         sign = 1 if self.hand == "right" else -1
         thread = cq.Solid.extrudeLinearWithRotation(
             outerWire=outer_wire,
@@ -380,7 +383,7 @@ class ExternalThread(Thread):
         )
         return thread_profile
 
-    def revolve_wires(self, thread_wire) -> Tuple:
+    def prepare_revolve_wires(self, thread_wire) -> Tuple:
         if self.hollow:
             inner_wires = [
                 cq.Wire.makeCircle(
@@ -440,7 +443,7 @@ class InternalThread(Thread):
         )
         return thread_profile
 
-    def revolve_wires(self, thread_wire) -> Tuple:
+    def prepare_revolve_wires(self, thread_wire) -> Tuple:
         outer_wire = cq.Wire.makeCircle(
             radius=self.major_diameter / 2 + 3 * self.h_parameter / 4,
             center=cq.Vector(0, 0, 0),
@@ -455,49 +458,33 @@ class Nut:
     @classmethod
     def set_parameters(cls):
         """ Create the class variables for the screw parameters """
-        cls.metric_parameters = {}  # Empty metric data to be replaced by child
-        cls.imperial_parameters = {}  # Empty imperial data to be replaced by child
+        # cls.metric_parameters = {}  # Empty metric data to be replaced by child
+        # cls.imperial_parameters = {}  # Empty imperial data to be replaced by child
 
     @classmethod
     def metric_sizes(cls) -> str:
         """ Return a list of the standard screw sizes """
         if not hasattr(cls, "metric_parameters"):
             cls.set_parameters()
+        # pylint: disable=no-member
         return list(cls.metric_parameters.keys())
 
     @classmethod
     def imperial_sizes(cls) -> str:
         """ Return a list of the standard screw sizes """
-        if not hasattr(cls, "metric_parameters"):
+        if not hasattr(cls, "imperial_parameters"):
             cls.set_parameters()
+        # pylint: disable=no-member
         return list(cls.imperial_parameters.keys())
 
-    @cache
-    def __init__(
-        self,
-        size: Optional[str] = None,
-        width: Optional[float] = None,
-        thread_diameter: Optional[float] = None,
-        thread_pitch: Optional[float] = None,
-        thickness: Optional[float] = None,
-        hand: Literal["right", "left"] = "right",
-        simple: bool = False,
-    ):
-        self.set_parameters()
-        self.hand = hand
-        self.simple = simple
-        if size is not None:
-            self.size = size
-            self._extract_nut_parameters()
-        else:
-            self.width = width
-            self.thread_diameter = thread_diameter
-            self.thread_pitch = thread_pitch
-            self.thickness = thickness
+    def __init__(self):
+        if hasattr(self, "size"):
+            self.extract_nut_parameters()
         self.cq_object = self.make_nut()
 
-    def _extract_nut_parameters(self):
+    def extract_nut_parameters(self):
         """ Parse the nut size string into thread_diameter, thread_pitch, width and thickness """
+        # pylint: disable=no-member
         if self.size in self.metric_parameters.keys():
             nut_data = self.metric_parameters[self.size]
             self.width = nut_data["Width"]
@@ -518,11 +505,11 @@ class Nut:
 
     def make_nut_body(self, internal_thread_socket_radius) -> cq.Workplane:
         """ Replaced by child class implementation """
-        # pass
 
     def make_nut(self) -> cq.Solid:
         """ Create an arbitrary sized nut """
 
+        # pylint: disable=no-member
         thread = InternalThread(
             major_diameter=self.thread_diameter,
             pitch=self.thread_pitch,
@@ -552,6 +539,33 @@ class HexNut(Nut):
             read_fastener_parameters_from_csv("imperial_hex_parameters.csv"),
             units="imperial",
         )
+
+    @overload
+    def __init__(
+        self, size: str, hand: Literal["right", "left"] = "right", simple: bool = False,
+    ):
+        ...
+
+    @overload
+    def __init__(
+        self,
+        width: Optional[float] = None,
+        thread_diameter: Optional[float] = None,
+        thread_pitch: Optional[float] = None,
+        thickness: Optional[float] = None,
+        hand: Literal["right", "left"] = "right",
+        simple: bool = False,
+    ):
+        ...
+
+    @cache
+    def __init__(self, **kwargs):
+        self.hand = "right"
+        self.simple = False
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+        self.set_parameters()
+        super().__init__()
 
     def make_nut_body(self, internal_thread_socket_radius) -> cq.Workplane:
         """ Create a hex nut body with chamferred top and bottom """
@@ -590,6 +604,33 @@ class SquareNut(Nut):
             units="imperial",
         )
 
+    @overload
+    def __init__(
+        self, size: str, hand: Literal["right", "left"] = "right", simple: bool = False,
+    ):
+        ...
+
+    @overload
+    def __init__(
+        self,
+        width: Optional[float] = None,
+        thread_diameter: Optional[float] = None,
+        thread_pitch: Optional[float] = None,
+        thickness: Optional[float] = None,
+        hand: Literal["right", "left"] = "right",
+        simple: bool = False,
+    ):
+        ...
+
+    @cache
+    def __init__(self, **kwargs):
+        self.hand = "right"
+        self.simple = False
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+        self.set_parameters()
+        super().__init__()
+
     def make_nut_body(self, internal_thread_socket_radius) -> cq.Workplane:
 
         nut_body = (
@@ -612,6 +653,7 @@ class Screw:
     @property
     def shank(self):
         """ A cadquery Solid thread as defined by class attributes """
+        # pylint: disable=no-member
         return ExternalThread(
             major_diameter=self.thread_diameter,
             pitch=self.thread_pitch,
@@ -625,13 +667,15 @@ class Screw:
         """ Return a list of the standard screw sizes """
         if not hasattr(cls, "metric_parameters"):
             cls.set_parameters()
+        # pylint: disable=no-member
         return list(cls.metric_parameters.keys())
 
     @classmethod
     def imperial_sizes(cls) -> str:
         """ Return a list of the standard screw sizes """
-        if not hasattr(cls, "metric_parameters"):
+        if not hasattr(cls, "imperial_parameters"):
             cls.set_parameters()
+        # pylint: disable=no-member
         return list(cls.imperial_parameters.keys())
 
     @property
@@ -642,8 +686,8 @@ class Screw:
     @classmethod
     def set_parameters(cls):
         """ Create the class variables for the screw parameters """
-        cls.metric_parameters = {}  # Empty metric data to be replaced by child
-        cls.imperial_parameters = {}  # Empty imperial data to be replaced by child
+        # cls.metric_parameters = {}  # Empty metric data to be replaced by child
+        # cls.imperial_parameters = {}  # Empty imperial data to be replaced by child
 
     def __init__(self):
         """ Must be executed after __init__ in the child class where instance variables
@@ -675,8 +719,6 @@ class Screw:
                 )
             for key in screw_data.keys():
                 setattr(self, key.lower(), screw_data[key.title()])
-        if not hasattr(self, "hand"):
-            self.hand = "right"
         if not hasattr(self, "max_thread_length"):
             self.max_thread_length = length
         if not hasattr(self, "thread_length"):
@@ -984,6 +1026,7 @@ class SetScrew(Screw):
         """ Construct set screw shape """
 
         chamfer_size = self.thread_diameter / 4
+        # pylint: disable=no-member
         thread = ExternalThread(
             major_diameter=self.thread_diameter,
             pitch=self.thread_pitch,
@@ -1011,23 +1054,3 @@ class SetScrew(Screw):
         return core.union(
             thread.cq_object.translate((0, 0, -thread.length)), glue=True
         ).val()
-
-
-# nut = SquareNut(size="1/4-20", simple=True)
-# cq.exporters.export(nut.cq_object, "nut.step")
-# thread = InternalThread(major_diameter=0.2 * IN, pitch=IN / 20, length=0.25 * IN)
-# print(thread.h_parameter)
-# print(type(thread.cq_object))
-# cq.exporters.export(thread.cq_object, "thread.step")
-# SetScrew.set_parameters()
-# min_length = SetScrew.metric_parameters["M3-0.5"]["Socket_Depth"] * 1.5
-# screw = SetScrew(size="M3-0.5", length=min_length)
-# cq.exporters.export(screw.cq_object, "setscrew.step")
-# screw = SocketHeadCapScrew(size="M3-0.5", length=10 * MM)
-if "show_object" in locals():
-    show_object(thread.cq_object, name="thread")
-    # show_object(nut.cq_object, name="nut")
-    # show_object(internal, name="internal")
-    # show_object(external, name="external")
-    # show_object(threadGuide,name="threadGuide")
-
