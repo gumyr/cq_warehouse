@@ -397,7 +397,7 @@ Many mechanical designs will contain threaded fasteners of some kind, either in 
 - [ExternalThread](#externalthread) - a derived class providing threads on screws
 - [InternalThread](#internalthread) - a derived class providing threads on nuts
 
-Use of the base classes is only required by those wishing to create new types of nuts or screws. See [Extending the fastener sub-package](#Extending-the-fastener-sub-package) for guidance on how to easily add new sized or entirely new types of fasteners.
+Use of the base classes is only required by those wishing to create new types of nuts or screws. See [Extending the fastener sub-package](#Extending-the-fastener-sub-package) for guidance on how to easily add new sizes or entirely new types of fasteners.
 
  The following example creates a variety of different sized fasteners:
 ```python
@@ -579,7 +579,7 @@ Other build techniques, such as using the `cut()` method to remove an internal t
 ### ExternalThread
 ![ExternalThread](doc/externalthread.png)
 
-This derived class of Thread creates external thread object as are found on screws and bolts. The parameters are:
+This derived class of Thread creates an external thread object as found on screws and bolts. The parameters are:
 - `major_diameter` (float)
 - `pitch` (float)
 - `length` (float)
@@ -597,7 +597,7 @@ This class exposes instance variables for the input parameters as well as:
 ### InternalThread
 ![InternalThread](doc/internalthread.png)
 
-This derived class of Thread creates internal thread object as are found on nuts. These objects look like a washer with the thread cut into the inside of the object such that it can be efficiently included into another object by placing it into an appropriately sized hole. The parameters are:
+This derived class of Thread creates an internal thread object as found on nuts. This object look like a washer with the thread cut into the inside of the object such that it can be efficiently included into another object by placing it into an appropriately sized hole. The parameters are:
 - `major_diameter` (float)
 - `pitch` (float)
 - `length` (float)
