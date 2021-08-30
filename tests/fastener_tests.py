@@ -97,6 +97,8 @@ class TestInternalThread(BaseTest):
             major_diameter=0.1900 * IN, pitch=IN / 32, length=(1 / 4) * IN
         )
         self.assertTrue(thread.cq_object.isValid())
+        with self.assertRaises(ValueError):
+            InternalThread(major_diameter=5, pitch=1, length=5, hand="righty")
 
 
 class TestNutParent(BaseTest):
@@ -179,7 +181,7 @@ class TestScrewParent(BaseTest):
         self.assertGreater(len(HexBolt.imperial_sizes()), 0)
 
     def test_stepped_bolt(self):
-        head = HexBolt(size="M3-0.5", length=15 * MM).head
+        head = HexBolt(size="M3-0.5", length=15 * MM, simple=True).head
         shank = ExternalThread(
             major_diameter=3 * MM, pitch=0.5 * MM, length=5 * MM, simple=True
         ).make_shank(body_length=10 * MM, body_diameter=4 * MM)
@@ -228,6 +230,23 @@ class TestSocketHeadCapScrew(BaseTest):
                     SocketHeadCapScrew(size=size, length=5 * MM).cq_object.isValid()
                 )
 
+    def test_socket_head_cap_screw_thread_length(self):
+        """ Set the thread length parameter """
+        self.assertTrue(
+            SocketHeadCapScrew(
+                length=20,
+                head_diameter=10,
+                head_height=5,
+                thread_diameter=5,
+                thread_pitch=1,
+                thread_length=10,
+                socket_size=4,
+                socket_depth=2,
+                hand="left",
+                simple=True,
+            ).cq_object.isValid()
+        )
+
 
 class TestButtonHeadCapScrew(BaseTest):
     """ Test ButtonHeadCapScrew class functionality """
@@ -258,6 +277,7 @@ class TestSetScrew(BaseTest):
     def test_setscrew_validity(self):
         """ Simple validity check for all the stand sized setscrews """
 
+        self.assertIsNone(SetScrew(size="#4-40", length=5).make_head())
         self.assertIsNone(SetScrew(size="#4-40", length=5).head)
         self.assertIsNone(SetScrew(size="#4-40", length=5).shank)
 

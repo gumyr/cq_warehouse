@@ -385,19 +385,19 @@ callout returns a cadquery `Assembly` object.
 
 ## fastener sub-package
 Many mechanical designs will contain threaded fasteners of some kind, either in a threaded hole or threaded screws or bolts holding two or more parts together. The fastener sub-package provides a set of classes with which raw threads can be created such that they can be integrated into other parts as well as a set of classes that create many different types of nuts, screws or bolts. Here is a list of the classes provided:
-- [Nut](#nut) - the parent nut class
-- [HexNut](#hexnut) - a child class providing hexagonal nuts
-- [SquareNut](#squarenut) - a child class providing square nuts
-- [Screw](#screw) - the parent screw class
-- [SocketHeadCapScrew](#socketheadcapscrew) - a child class providing socket head cap screws
-- [ButtonHeadCapScrew](#buttonheadcapscrew) - a child class providing button head cap screws
-- [HexBolt](#hexbolt)- a child class providing hexagonal bolts
-- [SetScrew](#setscrew) - a child class providing setscrews
-- [Thread](#thread) - the parent thread class
-- [ExternalThread](#externalthread) - a child class providing threads on screws
-- [InternalThread](#internalthread) - a child class providing threads on nuts
+- [Nut](#nut) - the base nut class
+- [HexNut](#hexnut) - a derived class providing hexagonal nuts
+- [SquareNut](#squarenut) - a derived class providing square nuts
+- [Screw](#screw) - the base screw class
+- [SocketHeadCapScrew](#socketheadcapscrew) - a derived class providing socket head cap screws
+- [ButtonHeadCapScrew](#buttonheadcapscrew) - a derived class providing button head cap screws
+- [HexBolt](#hexbolt)- a derived class providing hexagonal bolts
+- [SetScrew](#setscrew) - a derived class providing setscrews
+- [Thread](#thread) - the base thread class
+- [ExternalThread](#externalthread) - a derived class providing threads on screws
+- [InternalThread](#internalthread) - a derived class providing threads on nuts
 
-Use of the parent classes is only required by those wishing to create new types of nuts or screws. See [Extending the fastener sub-package](#Extending-the-fastener-sub-package) for guidance on how to easily add new sized or entirely new types of fasteners.
+Use of the base classes is only required by those wishing to create new types of nuts or screws. See [Extending the fastener sub-package](#Extending-the-fastener-sub-package) for guidance on how to easily add new sized or entirely new types of fasteners.
 
  The following example creates a variety of different sized fasteners:
 ```python
@@ -412,8 +412,8 @@ capscrew = SocketHeadCapScrew(size="M3-0.5", length=10 * MM)
 ```
 Both metric and imperial sized standard fasteners are directly supported by the fastener sub-package. To display the available standard sizes use the `metric_sizes()` or `imperial_sizes()` methods as follows:
 ```python
-print(f"Stand metric hex nut sizes: {HexNut.metric_sizes()}")
-print(f"Stand imperial hex nut sizes: {HexNut.imperial_sizes()}")
+print(f"Standard metric hex nut sizes: {HexNut.metric_sizes()}")
+print(f"Standard imperial hex nut sizes: {HexNut.imperial_sizes()}")
 ```
 
 Threaded parts are complex for CAD systems to create and significantly increase the storage requirements thus making the system slow and difficult to use. To minimize these requirements all of the fastener classes have a `simple` boolean parameter that when `True` doesn't create actual threads at all. Such simple parts have the same overall dimensions and such that they can be used to check for fitment without dramatically impacting performance.
@@ -429,7 +429,7 @@ All of the fastener classes provide a `cq_object` instance variable which contai
 The following sections describe each of the provided classes.
 
 ### Nut
-As the parent class of all other nut classes it isn't intended for end users.
+As the base class of all other nut classes it isn't intended for end users.
 ### HexNut
 ![HexNut](doc/hexnut.png)
 
@@ -470,7 +470,7 @@ This class exposes instance variables for the detailed input parameters as well 
 - `cq_object` (cq.Solid) : cadquery Solid object
 
 ### Screw
-As the parent class of all other screw and bolt classes it isn't intended for end users.
+As the base class of all other screw and bolt classes it isn't intended for end users.
 ### SocketHeadCapScrew
 ![SocketHeadCapScrew](doc/socketheadcapscrew.png)
 
@@ -565,7 +565,7 @@ or
 This class exposes instance variables for the detailed input parameters as well as:
 - `cq_object` (cq.Solid) : cadquery Solid object
 ### Thread
-As the parent class of the other thread classes it isn't intended for end users. Both external and internal threads are ISO standard by default as shown in the following diagram (from https://en.wikipedia.org/wiki/ISO_metric_screw_thread):
+As the base class of the other thread classes it isn't intended for end users. Both external and internal threads are ISO standard by default as shown in the following diagram (from https://en.wikipedia.org/wiki/ISO_metric_screw_thread):
 ![ISO_and_UTS_Thread_Dimensions](https://upload.wikimedia.org/wikipedia/commons/4/4b/ISO_and_UTS_Thread_Dimensions.svg)
 
 All thread objects are complex and therefore can be difficult for the OCCT core to work with. To aid in this both the internal and external thread objects are created such that they can be combined with the `glue` option of the `union()` method, as such:
@@ -577,7 +577,7 @@ Other build techniques, such as using the `cut()` method to remove an internal t
 ### ExternalThread
 ![ExternalThread](doc/externalthread.png)
 
-This child class of Thread creates external thread object as are found on screws and bolts. The parameters are:
+This derived class of Thread creates external thread object as are found on screws and bolts. The parameters are:
 - `major_diameter` (float)
 - `pitch` (float)
 - `length` (float)
@@ -595,7 +595,7 @@ This class exposes instance variables for the input parameters as well as:
 ### InternalThread
 ![InternalThread](doc/internalthread.png)
 
-This child class of Thread creates internal thread object as are found on nuts. These objects look like a washer with the thread cut into the inside of the object such that it can be efficiently included into another object by placing it into an appropriately sized hole. The parameters are:
+This derived class of Thread creates internal thread object as are found on nuts. These objects look like a washer with the thread cut into the inside of the object such that it can be efficiently included into another object by placing it into an appropriately sized hole. The parameters are:
 - `major_diameter` (float)
 - `pitch` (float)
 - `length` (float)
@@ -612,7 +612,7 @@ This class exposes instance variables for the input parameters as well as:
 ### Extending the fastener sub-package
 The fastener sub-package has been designed to be extended in the following two ways:
 - **Alternate Sizes** - As mentioned previously, the data used to guide the creation of fastener objects is derived from `.csv` files found in the same place as the source code. One can add to set of standard sized fasteners by inserting appropriate data into the tables.
-- **New Fastener Types** - The parent/child class structure was designed to allow the creation of new fastener types/classes. In most cases a new screw can be created by creating the new parameter `.csv` file and the new head cadquery object.
+- **New Fastener Types** - The base/derived class structure was designed to allow the creation of new fastener types/classes. In most cases a new screw can be created by creating the new parameter `.csv` file and the new head cadquery object.
 ## extensions sub-package
 This python module provides extensions to the native cadquery code base. Hopefully future generations of cadquery will incorporate this or similar functionality.
 ### Assembly class extensions
