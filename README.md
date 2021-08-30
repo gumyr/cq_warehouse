@@ -418,6 +418,8 @@ print(f"Standard imperial hex nut sizes: {HexNut.imperial_sizes()}")
 
 Threaded parts are complex for CAD systems to create and significantly increase the storage requirements thus making the system slow and difficult to use. To minimize these requirements all of the fastener classes have a `simple` boolean parameter that when `True` doesn't create actual threads at all. Such simple parts have the same overall dimensions and such that they can be used to check for fitment without dramatically impacting performance.
 
+> **CQ-editor** :warning: Set the Preferences :arrow_right: 3D Viewer :arrow_right: Deviation parameter to 0.01 to avoid crashes due to memory over-consumption when working with threads
+
 The classes that generate actual fasteners provide two interfaces:
 1. An interface for standard sizes with a string `size` parameter to select a standard metric or imperial sized fastener. All `size` parameters are composed of the major diameter, a dash separator, and the thread pitch or TPI. Metric sizes start with capital M (e.g. 'M3-0.5') while imperial sizes can be either a number/fraction (e.g. '5/8-18') or a # followed by the gauge (e.g. '#8-32'). Once the fastener has been instantiated a set of instance variables will be created which contain all of the data used in its creation. These values can be used to orient the fastener in an assembly. Note that all standard sizes are parameterized with `.csv` files and are therefore easy to augment.
 2. An interface for custom sizes where each of the dimensions required to create the fastener is provided directly.
