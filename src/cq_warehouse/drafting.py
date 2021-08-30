@@ -30,9 +30,9 @@ license:
 from math import floor, log2, gcd, pi
 from typing import Union, Tuple, Literal, Optional, ClassVar, Any
 
-# pylint: disable=no-name-in-module
+"""# pylint: disable=no-name-in-module"""
 from pydantic import BaseModel, PrivateAttr, validator, validate_arguments
-from numpy import arange
+from numpy import arange, sign
 import cadquery as cq
 import cq_warehouse.extensions
 
@@ -545,9 +545,10 @@ class Draft(BaseModel):
             # Create radial extension lines
             ext_line = [
                 cq.Edge.makeLine(
-                    object_path.positionAt(i) + radial_directions[i * 2] * 1.5 * MM,
                     object_path.positionAt(i)
-                    + radial_directions[i * 2] * (offset + 3.0 * MM),
+                    + radial_directions[i * 2] * sign(offset) * 1.5 * MM,
+                    object_path.positionAt(i)
+                    + radial_directions[i * 2] * (offset + sign(offset) * 3.0 * MM),
                 )
                 for i in range(2)
             ]
@@ -561,8 +562,8 @@ class Draft(BaseModel):
             ext_line = [
                 (
                     cq.Workplane(dimension_plane)
-                    .moveTo(1.5 * MM, l)
-                    .lineTo(offset + 3 * MM, l)
+                    .moveTo(sign(offset) * 1.5 * MM, l)
+                    .lineTo(offset + sign(offset) * 3 * MM, l)
                 )
                 for l in [0, object_length]
             ]

@@ -23,6 +23,19 @@ or CAM systems.
     - [dimension_line](#dimension_line)
     - [extension_line](#extension_line)
     - [callout](#callout)
+  - [fastener sub-package](#fastener-sub-package)
+    - [Nut](#nut)
+    - [HexNut](#hexnut)
+    - [SquareNut](#squarenut)
+    - [Screw](#screw)
+    - [SocketHeadCapScrew](#socketheadcapscrew)
+    - [ButtonHeadCapScrew](#buttonheadcapscrew)
+    - [HexBolt](#hexbolt)
+    - [SetScrew](#setscrew)
+    - [Thread](#thread)
+    - [ExternalThread](#externalthread)
+    - [InternalThread](#internalthread)
+    - [Extending the fastener sub-package](#extending-the-fastener-sub-package)
   - [extensions sub-package](#extensions-sub-package)
     - [Assembly class extensions](#assembly-class-extensions)
       - [Translate](#translate)
@@ -46,6 +59,7 @@ The cq_warehouse package contains the following sub-packages:
 - **sprocket** : a parametric sprocket generator
 - **chain**  : a parametric chain generator
 - **drafting** : a set of methods used for documenting cadquery objects
+- **fastener** : a parametric threaded fastener generator
 - **extensions** : a set of enhancements to the core cadquery system
 
 ## sprocket sub-package
@@ -369,6 +383,238 @@ A text box with or without a tail pointing to another object used to provide ext
 
 callout returns a cadquery `Assembly` object.
 
+## fastener sub-package
+Many mechanical designs will contain threaded fasteners of some kind, either in a threaded hole or threaded screws or bolts holding two or more parts together. The fastener sub-package provides a set of classes with which raw threads can be created such that they can be integrated into other parts as well as a set of classes that create many different types of nuts, screws or bolts. Here is a list of the classes provided:
+- [Nut](#nut) - the base nut class
+- [HexNut](#hexnut) - a derived class providing hexagonal nuts
+- [SquareNut](#squarenut) - a derived class providing square nuts
+- [Screw](#screw) - the base screw class
+- [SocketHeadCapScrew](#socketheadcapscrew) - a derived class providing socket head cap screws
+- [ButtonHeadCapScrew](#buttonheadcapscrew) - a derived class providing button head cap screws
+- [HexBolt](#hexbolt)- a derived class providing hexagonal bolts
+- [SetScrew](#setscrew) - a derived class providing setscrews
+- [Thread](#thread) - the base thread class
+- [ExternalThread](#externalthread) - a derived class providing threads on screws
+- [InternalThread](#internalthread) - a derived class providing threads on nuts
+
+Use of the base classes is only required by those wishing to create new types of nuts or screws. See [Extending the fastener sub-package](#Extending-the-fastener-sub-package) for guidance on how to easily add new sizes or entirely new types of fasteners.
+
+ The following example creates a variety of different sized fasteners:
+```python
+import cadquery as cq
+from cq_warehouse.fastener import HexNut, SocketHeadCapScrew, SetScrew
+MM = 1
+IN = 25.4 * MM
+
+nut = HexNut(size="1/4-20")
+setscrew = SetScrew(size="#6-32", length=(1 / 4) * IN)
+capscrew = SocketHeadCapScrew(size="M3-0.5", length=10 * MM)
+```
+Both metric and imperial sized standard fasteners are directly supported by the fastener sub-package. To display the available standard sizes use the `metric_sizes()` or `imperial_sizes()` methods as follows:
+```python
+print(f"Standard metric hex nut sizes: {HexNut.metric_sizes()}")
+print(f"Standard imperial hex nut sizes: {HexNut.imperial_sizes()}")
+```
+
+Threaded parts are complex for CAD systems to create and significantly increase the storage requirements thus making the system slow and difficult to use. To minimize these requirements all of the fastener classes have a `simple` boolean parameter that when `True` doesn't create actual threads at all. Such simple parts have the same overall dimensions and such that they can be used to check for fitment without dramatically impacting performance.
+
+> **CQ-editor** :warning: Set the Preferences :arrow_right: 3D Viewer :arrow_right: Deviation parameter to 0.01 to avoid crashes due to memory over-consumption when working with threads
+
+The classes that generate actual fasteners provide two interfaces:
+1. An interface for standard sizes with a string `size` parameter to select a standard metric or imperial sized fastener. All `size` parameters are composed of the major diameter, a dash separator, and the thread pitch or TPI. Metric sizes start with capital M (e.g. 'M3-0.5') while imperial sizes can be either a number/fraction (e.g. '5/8-18') or a # followed by the gauge (e.g. '#8-32'). Once the fastener has been instantiated a set of instance variables will be created which contain all of the data used in its creation. These values can be used to orient the fastener in an assembly. Note that all standard sizes are parameterized with `.csv` files and are therefore easy to augment.
+2. An interface for custom sizes where each of the dimensions required to create the fastener is provided directly.
+
+All of the fasteners default to right-handed thread but each of them provide a `hand` sting parameter which can either be `"right"` or `"left"`.
+
+All of the fastener classes provide a `cq_object` instance variable which contains the cadquery Solid object.
+
+The following sections describe each of the provided classes.
+
+### Nut
+As the base class of all other nut classes it isn't intended for end users.
+### HexNut
+![HexNut](doc/hexnut.png)
+
+HexNut creates hexagonal nuts of either standard or custom sizes. Standard sizes are described by the 'imperial_hex_parameters.csv' or 'metric_hex_parameters.csv' files. The parameters are:
+- `size` (str) : standard sizes
+- `hand` (Literal["right", "left"] = "right") : thread direction
+- `simple` (bool = False) : simplify thread
+
+or
+- `width` (float) : width across the flat sections
+- `thread_diameter` (float) : major thread diameter
+- `thread_pitch` (float) : thread pitch (IN / TPI for imperial)
+- `thickness` (float) : maximum nut thickness
+- `hand` (Literal["right", "left"] = "right") : thread direction
+- `simple` (bool = False) : simplify thread
+
+This class exposes instance variables for the detailed input parameters as well as:
+- `cq_object` (cq.Solid) : cadquery Solid object
+
+
+### SquareNut
+![SquareNut](doc/squarenut.png)
+
+SquareNut creates square nuts of either standard or custom sizes. Standard sizes are described by the 'imperial_hex_parameters.csv' or 'metric_hex_parameters.csv' files as the width across the flat sections is the same as for hex nuts. The parameters are:
+- `size` (str) : standard sizes
+- `hand` (Literal["right", "left"] = "right") : thread direction
+- `simple` (bool = False) : simplify thread
+
+or
+- `width` (float) : width
+- `thread_diameter` (float) : major thread diameter
+- `thread_pitch` (float) : thread pitch (IN / TPI for imperial)
+- `thickness` (float) : maximum nut thickness
+- `hand` (Literal["right", "left"] = "right") : thread direction
+- `simple` (bool = False) : simplify thread
+
+This class exposes instance variables for the detailed input parameters as well as:
+- `cq_object` (cq.Solid) : cadquery Solid object
+
+### Screw
+As the base class of all other screw and bolt classes it isn't intended for end users.
+### SocketHeadCapScrew
+![SocketHeadCapScrew](doc/socketheadcapscrew.png)
+
+SocketHeadCapScrew creates socket head cap screws of either standard or custom sizes. Standard sizes are described by the 'imperial_socket_head_cap_screw_parameters.csv' or 'metric_socket_head_cap_screw_parameters.csv' files. The parameters are:
+- `size` (str) : standard sizes
+- `length` (float) : distance from base of head to tip of thread
+- `hand` (Literal["right", "left"] = "right") : thread direction
+- `simple` (bool = False) : simplify thread
+
+or
+- `length` (float) : distance from base of head to tip of thread
+- `head_diameter` (float) : maximum head diameter
+- `head_height` (float) : maximum head height (+Z direction)
+- `thread_diameter` (float) : major thread diameter
+- `thread_pitch` (float) : thread pitch (IN / TPI for imperial)
+- `thread_length` (float) : length of the threaded section
+- `socket_size` (float) : distance between flats within the socket
+- `socket_depth` (float) : socket depth
+- `hand` (Literal["right", "left"] = "right") : thread direction
+- `simple` (bool = False) : simplify thread
+
+This class exposes instance variables for the detailed input parameters as well as:
+- `cq_object` (cq.Solid) : cadquery Solid object
+- `head` (cq.Solid) : the screw head cadquery Solid object
+- `shank` (cq.Solid) : the shank cadquery Solid object
+### ButtonHeadCapScrew
+![ButtonHeadCapScrew](doc/buttonheadcapscrew.png)
+
+ButtonHeadCapScrew creates button head cap screws of either standard or custom sizes. Standard sizes are described by the 'imperial_button_head_cap_screw_parameters.csv' or 'metric_button_head_cap_screw_parameters.csv' files. The parameters are:
+- `size` (str) : standard sizes
+- `length` (float) : distance from base of head to tip of thread
+- `hand` (Literal["right", "left"] = "right") : thread direction
+- `simple` (bool = False) : simplify thread
+
+or
+- `length` (float) : distance from base of head to tip of thread
+- `head_diameter` (float) : maximum head diameter
+- `head_height` (float) : head height (+Z direction) without socket
+- `thread_diameter` (float) : major thread diameter
+- `thread_pitch` (float) : thread pitch (IN / TPI for imperial)
+- `thread_length` (float) : length of the threaded section
+- `socket_size` (float) : distance between flats within the socket
+- `socket_depth` (float) : socket depth
+- `hand` (Literal["right", "left"] = "right") : thread direction
+- `simple` (bool = False) : simplify thread
+
+This class exposes instance variables for the detailed input parameters as well as:
+- `cq_object` (cq.Solid) : cadquery Solid object
+- `head` (cq.Solid) : the screw head cadquery Solid object
+- `shank` (cq.Solid) : the shank cadquery Solid object
+### HexBolt
+![HexBolt](doc/hexbolt.png)
+
+HexBolt creates hexagonal bolts of either standard or custom sizes. Standard sizes are described by the 'imperial_hex_parameters.csv' or 'metric_hex_parameters.csv' files. The parameters are:
+- `size` (str) : standard sizes
+- `length` (float) : distance from base of head to tip of thread
+- `hand` (Literal["right", "left"] = "right") : thread direction
+- `simple` (bool = False) : simplify thread
+
+or
+- `length` (float) : distance from base of head to tip of thread
+- `head_width` (float) : width across the flat sections
+- `head_height` (float) : head height (+Z direction)
+- `thread_diameter` (float) : major thread diameter
+- `thread_pitch` (float) : thread pitch (IN / TPI for imperial)
+- `thread_length` (float) : length of the threaded section
+- `hand` (Literal["right", "left"] = "right") : thread direction
+- `simple` (bool = False) : simplify thread
+
+This class exposes instance variables for the detailed input parameters as well as:
+- `cq_object` (cq.Solid) : cadquery Solid object
+- `head` (cq.Solid) : the screw head cadquery Solid object
+- `shank` (cq.Solid) : the shank cadquery Solid object
+### SetScrew
+![SetScrew](doc/setscrew.png)
+
+SetScrew creates setscrews of either standard or custom sizes. Standard sizes are described by the 'imperial_set_screw_parameters.csv' or 'metric_set_screw_parameters.csv' files. The parameters are:
+- `size` (str) : standard sizes
+- `length` (float) : distance from base of head to tip of thread
+- `hand` (Literal["right", "left"] = "right") : thread direction
+- `simple` (bool = False) : simplify thread
+
+or
+- `length` (float) : distance from base of head to tip of thread
+- `thread_diameter` (float) : major thread diameter
+- `thread_pitch` (float) : thread pitch (IN / TPI for imperial)
+- `socket_size` (float) : distance between flats within the socket
+- `socket_depth` (float) : socket depth
+- `hand` (Literal["right", "left"] = "right") : thread direction
+- `simple` (bool = False) : simplify thread
+
+This class exposes instance variables for the detailed input parameters as well as:
+- `cq_object` (cq.Solid) : cadquery Solid object
+### Thread
+As the base class of the other thread classes it isn't intended for end users. Both external and internal threads are ISO standard by default as shown in the following diagram (from https://en.wikipedia.org/wiki/ISO_metric_screw_thread):
+![ISO_and_UTS_Thread_Dimensions](https://upload.wikimedia.org/wikipedia/commons/4/4b/ISO_and_UTS_Thread_Dimensions.svg)
+
+All thread objects are complex and therefore can be difficult for the OCCT core to work with. To aid in this both the internal and external thread objects are created such that they can be combined with the `glue` option of the `union()` method, as such:
+```python
+    ...
+    return self.head.union(self.shank, glue=True).val()
+```
+Other build techniques, such as using the `cut()` method to remove an internal thread from an object, often fails or takes an excessive amount of time.
+### ExternalThread
+![ExternalThread](doc/externalthread.png)
+
+This derived class of Thread creates an external thread object as found on screws and bolts. The parameters are:
+- `major_diameter` (float)
+- `pitch` (float)
+- `length` (float)
+- `hand` (Literal["right", "left"] = "right")
+- `hollow` (bool = False) : hollow out the center of the thread object to optimize inclusion of internal detail
+- `thread_angle` (Optional[float] = 60.0)
+- `simple` (bool = False) : simplify thread
+
+This class exposes instance variables for the input parameters as well as:
+- `h_parameter` (float) : the value of `h` as shown in the thread diagram
+- `min_radius` (float) : inside radius of the thread diagram
+- `thread_radius` (float) : thread radius of the thread diagram
+- `cq_object` (cq.Solid) : cadquery Solid object
+
+### InternalThread
+![InternalThread](doc/internalthread.png)
+
+This derived class of Thread creates an internal thread object as found on nuts. This object look like a washer with the thread cut into the inside of the object such that it can be efficiently included into another object by placing it into an appropriately sized hole. The parameters are:
+- `major_diameter` (float)
+- `pitch` (float)
+- `length` (float)
+- `hand` (Literal["right", "left"] = "right")
+- `thread_angle` (Optional[float] = 60.0)
+- `simple` (bool = False) : simplify thread
+
+This class exposes instance variables for the input parameters as well as:
+- `h_parameter` (float) : the value of `h` as shown in the thread diagram
+- `min_radius` (float) : inside radius of the thread diagram
+- `thread_radius` (float) : thread radius of the thread diagram
+- `internal_thread_socket_radius` (float) : the outer radius of the thread object - (e.g. the size to make the hole for it to fit into)
+- `cq_object` (cq.Solid) : cadquery Solid object
+### Extending the fastener sub-package
+The fastener sub-package has been designed to be extended in the following two ways:
+- **Alternate Sizes** - As mentioned previously, the data used to guide the creation of fastener objects is derived from `.csv` files found in the same place as the source code. One can add to set of standard sized fasteners by inserting appropriate data into the tables.
+- **New Fastener Types** - The base/derived class structure was designed to allow the creation of new fastener types/classes. In most cases a new screw can be created by creating the new parameter `.csv` file and the new head cadquery object.
 ## extensions sub-package
 This python module provides extensions to the native cadquery code base. Hopefully future generations of cadquery will incorporate this or similar functionality.
 ### Assembly class extensions

@@ -6,8 +6,10 @@ src/cq_warehouse/__init__.py
 src/cq_warehouse/chain.py
 src/cq_warehouse/drafting.py
 src/cq_warehouse/extensions.py
+src/cq_warehouse/fastener.py
 src/cq_warehouse/sprocket.py
 src/cq_warehouse.egg-info/PKG-INFO
 src/cq_warehouse.egg-info/SOURCES.txt
 src/cq_warehouse.egg-info/dependency_links.txt
+src/cq_warehouse.egg-info/requires.txt
 src/cq_warehouse.egg-info/top_level.txt
