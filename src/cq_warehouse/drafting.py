@@ -184,7 +184,7 @@ class Draft(BaseModel):
     ) -> str:
         """ Convert a raw number to a unit of measurement string based on the class settings """
 
-        def simplify_fraction(numerator: int, denominator: int) -> tuple[int, int]:
+        def simplify_fraction(numerator: int, denominator: int) -> Tuple[int, int]:
             """ Mathematically simplify a fraction given a numerator and demoninator """
             greatest_common_demoninator = gcd(numerator, denominator)
             return (
