@@ -28,7 +28,7 @@ license:
 
 """
 from math import floor, log2, gcd, pi
-from typing import Union, Tuple, Literal, Optional, ClassVar, Any
+from typing import Union, Tuple, Literal, Optional, ClassVar, Any, List
 
 """# pylint: disable=no-name-in-module"""
 from pydantic import BaseModel, PrivateAttr, validator, validate_arguments
@@ -41,7 +41,7 @@ INCH = 25.4 * MM
 
 VectorLike = Union[Tuple[float, float, float], cq.Vector]
 PathDescriptor = Union[
-    cq.Wire, cq.Edge, list[Union[cq.Vector, cq.Vertex, Tuple[float, float, float]]],
+    cq.Wire, cq.Edge, List[Union[cq.Vector, cq.Vertex, Tuple[float, float, float]]],
 ]
 PointDescriptor = Union[cq.Vector, cq.Vertex, Tuple[float, float, float]]
 
