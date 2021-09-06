@@ -28,13 +28,14 @@ license:
 
 """
 from abc import ABC, abstractmethod
-from typing import Literal, Tuple, Optional, overload, List
+from typing import Literal, Tuple, Optional, overload, List, TypeVar, cast, Callable
 from math import sin, cos, tan, radians, pi, degrees
 from functools import cache
 import csv
 import importlib.resources as pkg_resources
 import cadquery as cq
 import cq_warehouse
+from jedi.inference import value
 
 MM = 1
 IN = 25.4 * MM
@@ -109,22 +110,152 @@ def metric_str_to_float(measure: str) -> float:
 
 
 def evaluate_parameter_dict(
-    parameters: dict, units: Literal["metric", "imperial"] = "metric"
+    parameters: dict,
+    units: Literal["metric", "imperial"] = "metric",
+    exclusions: Optional[List[str]] = None,
 ) -> dict:
     """ Convert string values in a dict of dict structure to floats based on provided units """
 
     measurements = {}
     for key, data in parameters.items():
-        if units == "metric":
-            measurements[key] = {
-                params: metric_str_to_float(value) for params, value in data.items()
-            }
-        else:
-            measurements[key] = {
-                params: imperial_str_to_float(value) for params, value in data.items()
-            }
+        parameters = {}
+        for params, value in data.items():
+            if exclusions is not None and params in exclusions:
+                parameters[params] = value
+            elif units == "metric":
+                parameters[params] = metric_str_to_float(value)
+            else:
+                parameters[params] = imperial_str_to_float(value)
+        measurements[key] = parameters
 
     return measurements
+
+
+def lookup_drill_diameters(drill_hole_sizes: dict) -> dict:
+    """ Return a dict of dict of drill size to drill diameter """
+    lettered_drill_sizes = {
+        "A": 0.234 * IN,
+        "B": 0.238 * IN,
+        "C": 0.242 * IN,
+        "D": 0.246 * IN,
+        "E": 0.250 * IN,
+        "F": 0.257 * IN,
+        "G": 0.261 * IN,
+        "H": 0.266 * IN,
+        "I": 0.272 * IN,
+        "J": 0.277 * IN,
+        "K": 0.281 * IN,
+        "L": 0.290 * IN,
+        "M": 0.295 * IN,
+        "N": 0.302 * IN,
+        "O": 0.316 * IN,
+        "P": 0.323 * IN,
+        "Q": 0.332 * IN,
+        "R": 0.339 * IN,
+        "S": 0.348 * IN,
+        "T": 0.358 * IN,
+        "U": 0.368 * IN,
+        "V": 0.377 * IN,
+        "W": 0.386 * IN,
+        "X": 0.397 * IN,
+        "Y": 0.404 * IN,
+        "Z": 0.413 * IN,
+    }
+    numbered_drill_sizes = {
+        "#1": 0.228 * IN,
+        "#2": 0.221 * IN,
+        "#3": 0.213 * IN,
+        "#4": 0.209 * IN,
+        "#5": 0.205 * IN,
+        "#6": 0.204 * IN,
+        "#7": 0.201 * IN,
+        "#8": 0.199 * IN,
+        "#9": 0.196 * IN,
+        "#10": 0.193 * IN,
+        "#11": 0.191 * IN,
+        "#12": 0.189 * IN,
+        "#13": 0.185 * IN,
+        "#14": 0.182 * IN,
+        "#15": 0.18 * IN,
+        "#16": 0.177 * IN,
+        "#17": 0.173 * IN,
+        "#18": 0.17 * IN,
+        "#19": 0.166 * IN,
+        "#20": 0.161 * IN,
+        "#21": 0.159 * IN,
+        "#22": 0.157 * IN,
+        "#23": 0.154 * IN,
+        "#24": 0.152 * IN,
+        "#25": 0.15 * IN,
+        "#26": 0.147 * IN,
+        "#27": 0.144 * IN,
+        "#28": 0.14 * IN,
+        "#29": 0.136 * IN,
+        "#30": 0.1285 * IN,
+        "#31": 0.12 * IN,
+        "#32": 0.116 * IN,
+        "#33": 0.113 * IN,
+        "#34": 0.111 * IN,
+        "#35": 0.11 * IN,
+        "#36": 0.1065 * IN,
+        "#37": 0.104 * IN,
+        "#38": 0.1015 * IN,
+        "#39": 0.0995 * IN,
+        "#40": 0.098 * IN,
+        "#41": 0.096 * IN,
+        "#42": 0.0935 * IN,
+        "#43": 0.089 * IN,
+        "#44": 0.086 * IN,
+        "#45": 0.082 * IN,
+        "#46": 0.081 * IN,
+        "#47": 0.0785 * IN,
+        "#48": 0.076 * IN,
+        "#49": 0.073 * IN,
+        "#50": 0.07 * IN,
+        "#51": 0.067 * IN,
+        "#52": 0.0635 * IN,
+        "#53": 0.0595 * IN,
+        "#54": 0.055 * IN,
+        "#55": 0.052 * IN,
+        "#56": 0.0465 * IN,
+        "#57": 0.043 * IN,
+        "#58": 0.042 * IN,
+        "#59": 0.041 * IN,
+        "#60": 0.04 * IN,
+        "#61": 0.039 * IN,
+        "#62": 0.038 * IN,
+        "#63": 0.037 * IN,
+        "#64": 0.036 * IN,
+        "#65": 0.035 * IN,
+        "#66": 0.033 * IN,
+        "#67": 0.032 * IN,
+        "#68": 0.031 * IN,
+        "#69": 0.029 * IN,
+        "#70": 0.028 * IN,
+        "#71": 0.026 * IN,
+        "#72": 0.025 * IN,
+        "#73": 0.024 * IN,
+        "#74": 0.0225 * IN,
+        "#75": 0.021 * IN,
+        "#76": 0.02 * IN,
+        "#77": 0.018 * IN,
+        "#78": 0.016 * IN,
+        "#79": 0.0145 * IN,
+        "#80": 0.0135 * IN,
+    }
+
+    drill_hole_diameters = {}
+    for size, drill_data in drill_hole_sizes.items():
+        hole_data = {}
+        for fit, drill in drill_data.items():
+            if drill in numbered_drill_sizes.keys():
+                hole_data[fit] = numbered_drill_sizes[drill]
+            elif drill in lettered_drill_sizes.keys():
+                hole_data[fit] = lettered_drill_sizes[drill]
+            else:
+                hole_data[fit] = imperial_str_to_float(drill)
+        drill_hole_diameters[size] = hole_data
+    return drill_hole_diameters
 
 
 class _ThreadOuterEdgeSelector(cq.Selector):
@@ -665,6 +796,84 @@ class SquareNut(Nut):
 class Screw(ABC):
     """ Base class for a set of threaded screws or bolts """
 
+    # Read clearance and tap hole dimesions tables
+    metric_hole_parameters = evaluate_parameter_dict(
+        read_fastener_parameters_from_csv("metric_hole_parameters.csv"), units="metric",
+    )
+    imperial_hole_text = read_fastener_parameters_from_csv(
+        "imperial_hole_parameters.csv"
+    )
+
+    # Close, Medium, Loose
+    metric_clearance_hole_data = read_fastener_parameters_from_csv(
+        "metric_clearance_hole_sizes.csv"
+    )
+    # Soft (Aluminum, Brass, & Plastics) or Hard (Steel, Stainless, & Iron)
+    metric_tap_hole_data = read_fastener_parameters_from_csv(
+        "metric_tap_hole_sizes.csv"
+    )
+
+    imperial_clearance_hole_drill_sizes = read_fastener_parameters_from_csv(
+        "imperial_clearance_hole_sizes.csv"
+    )
+    imperial_tap_hole_drill_sizes = read_fastener_parameters_from_csv(
+        "imperial_tap_hole_sizes.csv"
+    )
+    imperial_clearance_hole_data = lookup_drill_diameters(
+        imperial_clearance_hole_drill_sizes
+    )
+    imperial_tap_hole_data = lookup_drill_diameters(imperial_tap_hole_drill_sizes)
+
+    @property
+    def tap_drill_sizes(self):
+        """ A dictionary of drill sizes for tapped holes """
+        if not hasattr(self, "size"):
+            raise ValueError("Screw is non standard size")
+        if self.size[0] == "M":
+            return self.metric_tap_hole_data[self.size]
+        else:
+            return self.imperial_tap_hole_drill_sizes[self.size]
+
+    @property
+    def tap_hole_diameters(self):
+        """ A dictionary of drill diameters for tapped holes """
+        if not hasattr(self, "size"):
+            raise ValueError("Screw is non standard size")
+        if self.size[0] == "M":
+            return self.metric_tap_hole_data[self.size]
+        else:
+            return self.imperial_tap_hole_data[self.size]
+
+    @property
+    def clearance_drill_sizes(self):
+        """ A dictionary of drill sizes for clearance holes """
+        try:
+            thread_size = self.size.split("-")[0]
+        except:
+            raise ValueError("Screw is non standard size")
+        if self.size[0] == "M":
+            return self.metric_clearance_hole_data[thread_size]
+        else:
+            return self.imperial_clearance_hole_drill_sizes[thread_size]
+
+    @property
+    def clearance_hole_diameters(self):
+        """ A dictionary of drill diameters for clearance holes """
+        try:
+            thread_size = self.size.split("-")[0]
+        except:
+            raise ValueError("Screw is non standard size")
+        if self.size[0] == "M":
+            return self.metric_clearance_hole_data[thread_size]
+        else:
+            return self.imperial_clearance_hole_data[thread_size]
+
+    # @property
+    # @abstractmethod
+    # def length(self):
+    #     """ Each derived class must provide a length instance variable """
+    #     return NotImplementedError
+
     @property
     def head(self):
         """ A cadquery Solid thread as defined by class attributes """
@@ -1053,3 +1262,134 @@ class SetScrew(Screw):
     def make_head(self):
         """ There is no head on a setscrew """
         return None
+
+
+T = TypeVar("T", bound="Workplane")
+
+
+def _addEach(
+    self: T,
+    fcn: Callable[[cq.Location], cq.Shape],
+    useLocalCoords: bool = False,
+    clean: bool = True,
+) -> T:
+    """
+    Evaluates the provided function at each point on the stack (ie, eachpoint)
+    and then cuts the result from the context solid.
+    :param fcn: a function suitable for use in the eachpoint method: ie, that accepts a vector
+    :param useLocalCoords: same as for :py:meth:`eachpoint`
+    :param boolean clean: call :py:meth:`clean` afterwards to have a clean shape
+    :raises ValueError: if no solids or compounds are found in the stack or parent chain
+    :return: a CQ object that contains the resulting solid
+    """
+    ctxSolid = self.findSolid()
+
+    # will contain all of the counterbores as a single compound
+    results = cast(List[cq.Shape], self.eachpoint(fcn, useLocalCoords).vals())
+
+    s = ctxSolid.fuse(*results)
+
+    if clean:
+        s = s.clean()
+
+    return self.newObject([s])
+
+
+cq.Workplane.addEach = _addEach
+
+
+def _clearanceHole(
+    self: T,
+    screw: Screw,
+    fit: Optional[Literal["Close", "Medium", "Loose"]] = "Medium",
+    extraDepth: Optional[float] = 0,
+    counterSunk: Optional[bool] = True,
+    baseAssembly: Optional[cq.Assembly] = None,
+    clean: Optional[bool] = True,
+) -> T:
+    """
+    Makes a counterbore clearance hole for the given screw for each item on the stack.
+    The surface of the hole is at the current workplane.
+    """
+
+    if self.objects is None or not all(isinstance(o, cq.Vertex) for o in self.objects):
+        raise RuntimeError("No valid Vertex objects on stack to locate hole")
+
+    try:
+        clearance_hole_diameter = screw.clearance_hole_diameters[fit]
+    except KeyError:
+        raise ValueError(
+            f"fit must be one of {list(screw.clearance_hole_diameters.keys())} not {fit}"
+        )
+
+    bore_direction = cq.Vector(0, 0, -1)
+    origin = cq.Vector(0, 0, 0)
+    clearance = clearance_hole_diameter - screw.thread_diameter
+    shank_hole = cq.Solid.makeCylinder(
+        radius=clearance_hole_diameter / 2.0,
+        height=screw.length + extraDepth,
+        pnt=origin,
+        dir=bore_direction,
+    )
+    if counterSunk:
+        head_offset = screw.head_height
+        head_hole = cq.Solid.makeCylinder(
+            radius=(screw.head_diameter + clearance) / 2,
+            height=screw.head_height,
+            pnt=origin,
+            dir=bore_direction,
+        )
+        screw_hole = head_hole.fuse(shank_hole.translate(bore_direction * head_offset))
+    else:
+        head_offset = 0
+        screw_hole = shank_hole
+
+    # Make holes in the stack solid object
+    modified_object = self.cutEach(lambda loc: screw_hole.moved(loc), True, clean)
+
+    # Record the location of each hole for use in the assembly
+    hole_locations = [
+        cq.Location(self.plane, cq.Vector(o.toTuple())) for o in self.objects
+    ]
+
+    # Add screws to the base assembly if it was provided
+    if baseAssembly is not None:
+        for hole_loc in hole_locations:
+            baseAssembly.add(
+                screw.cq_object,
+                loc=hole_loc * cq.Location(bore_direction * head_offset),
+            )
+
+    return modified_object
+
+
+cq.Workplane.clearanceHole = _clearanceHole
+
+base_assembly = cq.Assembly(name="part_number_1")
+cap_screw = SocketHeadCapScrew(size="#8-32", length=(1 / 2) * IN)
+result = (
+    cq.Workplane(cq.Plane.XY())
+    .box(80, 40, 10)
+    .faces(">X")
+    .workplane()
+    .moveTo(-10, 0)
+    .lineTo(10, 0, forConstruction=True)
+    .vertices()
+    .clearanceHole(
+        screw=cap_screw,
+        fit="Close",
+        counterSunk=True,
+        extraDepth=0.01 * IN,
+        baseAssembly=base_assembly,
+        clean=False,
+    )
+)
+print(cap_screw.clearance_drill_sizes)
+print(cap_screw.clearance_hole_diameters)
+print(cap_screw.tap_drill_sizes)
+print(cap_screw.tap_hole_diameters)
+
+if "show_object" in locals():
+    show_object(result, name="base object")
+    show_object(base_assembly, name="base assembly")
+

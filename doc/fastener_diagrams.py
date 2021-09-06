@@ -51,9 +51,12 @@ from cq_warehouse.fastener import (
 MM = 1
 IN = 25.4 * MM
 
-hex_nut = HexNut(size="#10-32").cq_object
-square_nut = SquareNut(size="M8-1.25").cq_object
-socket_head_cap_screw = SocketHeadCapScrew(size="M4-0.7", length=10 * MM).cq_object
+socket_head_cap_screw = SocketHeadCapScrew(size="M4-0.7", length=10 * MM)
+print(socket_head_cap_screw.__dict__.items())
+
+exit()
+# hex_nut = HexNut(size="#10-32").cq_object
+# square_nut = SquareNut(size="M8-1.25").cq_object
 button_head_cap_screw = ButtonHeadCapScrew(size="M3-0.5", length=10 * MM).cq_object
 setscrew = SetScrew(size="#6-32", length=(1 / 4) * IN).cq_object
 hex_bolt = HexBolt(size="M5-0.8", length=10 * MM).cq_object
