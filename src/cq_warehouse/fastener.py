@@ -133,126 +133,23 @@ def evaluate_parameter_dict(
 
 def lookup_drill_diameters(drill_hole_sizes: dict) -> dict:
     """ Return a dict of dict of drill size to drill diameter """
-    lettered_drill_sizes = {
-        "A": 0.234 * IN,
-        "B": 0.238 * IN,
-        "C": 0.242 * IN,
-        "D": 0.246 * IN,
-        "E": 0.250 * IN,
-        "F": 0.257 * IN,
-        "G": 0.261 * IN,
-        "H": 0.266 * IN,
-        "I": 0.272 * IN,
-        "J": 0.277 * IN,
-        "K": 0.281 * IN,
-        "L": 0.290 * IN,
-        "M": 0.295 * IN,
-        "N": 0.302 * IN,
-        "O": 0.316 * IN,
-        "P": 0.323 * IN,
-        "Q": 0.332 * IN,
-        "R": 0.339 * IN,
-        "S": 0.348 * IN,
-        "T": 0.358 * IN,
-        "U": 0.368 * IN,
-        "V": 0.377 * IN,
-        "W": 0.386 * IN,
-        "X": 0.397 * IN,
-        "Y": 0.404 * IN,
-        "Z": 0.413 * IN,
-    }
-    numbered_drill_sizes = {
-        "#1": 0.228 * IN,
-        "#2": 0.221 * IN,
-        "#3": 0.213 * IN,
-        "#4": 0.209 * IN,
-        "#5": 0.205 * IN,
-        "#6": 0.204 * IN,
-        "#7": 0.201 * IN,
-        "#8": 0.199 * IN,
-        "#9": 0.196 * IN,
-        "#10": 0.193 * IN,
-        "#11": 0.191 * IN,
-        "#12": 0.189 * IN,
-        "#13": 0.185 * IN,
-        "#14": 0.182 * IN,
-        "#15": 0.18 * IN,
-        "#16": 0.177 * IN,
-        "#17": 0.173 * IN,
-        "#18": 0.17 * IN,
-        "#19": 0.166 * IN,
-        "#20": 0.161 * IN,
-        "#21": 0.159 * IN,
-        "#22": 0.157 * IN,
-        "#23": 0.154 * IN,
-        "#24": 0.152 * IN,
-        "#25": 0.15 * IN,
-        "#26": 0.147 * IN,
-        "#27": 0.144 * IN,
-        "#28": 0.14 * IN,
-        "#29": 0.136 * IN,
-        "#30": 0.1285 * IN,
-        "#31": 0.12 * IN,
-        "#32": 0.116 * IN,
-        "#33": 0.113 * IN,
-        "#34": 0.111 * IN,
-        "#35": 0.11 * IN,
-        "#36": 0.1065 * IN,
-        "#37": 0.104 * IN,
-        "#38": 0.1015 * IN,
-        "#39": 0.0995 * IN,
-        "#40": 0.098 * IN,
-        "#41": 0.096 * IN,
-        "#42": 0.0935 * IN,
-        "#43": 0.089 * IN,
-        "#44": 0.086 * IN,
-        "#45": 0.082 * IN,
-        "#46": 0.081 * IN,
-        "#47": 0.0785 * IN,
-        "#48": 0.076 * IN,
-        "#49": 0.073 * IN,
-        "#50": 0.07 * IN,
-        "#51": 0.067 * IN,
-        "#52": 0.0635 * IN,
-        "#53": 0.0595 * IN,
-        "#54": 0.055 * IN,
-        "#55": 0.052 * IN,
-        "#56": 0.0465 * IN,
-        "#57": 0.043 * IN,
-        "#58": 0.042 * IN,
-        "#59": 0.041 * IN,
-        "#60": 0.04 * IN,
-        "#61": 0.039 * IN,
-        "#62": 0.038 * IN,
-        "#63": 0.037 * IN,
-        "#64": 0.036 * IN,
-        "#65": 0.035 * IN,
-        "#66": 0.033 * IN,
-        "#67": 0.032 * IN,
-        "#68": 0.031 * IN,
-        "#69": 0.029 * IN,
-        "#70": 0.028 * IN,
-        "#71": 0.026 * IN,
-        "#72": 0.025 * IN,
-        "#73": 0.024 * IN,
-        "#74": 0.0225 * IN,
-        "#75": 0.021 * IN,
-        "#76": 0.02 * IN,
-        "#77": 0.018 * IN,
-        "#78": 0.016 * IN,
-        "#79": 0.0145 * IN,
-        "#80": 0.0135 * IN,
-    }
 
+    # Read the drill size table and build a drill_size dictionary
+    drill_sizes = {}
+    with open("drill_sizes.csv", newline="") as csvfile:
+        reader = csv.DictReader(csvfile)
+        fieldnames = reader.fieldnames
+        for row in reader:
+            drill_sizes[row[fieldnames[0]]] = float(row[fieldnames[1]]) * IN
+
+    #  Build a dictionary of hole diameters for these hole sizes
     drill_hole_diameters = {}
     for size, drill_data in drill_hole_sizes.items():
         hole_data = {}
         for fit, drill in drill_data.items():
-            if drill in numbered_drill_sizes.keys():
-                hole_data[fit] = numbered_drill_sizes[drill]
-            elif drill in lettered_drill_sizes.keys():
-                hole_data[fit] = lettered_drill_sizes[drill]
-            else:
+            try:
+                hole_data[fit] = drill_sizes[drill] * IN
+            except KeyError:
                 hole_data[fit] = imperial_str_to_float(drill)
         drill_hole_diameters[size] = hole_data
     return drill_hole_diameters
@@ -1344,9 +1241,6 @@ def _clearanceHole(
         head_offset = 0
         screw_hole = shank_hole
 
-    # Make holes in the stack solid object
-    modified_object = self.cutEach(lambda loc: screw_hole.moved(loc), True, clean)
-
     # Record the location of each hole for use in the assembly
     hole_locations = [
         cq.Location(self.plane, cq.Vector(o.toTuple())) for o in self.objects
@@ -1360,7 +1254,8 @@ def _clearanceHole(
                 loc=hole_loc * cq.Location(bore_direction * head_offset),
             )
 
-    return modified_object
+    # Make holes in the stack solid object
+    return self.cutEach(lambda loc: screw_hole.moved(loc), True, clean)
 
 
 cq.Workplane.clearanceHole = _clearanceHole
@@ -1370,6 +1265,7 @@ cap_screw = SocketHeadCapScrew(size="#8-32", length=(1 / 2) * IN)
 result = (
     cq.Workplane(cq.Plane.XY())
     .box(80, 40, 10)
+    .tag("box")
     .faces(">X")
     .workplane()
     .moveTo(-10, 0)
@@ -1383,7 +1279,14 @@ result = (
         baseAssembly=base_assembly,
         clean=False,
     )
+    # .hole(5)
+    .faces(tag="box")
+    .faces(">Z")
+    .fillet(1)
 )
+cq.Workplane.hole
+
+base_assembly.add(result, name="plate")
 print(cap_screw.clearance_drill_sizes)
 print(cap_screw.clearance_hole_diameters)
 print(cap_screw.tap_drill_sizes)
