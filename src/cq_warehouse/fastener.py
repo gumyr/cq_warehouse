@@ -134,7 +134,7 @@ def evaluate_parameter_dict(
 def lookup_drill_diameters(drill_hole_sizes: dict) -> dict:
     """ Return a dict of dict of drill size to drill diameter """
 
-    # Read the drill size table and build a drill_size dictionary
+    # Read the drill size csv file and build a drill_size dictionary (Ah, the imperial system)
     drill_sizes = {}
     with open("drill_sizes.csv", newline="") as csvfile:
         reader = csv.DictReader(csvfile)
