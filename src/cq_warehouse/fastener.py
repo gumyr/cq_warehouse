@@ -1139,8 +1139,70 @@ class Screw(ABC):
             )
         return head
 
+    def default_head_recess(self) -> Tuple[cq.Workplane, float, float]:
+        """ Return the plan of the recess, its depth and taper """
+
+        recess_plan = None
+        # Slot Recess
+        try:
+            (dk, n, t) = (self.screw_data[p] for p in ["dk", "n", "t"])
+            recess_plan = cq.Workplane("XY").rect(dk, n)
+            recess_depth = t
+            recess_taper = 0
+        except KeyError:
+            pass
+        # Hex Recess
+        try:
+            (s, t) = (self.screw_data[p] for p in ["s", "t"])
+            recess_plan = hex_recess(s)
+            recess_depth = t
+            recess_taper = 0
+        except KeyError:
+            pass
+
+        # Philips, Torx or Roberston Recess
+        try:
+            recess = self.screw_data["recess"]
+            recess = str(recess).upper()
+            if recess in ["PH0", "PH1", "PH2", "PH3", "PH4"]:
+                (recess_plan, recess_depth) = cross_recess(recess)
+                recess_taper = 30
+            elif recess in [
+                "T6",
+                "T8",
+                "T10",
+                "T15",
+                "T20",
+                "T25",
+                "T30",
+                "T40",
+                "T45",
+                "T50",
+                "T55",
+                "T60",
+                "T70",
+                "T80",
+                "T90",
+                "T100",
+            ]:
+                (recess_plan, recess_depth) = hexalobular_recess(recess)
+                recess_taper = 0
+            elif recess in ["R00", "R0", "R1", "R2", "R3"]:
+                (recess_plan, recess_depth) = square_recess(recess)
+                recess_taper = 0
+        except KeyError:
+            pass
+
+        if recess_plan is None:
+            raise ValueError(f"Recess data missing from screw_data{self.screw_data}")
+
+        return (recess_plan, recess_depth, recess_taper)
+
 
 class ButtonHeadScrew(Screw):
+    """
+    iso7380_1 - Hexagon socket button head screws
+    """
 
     fastener_data = read_fastener_parameters_from_csv("button_head_parameters.csv")
 
@@ -1157,16 +1219,13 @@ class ButtonHeadScrew(Screw):
         )
         return profile
 
-    def head_recess(self) -> Tuple[cq.Workplane, float, float]:
-        """ Return the plan of the recess, its depth and taper """
-        if self.screw_type == "iso7380_1":
-            recess_plan = hex_recess(self.screw_data["s"])
-            recess_depth = self.screw_data["t"]
-            recess_taper = 0
-        return (recess_plan, recess_depth, recess_taper)
+    head_recess = Screw.default_head_recess
 
 
 class ButtonHeadWithCollarScrew(Screw):
+    """
+    iso7380_2 - Hexagon socket button head screws with collar
+    """
 
     fastener_data = read_fastener_parameters_from_csv(
         "button_head_with_collar_parameters.csv"
@@ -1188,18 +1247,111 @@ class ButtonHeadWithCollarScrew(Screw):
             .close()
         )
         vertices = profile.toPending().vertices(">X").vals()
-        return profile.fillet2D(c / 2, vertices)
+        return profile.fillet2D(0.45 * c, vertices)
 
-    def head_recess(self) -> Tuple[cq.Workplane, float, float]:
-        """ Return the plan of the recess, its depth and taper """
-        if self.screw_type == "iso7380_2":
-            recess_plan = hex_recess(self.screw_data["s"])
-            recess_depth = self.screw_data["t"]
-            recess_taper = 0
-        return (recess_plan, recess_depth, recess_taper)
+    head_recess = Screw.default_head_recess
+
+
+class ChamferedHexHeadScrew(Screw):
+    """
+    iso4014 - Hexagon head bolt
+    iso4017 - Hexagon head screws
+    """
+
+    fastener_data = read_fastener_parameters_from_csv(
+        "chamfered_hex_head_parameters.csv"
+    )
+
+    def head_profile(self):
+        """ Create 2D profile of hex head screws """
+        (k, s) = (self.screw_data[p] for p in ["k", "s"])
+        e = polygon_diagonal(s, 6)
+        # Chamfer angle must be between 15 and 30 degrees
+        cs = (e - s) * tan(radians(15)) / 2
+        profile = (
+            cq.Workplane("XZ")
+            .hLineTo(e / 2)
+            .vLineTo(k - cs)
+            .lineTo(s / 2, k)
+            .hLineTo(0)
+            .close()
+        )
+        return profile
+
+    def head_plan(self) -> cq.Workplane:
+        """ Create a hexagon solid """
+        return cq.Workplane("XY").polygon(6, polygon_diagonal(self.screw_data["s"]))
+
+
+class ChamferedHexHeadWithFlangeScrew(Screw):
+    """
+    en1662 - Hexagon bolts with flange small series
+    en1665 - Hexagon head bolts with flange
+    """
+
+    fastener_data = read_fastener_parameters_from_csv(
+        "chamfered_hex_head_with_flange_parameters.csv"
+    )
+
+    head_profile = ChamferedHexHeadScrew.head_profile
+    head_plan = ChamferedHexHeadScrew.head_plan
+
+    # def head_plan(self) -> cq.Workplane:
+    #     """ Create a hexagon solid """
+    #     return cq.Workplane("XY").polygon(6, polygon_diagonal(self.screw_data["s"]))
+
+    def flange_profile(self):
+        """ Flange for Hexagon Bolts """
+        (dc, c) = (self.screw_data[p] for p in ["dc", "c"])
+        flange_angle = 25
+        tangent_point = cq.Vector(
+            (c / 2) * cos(radians(90 - flange_angle)),
+            (c / 2) * sin(radians(90 - flange_angle)),
+        ) + cq.Vector((dc - c) / 2, c / 2)
+        profile = (
+            cq.Workplane("XZ")
+            .hLineTo(dc / 2 - c / 2)
+            .radiusArc(tangent_point, -c / 2)
+            .polarLine(dc / 2 - c / 2, 180 - flange_angle)
+            .hLineTo(0)
+            .close()
+        )
+        return profile
+
+
+class CheeseHeadScrew(Screw):
+    """
+    iso1207 - Slotted cheese head screws
+    iso7048 - Cross-recessed cheese head screws
+    iso14580 - Hexalobular socket cheese head screws
+    """
+
+    fastener_data = read_fastener_parameters_from_csv("cheese_head_parameters.csv")
+
+    def head_profile(self):
+        """ cheese head screws """
+        (k, dk) = (self.screw_data[p] for p in ["k", "dk"])
+        profile = (
+            cq.Workplane("XZ")
+            .hLineTo(dk / 2)
+            .polarLine(k / cos(degrees(5)), 5 - 90)
+            .hLineTo(0)
+            .close()
+        )
+        vertices = profile.toPending().edges(">Z").vertices(">X").vals()
+        return profile.fillet2D(k * 0.25, vertices)
+
+    head_recess = Screw.default_head_recess
 
 
 class CounterSunkScrew(Screw):
+    """
+    iso2009 - Slotted countersunk head screws
+    iso7046 - Cross recessed countersunk flat head screws
+    iso10642 - Hexagon socket countersunk head cap screws
+    iso14581 - Hexalobular socket countersunk flat head screws
+    iso14582 - Hexalobular socket countersunk flat head screws, high head
+    """
 
     fastener_data = read_fastener_parameters_from_csv("countersunk_head_parameters.csv")
 
@@ -1217,25 +1369,115 @@ class CounterSunkScrew(Screw):
         vertices = profile.toPending().edges(">Z").vertices(">X").vals()
         return profile.fillet2D(k * 0.075, vertices)
 
-    def head_recess(self) -> Tuple[cq.Workplane, float, float]:
-        """ Return the plan of the recess, its depth and taper """
-        if self.screw_type == "iso2009":
-            recess_plan = cq.Workplane("XY").rect(
-                self.screw_data["dk"], self.screw_data["n"]
+    head_recess = Screw.default_head_recess
+
+
+class PanHeadScrew(Screw):
+    """
+    iso1580 - Slotted pan head screws
+    iso14583 - Hexalobular socket pan head screws
+    """
+
+    fastener_data = read_fastener_parameters_from_csv("pan_head_parameters.csv")
+
+    def head_profile(self):
+        """ Slotted pan head screws """
+        (k, dk) = (self.screw_data[p] for p in ["k", "dk"])
+        profile = (
+            cq.Workplane("XZ")
+            .hLineTo(dk / 2)
+            .spline(
+                [(dk * 0.25, k)],
+                tangents=[(-sin(radians(5)), cos(radians(5))), (-1, 0)],
+                includeCurrent=True,
             )
-            recess_depth = self.screw_data["t"]
-            recess_taper = 0
-        elif self.screw_type == "iso7046":
-            (recess_plan, recess_depth) = cross_recess(self.screw_data["recess"])
-            recess_taper = 30
-        elif self.screw_type == "iso10642":
-            recess_plan = hex_recess(self.screw_data["s"])
-            recess_depth = self.screw_data["t"]
-            recess_taper = 0
-        elif self.screw_type == "iso14581" or screw_type == "iso14582":
-            (recess_plan, recess_depth) = hexalobular_recess(self.screw_data["recess"])
-            recess_taper = 0
-        return (recess_plan, recess_depth, recess_taper)
+            .hLineTo(0)
+            .close()
+        )
+        return profile
+
+    head_recess = Screw.default_head_recess
+
+
+class PanHeadWithCollarScrew(Screw):
+    """
+    din967 - Cross recessed pan head screws with collar
+    """
+
+    fastener_data = read_fastener_parameters_from_csv(
+        "pan_head_with_collar_parameters.csv"
+    )
+
+    def head_profile(self):
+        """ Cross recessed pan head screws with collar """
+        (rf, k, dk, c) = (self.screw_data[p] for p in ["rf", "k", "dk", "c"])
+
+        flat = sqrt(k - c) * sqrt(2 * rf - (k - c))
+        profile = (
+            cq.Workplane("XZ")
+            .hLineTo(dk / 2)
+            .vLineTo(c)
+            .hLineTo(flat)
+            .radiusArc((0, k), -rf)
+            .close()
+        )
+        return profile
+
+    head_recess = Screw.default_head_recess
+
+
+class RaisedCheeseHeadScrew(Screw):
+    """
+    iso7045 - Cross recessed raised cheese head screws
+    """
+
+    fastener_data = read_fastener_parameters_from_csv(
+        "raised_cheese_head_parameters.csv"
+    )
+
+    def head_profile(self):
+        """ raised cheese head screws """
+        (dk, k, rf) = (self.screw_data[p] for p in ["dk", "k", "rf"])
+        oval_height = rf - sqrt(4 * rf ** 2 - dk ** 2) / 2
+        profile = (
+            cq.Workplane("XZ")
+            .vLineTo(k)
+            .radiusArc((dk / 2, k - oval_height), rf)
+            .vLineTo(0)
+            .close()
+        )
+        return profile
+
+    head_recess = Screw.default_head_recess
+
+
+class RaisedCounterSunkOvalHeadScrew(Screw):
+    """
+    iso2010 - Slotted raised countersunk oval head screws
+    iso7047 - Cross recessed raised countersunk head screws
+    iso14584 - Hexalobular socket raised countersunk head screws
+    """
+
+    fastener_data = read_fastener_parameters_from_csv(
+        "raised_countersunk_oval_head_parameters.csv"
+    )
+
+    def head_profile(self):
+        """ raised countersunk oval head screws """
+        (a, k, rf, dk) = (self.screw_data[p] for p in ["a", "k", "rf", "dk"])
+        side_length = k / cos(radians(a / 2))
+        oval_height = rf - sqrt(4 * rf ** 2 - dk ** 2) / 2
+        profile = (
+            cq.Workplane("XZ")
+            .vLineTo(k + oval_height)
+            .radiusArc((dk / 2, k), rf)
+            .polarLine(side_length, -90 - a / 2)
+            .close()
+        )
+        vertices = profile.toPending().edges(">Z").vertices(">X").vals()
+        return profile.fillet2D(k * 0.075, vertices)
+
+    head_recess = Screw.default_head_recess
 
 
 # class SocketHeadCapScrew(Screw):
@@ -1307,68 +1549,6 @@ class CounterSunkScrew(Screw):
 #             .fillet(self.head_diameter / 40)
 #         )
 #         return screw_head
-
-
-# class HexBolt(Screw):
-#     """ Create a sock head cap screw as described either by a size sting or a set of parameters """
-
-#     metric_parameters = evaluate_parameter_dict(
-#         read_fastener_parameters_from_csv("metric_hex_parameters.csv"), is_metric=True,
-#     )
-
-#     imperial_parameters = evaluate_parameter_dict(
-#         read_fastener_parameters_from_csv("imperial_hex_parameters.csv"),
-#         is_metric=False,
-#     )
-
-#     @overload
-#     def __init__(
-#         self,
-#         size: str,
-#         length: float,
-#         hand: Literal["right", "left"] = "right",
-#         simple: bool = False,
-#     ):
-#         ...
-
-#     @overload
-#     def __init__(
-#         self,
-#         length: float,
-#         head_width: float,
-#         head_height: float,
-#         thread_diameter: float,
-#         thread_pitch: float,
-#         thread_length: float,
-#         hand: Literal["right", "left"] = "right",
-#         simple: bool = False,
-#     ):
-#         ...
-
-#     @cache
-#     def __init__(self, **kwargs):
-#         self.hand = "right"
-#         self.simple = False
-#         for key, value in kwargs.items():
-#             setattr(self, key, value)
-#         super().__init__()
-
-#     def make_head(self):
-#         """ Construct an arbitrary size hex bolt head """
-#         # Distance across the tips of the hex
-#         hex_diameter = self.width / cos(pi / 6)
-#         # Chamfer between the hex tips and flats
-#         chamfer_size = (hex_diameter - self.width) / 2
-#         bolt_head = (
-#             cq.Workplane("XY")
-#             .circle(hex_diameter / 2)  # Create a circle that contains the hexagon
-#             .extrude(self.height)
-#             .edges()
-#             .chamfer(chamfer_size / 2, chamfer_size)  # Chamfer the outside edges
-#             .intersect(cq.Workplane("XY").polygon(6, hex_diameter).extrude(self.height))
-#         )
-
-#         return bolt_head
 
 
 # class SetScrew(Screw):
@@ -1607,18 +1787,104 @@ cq.Workplane.clearanceHole = _clearanceHole
 #         if "show_object" in locals():
 #             show_object(solid, name=f"{screw_type}-{size}-head")
 
-print(ButtonHeadWithCollarScrew.types())
-for screw_type in ButtonHeadWithCollarScrew.types():
-    sizes = ButtonHeadWithCollarScrew.sizes(screw_type)
+# print(ButtonHeadWithCollarScrew.types())
+# for screw_type in ButtonHeadWithCollarScrew.types():
+#     sizes = ButtonHeadWithCollarScrew.sizes(screw_type)
+#     print(sizes)
+#     for size in sizes:
+#         screw = ButtonHeadWithCollarScrew(
+#             screw_type=screw_type, size=size, length=10, simple=True
+#         )
+#         solid = screw.make_head()
+#         if "show_object" in locals():
+#             show_object(solid, name=f"{screw_type}-{size}-head")
+
+# print(ChamferedHexHeadScrew.types())
+# for screw_type in ChamferedHexHeadScrew.types():
+#     sizes = ChamferedHexHeadScrew.sizes(screw_type)
+#     print(sizes)
+#     for size in sizes:
+#         screw = ChamferedHexHeadScrew(
+#             screw_type=screw_type, size=size, length=10, simple=True
+#         )
+#         solid = screw.make_head()
+#         if "show_object" in locals():
+#             show_object(solid, name=f"{screw_type}-{size}-head")
+
+
+# print(ChamferedHexHeadWithFlangeScrew.types())
+# for screw_type in ChamferedHexHeadWithFlangeScrew.types():
+#     sizes = ChamferedHexHeadWithFlangeScrew.sizes(screw_type)
+#     print(sizes)
+#     for size in sizes:
+#         screw = ChamferedHexHeadWithFlangeScrew(
+#             screw_type=screw_type, size=size, length=10, simple=True
+#         )
+#         solid = screw.make_head()
+#         if "show_object" in locals():
+#             show_object(solid, name=f"{screw_type}-{size}-head")
+
+# print(CheeseHeadScrew.types())
+# for screw_type in CheeseHeadScrew.types():
+#     sizes = CheeseHeadScrew.sizes(screw_type)
+#     print(sizes)
+#     for size in sizes:
+#         screw = CheeseHeadScrew(
+#             screw_type=screw_type, size=size, length=10, simple=True
+#         )
+#         solid = screw.make_head()
+#         if "show_object" in locals():
+#             show_object(solid, name=f"{screw_type}-{size}-head")
+
+
+# print(PanHeadScrew.types())
+# for screw_type in PanHeadScrew.types():
+#     sizes = PanHeadScrew.sizes(screw_type)
+#     print(sizes)
+#     for size in sizes:
+#         screw = PanHeadScrew(screw_type=screw_type, size=size, length=10, simple=True)
+#         solid = screw.make_head()
+#         if "show_object" in locals():
+#             show_object(solid, name=f"{screw_type}-{size}-head")
+
+
+# print(PanHeadWithCollarScrew.types())
+# for screw_type in PanHeadWithCollarScrew.types():
+#     sizes = PanHeadWithCollarScrew.sizes(screw_type)
+#     print(sizes)
+#     for size in sizes:
+#         screw = PanHeadWithCollarScrew(
+#             screw_type=screw_type, size=size, length=10, simple=True
+#         )
+#         solid = screw.make_head()
+#         if "show_object" in locals():
+#             show_object(solid, name=f"{screw_type}-{size}-head")
+
+
+# print(RaisedCheeseHeadScrew.types())
+# for screw_type in RaisedCheeseHeadScrew.types():
+#     sizes = RaisedCheeseHeadScrew.sizes(screw_type)
+#     print(sizes)
+#     for size in sizes:
+#         screw = RaisedCheeseHeadScrew(
+#             screw_type=screw_type, size=size, length=10, simple=True
+#         )
+#         solid = screw.make_head()
+#         if "show_object" in locals():
+#             show_object(solid, name=f"{screw_type}-{size}-head")
+
+
+print(RaisedCounterSunkOvalHeadScrew.types())
+for screw_type in RaisedCounterSunkOvalHeadScrew.types():
+    sizes = RaisedCounterSunkOvalHeadScrew.sizes(screw_type)
     print(sizes)
     for size in sizes:
-        screw = ButtonHeadWithCollarScrew(
+        screw = RaisedCounterSunkOvalHeadScrew(
             screw_type=screw_type, size=size, length=10, simple=True
         )
         solid = screw.make_head()
         if "show_object" in locals():
             show_object(solid, name=f"{screw_type}-{size}-head")
-
 
 # print(CounterSunkScrew.types())
 # # for screw_type in ["iso2009", "iso7046", "iso10642", "iso14581", "iso14582"]:
