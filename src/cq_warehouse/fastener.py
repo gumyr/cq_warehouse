@@ -238,6 +238,33 @@ class _ThreadOuterEdgeSelector(cq.Selector):
 cq.selectors.ThreadOuterEdgeSelector = _ThreadOuterEdgeSelector
 
 
+class _FarestFromPointSelector(cq.Selector):
+    """
+    Selects object farest from the provided point.
+
+    Applicability: All Types of Shapes
+
+    Example::
+
+       CQ(aCube).vertices(FarestFromPointSelector((0,1,0))
+
+    returns the vertex of the unit cube closest to the point x=0,y=1,z=0
+
+    """
+
+    def __init__(self, pnt):
+        self.pnt = pnt
+
+    def filter(self, objectList):
+        def dist(tShape):
+            return tShape.Center().sub(cq.Vector(*self.pnt)).Length
+
+        return [max(objectList, key=dist)]
+
+
+cq.selectors.FarestFromPointSelector = _FarestFromPointSelector
+
+
 def cross_recess(size: str) -> Tuple[cq.Workplane, float]:
     """ Type H Cross / Phillips recess for screws
 
@@ -937,53 +964,6 @@ class Screw(ABC):
         else:
             return self.imperial_clearance_hole_data[thread_size]
 
-    # @property
-    # @abstractmethod
-    # def length(self):
-    #     """ Each derived class must provide a length instance variable """
-    #     return NotImplementedError
-
-    # @property
-    # @abstractmethod
-    # def types(self):
-    #     """ Each derived class must provide a types method """
-    #     return NotImplementedError
-
-    # @abstractmethod
-    # def sizes(self, fastener_type: str):
-    #     """ Each derived class must provide a sizes method """
-    #     return NotImplementedError
-
-    @property
-    def head(self):
-        """ A cadquery Solid thread as defined by class attributes """
-        return self.make_head()
-
-    @property
-    def shank(self):
-        """ A cadquery Solid thread as defined by class attributes """
-        return ExternalThread(
-            major_diameter=self.thread_diameter,
-            pitch=self.thread_pitch,
-            length=self.thread_length,
-            hand=self.hand,
-            simple=self.simple,
-        ).make_shank(body_length=self.body_length)
-
-    # @property
-    # @classmethod
-    # @abstractmethod
-    # def metric_parameters(cls):
-    #     """ Each derived class must provide a metric_parameters dictionary """
-    #     return NotImplementedError
-
-    # @property
-    # @classmethod
-    # @abstractmethod
-    # def imperial_parameters(cls):
-    #     """ Each derived class must provide an imperial_parameters dictionary """
-    #     return NotImplementedError
-
     @property
     @classmethod
     @abstractmethod
@@ -996,31 +976,47 @@ class Screw(ABC):
         """ Return a set of the screw types """
         return set(p.split(":")[0] for p in list(cls.fastener_data.values())[0].keys())
 
-    # types = set(p.split(":")[0] for p in list(fastener_data.values())[0].keys())
-
     @classmethod
     def sizes(cls, screw_type: str) -> List[str]:
         """ Return a list of the screw sizes for the given type """
         return list(isolate_fastener_type(screw_type, cls.fastener_data).keys())
 
-    # @classmethod
-    # def metric_sizes(cls) -> str:
-    #     """ Return a list of the standard screw sizes """
-    #     return list(cls.metric_parameters.keys())
+    @property
+    def head_height(self):
+        """ Calculate the maximum height of the head """
+        return self.head.vertices(">Z").val().Z
 
-    # @classmethod
-    # def imperial_sizes(cls) -> str:
-    #     """ Return a list of the standard screw sizes """
-    #     return list(cls.imperial_parameters.keys())
+    @property
+    def head_diameter(self):
+        """ Calculate the maximum diameter of the head """
+        vertices = self.head.vertices().vals()
+        radii = [
+            (cq.Vector(0, 0, v.Z) - cq.Vector(v.toTuple())).Length for v in vertices
+        ]
+        return 2 * max(radii)
+
+    @property
+    def head(self):
+        """ A cadquery Solid thread as defined by class attributes """
+        # return self.make_head()
+        return self._head
+
+    @property
+    def shank(self):
+        """ A cadquery Solid thread as defined by class attributes """
+        return ExternalThread(
+            major_diameter=self.thread_diameter,
+            pitch=self.thread_pitch,
+            length=self.thread_length,
+            hand=self.hand,
+            simple=self.simple,
+        ).make_shank(body_length=self.body_length)
 
     @property
     def cq_object(self):
-        """ A cadquery Solid thread as defined by class attributes """
-        # Class 'NotImplementedError' has no 'union' member isn't valid as
-        # make_head() is an abstractmethod defined in a derived class
+        """ A cadquery Solid screw as defined by class attributes """
         return self.head.union(self.shank, glue=True).val()
 
-    # def __init__(self):
     @cache
     def __init__(
         self,
@@ -1030,6 +1026,7 @@ class Screw(ABC):
         hand: Literal["right", "left"] = "right",
         simple: bool = False,
     ):
+        """ Parse Screw input parameters """
         size_parts = size.strip().split("-")
         if not len(size_parts) == 2:
             raise ValueError(
@@ -1062,12 +1059,7 @@ class Screw(ABC):
             raise ValueError(
                 f"{size} invalid, must be one of {self.sizes(self.screw_type)}"
             )
-        print(self.screw_type, self.size, self.screw_data)
-        # for key in self.screw_data.keys():
-        #     setattr(self, key.lower(), self.screw_data[key.title()])
-        # if not hasattr(self, "max_thread_length"):
         self.max_thread_length = length
-        # if not hasattr(self, "thread_length"):
         self.body_length = 0
         self.thread_length = length - self.body_length
         # if self.thread_length > length:
@@ -1077,23 +1069,12 @@ class Screw(ABC):
         #     )
         # else:
         #     self.body_length = max(0, length - self.max_thread_length)
+        self._head = self.make_head()
 
-    # @abstractmethod
-    # def make_head(self) -> cq.Workplane:
-    #     """ Empty parent make screw head method to be replaced by derived implementations """
-    #     return NotImplementedError
+    def make_head(self) -> cq.Workplane:
+        """ Create a screw head from the 2D shapes defined in the derived class """
 
-    # @abstractmethod
-    def make_head(
-        self,
-        # head_profile: cq.Workplane,
-        # head_plan: Optional[cq.Workplane],
-        # flange_profile: Optional[cq.Workplane],
-        # recess_plan: Optional[cq.Wire] = None,
-        # recess_depth: Optional[float] = 0,
-    ) -> cq.Workplane:
-        """ Given profile(s) and plan generate a Solid object """
-
+        # Determine what shape creation methods have been defined
         has_profile = hasattr(self.__class__, "head_profile") and callable(
             getattr(self.__class__, "head_profile")
         )
@@ -1117,10 +1098,18 @@ class Screw(ABC):
         if has_plan:
             head_plan = self.head_plan()
         else:
-            head_plan = cq.Workplane("XY").circle(max_head_radius)
+            # Ensure this default plan is outside of the maximum profile dimension.
+            # As the slot cuts across the entire head it must go outside of the top
+            # face. By creating an overly large head plan the slot can be safely
+            # contained within and it doesn't clip the revolved profile.
+            # head_plan = cq.Workplane("XY").circle(max_head_radius)
+            head_plan = cq.Workplane("XY").rect(
+                3 * max_head_radius, 3 * max_head_radius
+            )
 
-        # # Potentially modify the head to conform to the shape of head_plan
-        # # (e.g. hex) and/or to add an engagement recess
+        # Potentially modify the head to conform to the shape of head_plan
+        # (e.g. hex) and/or to add an engagement recess
+        # TODO: Add an optimization for recess_taper = 0
         if has_recess:
             (recess_plan, recess_depth, recess_taper) = self.head_recess()
             recess = cq.Solid.extrudeLinear(
@@ -1130,37 +1119,6 @@ class Screw(ABC):
                 taper=recess_taper,
             ).translate((0, 0, max_head_height))
             head_blank = head_plan.extrude(max_head_height).cut(recess)
-            # ).translate((0, 0, max_head_height))
-            # head_blank = head_blank.fuse(
-            #     cq.Solid.extrudeLinear(
-            #         outerWire=head_plan.val(),
-            #         innerWires=[],
-            #         vecNormal=cq.Vector(0, 0, max_head_height - recess_depth),
-            #     )
-            # )
-
-            # head_blank = (
-            #     cq.Workplane("XY")
-            #     .add(head_plan.val())
-            #     .toPending()
-            #     .extrude(max_head_height - recess_depth)
-            #     .faces(">Z")
-            #     .workplane()
-            #     .add(head_plan.val().translate((0, 0, max_head_height - recess_depth)))
-            #     .toPending()
-            #     .add(
-            #         recess_plan.val()
-            #         .scale(recess_scale)
-            #         .translate((0, 0, max_head_height - recess_depth))
-            #     )
-            #     .toPending()
-            #     .add(head_plan.val().translate((0, 0, max_head_height)))
-            #     .toPending()
-            #     .add(recess_plan.val().translate((0, 0, max_head_height)))
-            #     .toPending()
-            #     # .loft()
-            #     # .extrude(recess_depth)
-            # )
             head = head.intersect(head_blank)
         elif has_plan:
             head_blank = (
@@ -1171,7 +1129,7 @@ class Screw(ABC):
             )
             head = head.intersect(head_blank)
 
-        # # Add a flange as it exists outside of the plan
+        # # Add a flange as it exists outside of the head plan
         if has_flange:
             head = head.union(
                 cq.Workplane("XZ")
@@ -1180,32 +1138,67 @@ class Screw(ABC):
                 .revolve()
             )
         return head
-        # return head_blank
-        # return recess
 
 
-# class ButtonHeadScrew(Screw):
+class ButtonHeadScrew(Screw):
 
-#     def button_head_profile(screw_data: dict):
-#         """ button head screws """
-#         (dk, dl, k, rf) = (screw_data[p] for p in ["dk", "dl", "k_max", "rf_max"])
-#         profile = (
-#             cq.Workplane("XZ")
-#             .vLineTo(k)
-#             .hLineTo(dl / 2)
-#             .radiusArc((dk / 2, 0), rf)
-#             .hLineTo(0)
-#             .close()
-#         )
-#         return profile
+    fastener_data = read_fastener_parameters_from_csv("button_head_parameters.csv")
 
-#     def __init__(
-#         self,
-#         size: str,
-#         length: float,
-#         hand: Literal["right", "left"] = "right",
-#         simple: bool = False,
-#     ):
+    def head_profile(self):
+        """ Create 2D profile of button head screws """
+        (dk, dl, k, rf) = (self.screw_data[p] for p in ["dk", "dl", "k", "rf"])
+        profile = (
+            cq.Workplane("XZ")
+            .vLineTo(k)
+            .hLineTo(dl / 2)
+            .radiusArc((dk / 2, 0), rf)
+            .hLineTo(0)
+            .close()
+        )
+        return profile
+
+    def head_recess(self) -> Tuple[cq.Workplane, float, float]:
+        """ Return the plan of the recess, its depth and taper """
+        if self.screw_type == "iso7380_1":
+            recess_plan = hex_recess(self.screw_data["s"])
+            recess_depth = self.screw_data["t"]
+            recess_taper = 0
+        return (recess_plan, recess_depth, recess_taper)
+
+
+class ButtonHeadWithCollarScrew(Screw):
+
+    fastener_data = read_fastener_parameters_from_csv(
+        "button_head_with_collar_parameters.csv"
+    )
+
+    def head_profile(self):
+        """ Create 2D profile of button head screws with collar """
+        print(self.screw_data)
+        (dk, dl, dc, k, rf, c) = (
+            self.screw_data[p] for p in ["dk", "dl", "dc", "k", "rf", "c"]
+        )
+        profile = (
+            cq.Workplane("XZ")
+            .vLineTo(k)
+            .hLineTo(dl / 2)
+            .radiusArc((dk / 2, c), rf)
+            .hLineTo(dc / 2)
+            .vLineTo(0)
+            .close()
+        )
+        vertices = profile.toPending().vertices(">X").vals()
+        return profile.fillet2D(c / 2, vertices)
+
+    def head_recess(self) -> Tuple[cq.Workplane, float, float]:
+        """ Return the plan of the recess, its depth and taper """
+        if self.screw_type == "iso7380_2":
+            recess_plan = hex_recess(self.screw_data["s"])
+            recess_depth = self.screw_data["t"]
+            recess_taper = 0
+        return (recess_plan, recess_depth, recess_taper)
+
+
 class CounterSunkScrew(Screw):
 
     fastener_data = read_fastener_parameters_from_csv("countersunk_head_parameters.csv")
@@ -1224,8 +1217,8 @@ class CounterSunkScrew(Screw):
         vertices = profile.toPending().edges(">Z").vertices(">X").vals()
         return profile.fillet2D(k * 0.075, vertices)
 
-    def head_recess(self) -> Tuple[cq.Workplane, float]:
-        """ Return the plan of the recess and its depth """
+    def head_recess(self) -> Tuple[cq.Workplane, float, float]:
+        """ Return the plan of the recess, its depth and taper """
         if self.screw_type == "iso2009":
             recess_plan = cq.Workplane("XY").rect(
                 self.screw_data["dk"], self.screw_data["n"]
@@ -1243,60 +1236,6 @@ class CounterSunkScrew(Screw):
             (recess_plan, recess_depth) = hexalobular_recess(self.screw_data["recess"])
             recess_taper = 0
         return (recess_plan, recess_depth, recess_taper)
-
-    def head_plan(self) -> cq.Workplane:
-        dk = self.screw_data["dk"]
-        return cq.Workplane("XY").rect(2 * dk, 2 * dk)
-
-    # @cache
-    # def __init__(self, *args, **kwargs):
-    #     #     self,
-    #     #     size: str,
-    #     #     length: float,
-    #     #     screw_type: Literal[
-    #     #         "iso2009", "iso7046", "iso10642", "iso14581", "iso14582"
-    #     #     ] = "iso10642",
-    #     #     hand: Literal["right", "left"] = "right",
-    #     #     simple: bool = False,
-    #     # ):
-    #     #     try:
-    #     #         self.recess_type = self.default_recess[screw_type]
-    #     #     except KeyError:
-    #     #         raise ValueError(
-    #     #             f"{screw_type} is invalid, must be one of {list(self.default_recess.keys())}"
-    #     #         )
-    #     #     self.size = size
-    #     #     self.length = length
-    #     #     self.screw_type = screw_type
-    #     #     self.hand = hand
-    #     #     self.simple = simple
-    #     super().__init__(*args, **kwargs)
-
-    #     # screw_table = isolate_fastener_type(screw_type, self.fastener_data)
-    #     # if len(screw_table) == 0:
-    #     #     raise ValueError(f"{screw_type} is not a valid countersunk screw type")
-    #     # try:
-    #     #     self.screw_data = screw_table[size]
-    #     # except KeyError:
-    #     #     raise ValueError(f"{size} is an unsupported screw size")
-
-    #     self.head_profile = self.head_profile()
-    #     if screw_type == "iso2009":
-    #         self.recess_plan = cq.Workplane("XY").rect(
-    #             self.screw_data["dk"], self.screw_data["n"]
-    #         )
-    #         self.recess_depth = self.screw_data["t"]
-    #     elif screw_type == "iso7046":
-    #         (self.recess_plan, self.recess_depth) = cross_recess(
-    #             self.screw_data["recess"]
-    #         )
-    #     elif screw_type == "iso10642":
-    #         self.recess_plan = hex_recess(self.screw_data["s"])
-    #         self.recess_depth = self.screw_data["t"]
-    #     elif screw_type == "iso14581" or screw_type == "iso14582":
-    #         (self.recess_plan, self.recess_depth) = hexalobular_recess(
-    #             self.screw_data["recess"]
-    #         )
 
 
 # class SocketHeadCapScrew(Screw):
@@ -1368,77 +1307,6 @@ class CounterSunkScrew(Screw):
 #             .fillet(self.head_diameter / 40)
 #         )
 #         return screw_head
-
-
-# class ButtonHeadCapScrew(Screw):
-#     """ Create standard or arbitrary sized button head cap screws """
-
-#     metric_parameters = evaluate_parameter_dict(
-#         read_fastener_parameters_from_csv(
-#             "metric_button_head_cap_screw_parameters.csv"
-#         ),
-#         is_metric=True,
-#     )
-#     imperial_parameters = evaluate_parameter_dict(
-#         read_fastener_parameters_from_csv(
-#             "imperial_button_head_cap_screw_parameters.csv"
-#         ),
-#         is_metric=False,
-#     )
-
-#     @overload
-#     def __init__(
-#         self,
-#         size: str,
-#         length: float,
-#         hand: Literal["right", "left"] = "right",
-#         simple: bool = False,
-#     ):
-#         ...
-
-#     @overload
-#     def __init__(
-#         self,
-#         length: float,
-#         head_diameter: float,
-#         head_height: float,
-#         thread_diameter: float,
-#         thread_pitch: float,
-#         thread_length: float,
-#         socket_size: float,
-#         socket_depth: float,
-#         hand: Literal["right", "left"] = "right",
-#         simple: bool = False,
-#     ):
-#         ...
-
-#     @cache
-#     def __init__(self, **kwargs):
-#         self.hand = "right"
-#         self.simple = False
-#         for key, value in kwargs.items():
-#             setattr(self, key, value)
-#         super().__init__()
-
-#     def make_head(self) -> cq.Workplane:
-#         """ Construct button cap screw head """
-
-#         button_head = (
-#             cq.Workplane("XZ")
-#             .hLineTo(self.head_diameter / 2)
-#             .spline(listOfXYTuple=[(0, self.head_height)], includeCurrent=True,)
-#             .close()
-#             .revolve()
-#             .cut(
-#                 cq.Workplane("XY")
-#                 .polygon(nSides=6, diameter=self.socket_size / cos(pi / 6),)
-#                 .extrude(self.socket_depth)
-#                 .translate((0, 0, self.head_height - self.socket_depth))
-#             )
-#             .edges("<Z")
-#             .fillet(self.head_diameter / 40)
-#         )
-#         return button_head
 
 
 # class HexBolt(Screw):
@@ -1726,18 +1594,44 @@ cq.Workplane.clearanceHole = _clearanceHole
 # print(cap_screw.tap_drill_sizes)
 # print(cap_screw.tap_hole_diameters)
 
-print(CounterSunkScrew.types())
-for screw_type in ["iso2009", "iso7046", "iso10642", "iso14581", "iso14582"]:
-    # for screw_type in ["iso14582"]:
-    sizes = CounterSunkScrew.sizes(screw_type)
+
+# print(ButtonHeadScrew.types())
+# for screw_type in ButtonHeadScrew.types():
+#     sizes = ButtonHeadScrew.sizes(screw_type)
+#     print(sizes)
+#     for size in sizes:
+#         screw = ButtonHeadScrew(
+#             screw_type=screw_type, size=size, length=10, simple=True
+#         )
+#         solid = screw.make_head()
+#         if "show_object" in locals():
+#             show_object(solid, name=f"{screw_type}-{size}-head")
+
+print(ButtonHeadWithCollarScrew.types())
+for screw_type in ButtonHeadWithCollarScrew.types():
+    sizes = ButtonHeadWithCollarScrew.sizes(screw_type)
     print(sizes)
     for size in sizes:
-        screw = CounterSunkScrew(
+        screw = ButtonHeadWithCollarScrew(
             screw_type=screw_type, size=size, length=10, simple=True
         )
         solid = screw.make_head()
         if "show_object" in locals():
             show_object(solid, name=f"{screw_type}-{size}-head")
+
+
+# print(CounterSunkScrew.types())
+# # for screw_type in ["iso2009", "iso7046", "iso10642", "iso14581", "iso14582"]:
+# for screw_type in ["iso14582"]:
+#     sizes = CounterSunkScrew.sizes(screw_type)
+#     print(sizes)
+#     for size in sizes:
+#         screw = CounterSunkScrew(
+#             screw_type=screw_type, size=size, length=10, simple=True
+#         )
+#         solid = screw.make_head()
+#         if "show_object" in locals():
+#             show_object(solid, name=f"{screw_type}-{size}-head")
 
 # if "show_object" in locals():
 #     show_object(result, name="base object")
