@@ -198,6 +198,7 @@ def lookup_drill_diameters(drill_hole_sizes: dict) -> dict:
     return drill_hole_diameters
 
 
+# TODO: Use the Wire fillet2D method as a base
 def _fillet2D(self, radius: float, vertices: List[cq.Vertex]) -> cq.Wire:
     return cq.Workplane(
         cq.Face.makeFromWires(self.val()).fillet2D(radius, vertices).outerWire()
@@ -253,10 +254,10 @@ def cross_recess(size: str) -> Tuple[cq.Workplane, float]:
         raise ValueError(f"{size} is an invalid cross size {widths}")
     recess = (
         cq.Workplane("XY")
-        .moveTo(m, 0)
-        .vLineTo(m / 6)
-        .hLineTo(m / 6)
-        .vLineTo(m)
+        .moveTo(m / 2, 0)
+        .vLineTo(m / 12)
+        .hLineTo(m / 12)
+        .vLineTo(m / 2)
         .hLineTo(0)
         .mirrorX()
         .mirrorY()
@@ -1121,22 +1122,45 @@ class Screw(ABC):
         # # Potentially modify the head to conform to the shape of head_plan
         # # (e.g. hex) and/or to add an engagement recess
         if has_recess:
-            (recess_plan, recess_depth) = self.head_recess()
-            head_blank = (
-                cq.Workplane("XY")
-                .add(head_plan.val())
-                .toPending()
-                .extrude(max_head_height - recess_depth)
-                .faces(">Z")
-                .workplane()
-                .add(head_plan.val().translate((0, 0, max_head_height - recess_depth)))
-                .toPending()
-                .add(
-                    recess_plan.val().translate((0, 0, max_head_height - recess_depth))
-                )
-                .toPending()
-                .extrude(recess_depth)
-            )
+            (recess_plan, recess_depth, recess_taper) = self.head_recess()
+            recess = cq.Solid.extrudeLinear(
+                outerWire=recess_plan.val(),
+                innerWires=[],
+                vecNormal=cq.Vector(0, 0, -recess_depth),
+                taper=recess_taper,
+            ).translate((0, 0, max_head_height))
+            head_blank = head_plan.extrude(max_head_height).cut(recess)
+            # ).translate((0, 0, max_head_height))
+            # head_blank = head_blank.fuse(
+            #     cq.Solid.extrudeLinear(
+            #         outerWire=head_plan.val(),
+            #         innerWires=[],
+            #         vecNormal=cq.Vector(0, 0, max_head_height - recess_depth),
+            #     )
+            # )
+
+            # head_blank = (
+            #     cq.Workplane("XY")
+            #     .add(head_plan.val())
+            #     .toPending()
+            #     .extrude(max_head_height - recess_depth)
+            #     .faces(">Z")
+            #     .workplane()
+            #     .add(head_plan.val().translate((0, 0, max_head_height - recess_depth)))
+            #     .toPending()
+            #     .add(
+            #         recess_plan.val()
+            #         .scale(recess_scale)
+            #         .translate((0, 0, max_head_height - recess_depth))
+            #     )
+            #     .toPending()
+            #     .add(head_plan.val().translate((0, 0, max_head_height)))
+            #     .toPending()
+            #     .add(recess_plan.val().translate((0, 0, max_head_height)))
+            #     .toPending()
+            #     # .loft()
+            #     # .extrude(recess_depth)
+            # )
             head = head.intersect(head_blank)
         elif has_plan:
             head_blank = (
@@ -1157,6 +1181,7 @@ class Screw(ABC):
             )
         return head
         # return head_blank
+        # return recess
 
 
 # class ButtonHeadScrew(Screw):
@@ -1206,14 +1231,18 @@ class CounterSunkScrew(Screw):
                 self.screw_data["dk"], self.screw_data["n"]
             )
             recess_depth = self.screw_data["t"]
+            recess_taper = 0
         elif self.screw_type == "iso7046":
             (recess_plan, recess_depth) = cross_recess(self.screw_data["recess"])
+            recess_taper = 30
         elif self.screw_type == "iso10642":
             recess_plan = hex_recess(self.screw_data["s"])
             recess_depth = self.screw_data["t"]
+            recess_taper = 0
         elif self.screw_type == "iso14581" or screw_type == "iso14582":
             (recess_plan, recess_depth) = hexalobular_recess(self.screw_data["recess"])
-        return (recess_plan, recess_depth)
+            recess_taper = 0
+        return (recess_plan, recess_depth, recess_taper)
 
     def head_plan(self) -> cq.Workplane:
         dk = self.screw_data["dk"]
@@ -1698,8 +1727,8 @@ cq.Workplane.clearanceHole = _clearanceHole
 # print(cap_screw.tap_hole_diameters)
 
 print(CounterSunkScrew.types())
-# for screw_type in ["iso2009", "iso7046", "iso10642", "iso14581", "iso14582"]:
-for screw_type in ["iso14582"]:
+for screw_type in ["iso2009", "iso7046", "iso10642", "iso14581", "iso14582"]:
+    # for screw_type in ["iso14582"]:
     sizes = CounterSunkScrew.sizes(screw_type)
     print(sizes)
     for size in sizes:
