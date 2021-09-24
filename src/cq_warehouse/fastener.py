@@ -1301,7 +1301,7 @@ class ChamferedHexHeadWithFlangeScrew(Screw):
     #     return cq.Workplane("XY").polygon(6, polygon_diagonal(self.screw_data["s"]))
 
     def flange_profile(self):
-        """ Flange for Hexagon Bolts """
+        """ Flange for hexagon Bolts """
         (dc, c) = (self.screw_data[p] for p in ["dc", "c"])
         flange_angle = 25
         tangent_point = cq.Vector(
@@ -1480,201 +1480,24 @@ class RaisedCounterSunkOvalHeadScrew(Screw):
     head_recess = Screw.default_head_recess
 
 
-# class SocketHeadCapScrew(Screw):
-#     """ Create a standard or arbitrary sized socket head cap screw """
+class SocketHeadCapScrew(Screw):
+    """
+    iso4762 - Hexagon socket head cap screws
+    """
 
-#     metric_parameters = evaluate_parameter_dict(
-#         read_fastener_parameters_from_csv(
-#             "metric_socket_head_cap_screw_parameters.csv"
-#         ),
-#         is_metric=True,
-#     )
-#     imperial_parameters = evaluate_parameter_dict(
-#         read_fastener_parameters_from_csv(
-#             "imperial_socket_head_cap_screw_parameters.csv"
-#         ),
-#         is_metric=False,
-#     )
+    fastener_data = read_fastener_parameters_from_csv("socket_head_cap_parameters.csv")
 
-#     @overload
-#     def __init__(
-#         self,
-#         size: str,
-#         length: float,
-#         hand: Literal["right", "left"] = "right",
-#         simple: bool = False,
-#     ):
-#         ...
+    def head_profile(self):
+        """ Socket Head Cap Screws """
+        (dk, k) = (self.screw_data[p] for p in ["dk", "k"])
+        profile = cq.Workplane("XZ").rect(dk / 2, k, centered=False)
+        vertices = profile.toPending().edges(">Z").vertices(">X").vals()
+        return profile.fillet2D(k * 0.075, vertices)
 
-#     @overload
-#     def __init__(
-#         self,
-#         length: float,
-#         head_diameter: float,
-#         head_height: float,
-#         thread_diameter: float,
-#         thread_pitch: float,
-#         thread_length: float,
-#         socket_size: float,
-#         socket_depth: float,
-#         hand: Literal["right", "left"] = "right",
-#         simple: bool = False,
-#     ):
-#         ...
-
-#     @cache
-#     def __init__(self, **kwargs):
-#         self.hand = "right"
-#         self.simple = False
-#         for key, value in kwargs.items():
-#             setattr(self, key, value)
-#         super().__init__()
-
-#     def make_head(self) -> cq.Workplane:
-#         """ Construct cap screw head """
-
-#         screw_head = (
-#             cq.Workplane("XY")
-#             .circle(self.head_diameter / 2)
-#             .extrude(self.head_height - self.socket_depth)
-#             .faces(">Z")
-#             .workplane()
-#             .circle(self.head_diameter / 2)
-#             .polygon(6, self.socket_size / cos(pi / 6))
-#             .extrude(self.socket_depth)
-#             .faces(">Z")
-#             .edges(cq.selectors.RadiusNthSelector(0))
-#             .fillet(self.head_diameter / 20)
-#             .edges("<Z")
-#             .fillet(self.head_diameter / 40)
-#         )
-#         return screw_head
-
-
-# class SetScrew(Screw):
-#     """ Create standard or arbitrary set screws """
-
-#     metric_parameters = evaluate_parameter_dict(
-#         read_fastener_parameters_from_csv("metric_set_screw_parameters.csv"),
-#         is_metric=True,
-#     )
-#     imperial_parameters = evaluate_parameter_dict(
-#         read_fastener_parameters_from_csv("imperial_set_screw_parameters.csv"),
-#         is_metric=False,
-#     )
-
-#     @property
-#     def head(self):
-#         """ Setscrews don't have heads """
-#         return None
-
-#     @property
-#     def shank(self):
-#         """ Setscrews don't have shanks """
-#         return None
-
-#     @property
-#     def cq_object(self):
-#         """ A cadquery Solid thread as defined by class attributes """
-#         return self.make_setscrew()
-
-#     @overload
-#     def __init__(
-#         self,
-#         size: str,
-#         length: float,
-#         hand: Literal["right", "left"] = "right",
-#         simple: bool = False,
-#     ):
-#         ...
-
-#     @overload
-#     def __init__(
-#         self,
-#         length: float,
-#         thread_diameter: float,
-#         thread_pitch: float,
-#         socket_size: float,
-#         socket_depth: float,
-#         hand: Literal["right", "left"] = "right",
-#         simple: bool = False,
-#     ):
-#         ...
-
-#     @cache
-#     def __init__(self, **kwargs):
-#         self.hand = "right"
-#         self.simple = False
-#         for key, value in kwargs.items():
-#             setattr(self, key, value)
-#         super().__init__()
-
-#     def make_setscrew(self) -> cq.Workplane:
-#         """ Construct set screw shape """
-
-#         chamfer_size = self.thread_diameter / 4
-
-#         thread = ExternalThread(
-#             major_diameter=self.thread_diameter,
-#             pitch=self.thread_pitch,
-#             length=self.length - chamfer_size,
-#             hollow=True,
-#             hand=self.hand,
-#         )
-#         core = (
-#             cq.Workplane("XY")
-#             .circle(thread.external_thread_core_radius)
-#             .polygon(6, self.socket_size / cos(pi / 6))
-#             .extrude(self.socket_depth)
-#             .faces(">Z")
-#             .workplane()
-#             .circle(thread.external_thread_core_radius)
-#             .extrude(self.length - self.socket_depth)
-#             .faces(">Z")
-#             .chamfer(chamfer_size)
-#             .mirror()
-#         )
-#         return core.union(
-#             thread.cq_object.translate((0, 0, -thread.length)), glue=True
-#         ).val()
-
-#     def make_head(self):
-#         """ There is no head on a setscrew """
-#         return None
+    head_recess = Screw.default_head_recess
 
 
 T = TypeVar("T", bound="Workplane")
-
-
-# def _addEach(
-#     self: T,
-#     fcn: Callable[[cq.Location], cq.Shape],
-#     useLocalCoords: bool = False,
-#     clean: bool = True,
-# ) -> T:
-#     """
-#     Evaluates the provided function at each point on the stack (ie, eachpoint)
-#     and then cuts the result from the context solid.
-#     :param fcn: a function suitable for use in the eachpoint method: ie, that accepts a vector
-#     :param useLocalCoords: same as for :py:meth:`eachpoint`
-#     :param boolean clean: call :py:meth:`clean` afterwards to have a clean shape
-#     :raises ValueError: if no solids or compounds are found in the stack or parent chain
-#     :return: a CQ object that contains the resulting solid
-#     """
-#     ctxSolid = self.findSolid()
-
-#     # will contain all of the counterbores as a single compound
-#     results = cast(List[cq.Shape], self.eachpoint(fcn, useLocalCoords).vals())
-
-#     s = ctxSolid.fuse(*results)
-
-#     if clean:
-#         s = s.clean()
-
-#     return self.newObject([s])
-
-
-# cq.Workplane.addEach = _addEach
 
 
 def _clearanceHole(
@@ -1775,129 +1598,30 @@ cq.Workplane.clearanceHole = _clearanceHole
 # print(cap_screw.tap_hole_diameters)
 
 
-# print(ButtonHeadScrew.types())
-# for screw_type in ButtonHeadScrew.types():
-#     sizes = ButtonHeadScrew.sizes(screw_type)
-#     print(sizes)
-#     for size in sizes:
-#         screw = ButtonHeadScrew(
-#             screw_type=screw_type, size=size, length=10, simple=True
-#         )
-#         solid = screw.make_head()
-#         if "show_object" in locals():
-#             show_object(solid, name=f"{screw_type}-{size}-head")
+screw_classes = [
+    ButtonHeadScrew,
+    ButtonHeadWithCollarScrew,
+    ChamferedHexHeadScrew,
+    ChamferedHexHeadWithFlangeScrew,
+    CheeseHeadScrew,
+    PanHeadScrew,
+    PanHeadWithCollarScrew,
+    RaisedCheeseHeadScrew,
+    RaisedCounterSunkOvalHeadScrew,
+    SocketHeadCapScrew,
+]
+for screw_class in screw_classes:
+    for screw_type in screw_class.types():
+        sizes = screw_class.sizes(screw_type)
+        print(f"{screw_class}-{screw_type}-{sizes}")
+        for size in sizes:
+            screw = screw_class(
+                screw_type=screw_type, size=size, length=10, simple=True
+            )
+            solid = screw.make_head()
+            if "show_object" in locals():
+                show_object(solid, name=f"{screw_type}-{size}-head")
 
-# print(ButtonHeadWithCollarScrew.types())
-# for screw_type in ButtonHeadWithCollarScrew.types():
-#     sizes = ButtonHeadWithCollarScrew.sizes(screw_type)
-#     print(sizes)
-#     for size in sizes:
-#         screw = ButtonHeadWithCollarScrew(
-#             screw_type=screw_type, size=size, length=10, simple=True
-#         )
-#         solid = screw.make_head()
-#         if "show_object" in locals():
-#             show_object(solid, name=f"{screw_type}-{size}-head")
-
-# print(ChamferedHexHeadScrew.types())
-# for screw_type in ChamferedHexHeadScrew.types():
-#     sizes = ChamferedHexHeadScrew.sizes(screw_type)
-#     print(sizes)
-#     for size in sizes:
-#         screw = ChamferedHexHeadScrew(
-#             screw_type=screw_type, size=size, length=10, simple=True
-#         )
-#         solid = screw.make_head()
-#         if "show_object" in locals():
-#             show_object(solid, name=f"{screw_type}-{size}-head")
-
-
-# print(ChamferedHexHeadWithFlangeScrew.types())
-# for screw_type in ChamferedHexHeadWithFlangeScrew.types():
-#     sizes = ChamferedHexHeadWithFlangeScrew.sizes(screw_type)
-#     print(sizes)
-#     for size in sizes:
-#         screw = ChamferedHexHeadWithFlangeScrew(
-#             screw_type=screw_type, size=size, length=10, simple=True
-#         )
-#         solid = screw.make_head()
-#         if "show_object" in locals():
-#             show_object(solid, name=f"{screw_type}-{size}-head")
-
-# print(CheeseHeadScrew.types())
-# for screw_type in CheeseHeadScrew.types():
-#     sizes = CheeseHeadScrew.sizes(screw_type)
-#     print(sizes)
-#     for size in sizes:
-#         screw = CheeseHeadScrew(
-#             screw_type=screw_type, size=size, length=10, simple=True
-#         )
-#         solid = screw.make_head()
-#         if "show_object" in locals():
-#             show_object(solid, name=f"{screw_type}-{size}-head")
-
-
-# print(PanHeadScrew.types())
-# for screw_type in PanHeadScrew.types():
-#     sizes = PanHeadScrew.sizes(screw_type)
-#     print(sizes)
-#     for size in sizes:
-#         screw = PanHeadScrew(screw_type=screw_type, size=size, length=10, simple=True)
-#         solid = screw.make_head()
-#         if "show_object" in locals():
-#             show_object(solid, name=f"{screw_type}-{size}-head")
-
-
-# print(PanHeadWithCollarScrew.types())
-# for screw_type in PanHeadWithCollarScrew.types():
-#     sizes = PanHeadWithCollarScrew.sizes(screw_type)
-#     print(sizes)
-#     for size in sizes:
-#         screw = PanHeadWithCollarScrew(
-#             screw_type=screw_type, size=size, length=10, simple=True
-#         )
-#         solid = screw.make_head()
-#         if "show_object" in locals():
-#             show_object(solid, name=f"{screw_type}-{size}-head")
-
-
-# print(RaisedCheeseHeadScrew.types())
-# for screw_type in RaisedCheeseHeadScrew.types():
-#     sizes = RaisedCheeseHeadScrew.sizes(screw_type)
-#     print(sizes)
-#     for size in sizes:
-#         screw = RaisedCheeseHeadScrew(
-#             screw_type=screw_type, size=size, length=10, simple=True
-#         )
-#         solid = screw.make_head()
-#         if "show_object" in locals():
-#             show_object(solid, name=f"{screw_type}-{size}-head")
-
-
-print(RaisedCounterSunkOvalHeadScrew.types())
-for screw_type in RaisedCounterSunkOvalHeadScrew.types():
-    sizes = RaisedCounterSunkOvalHeadScrew.sizes(screw_type)
-    print(sizes)
-    for size in sizes:
-        screw = RaisedCounterSunkOvalHeadScrew(
-            screw_type=screw_type, size=size, length=10, simple=True
-        )
-        solid = screw.make_head()
-        if "show_object" in locals():
-            show_object(solid, name=f"{screw_type}-{size}-head")
-
-# print(CounterSunkScrew.types())
-# # for screw_type in ["iso2009", "iso7046", "iso10642", "iso14581", "iso14582"]:
-# for screw_type in ["iso14582"]:
-#     sizes = CounterSunkScrew.sizes(screw_type)
-#     print(sizes)
-#     for size in sizes:
-#         screw = CounterSunkScrew(
-#             screw_type=screw_type, size=size, length=10, simple=True
-#         )
-#         solid = screw.make_head()
-#         if "show_object" in locals():
-#             show_object(solid, name=f"{screw_type}-{size}-head")
 
 # if "show_object" in locals():
 #     show_object(result, name="base object")
