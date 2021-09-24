@@ -923,6 +923,13 @@ class Screw(ABC):
         """ Each derived class must provide a fastener_data dictionary """
         return NotImplementedError
 
+    @abstractmethod
+    def countersink_profile(
+        self, fit: Literal["Close", "Medium", "Loose"]
+    ) -> cq.Workplane:
+        """ Each derived class must provide the profile of a countersink cutter """
+        return NotImplementedError
+
     @classmethod
     def types(cls) -> List[str]:
         """ Return a set of the screw types """
@@ -1160,6 +1167,19 @@ class Screw(ABC):
 
         return (recess_plan, recess_depth, recess_taper)
 
+    def default_countersink_profile(
+        self, fit: Literal["Close", "Medium", "Loose"]
+    ) -> cq.Workplane:
+        """ A simple rectangle with gets revolved into a cylinder """
+        try:
+            clearance_hole_diameter = self.clearance_hole_diameters[fit]
+        except KeyError:
+            raise ValueError(
+                f"{fit} invalid, must be one of {list(self.clearance_hole_diameters.keys())}"
+            )
+        width = clearance_hole_diameter - self.thread_diameter + self.screw_data["dk"]
+        return cq.Workplane("XZ").rect(width / 2, self.screw_data["k"], centered=False)
+
 
 class ButtonHeadScrew(Screw):
     """
@@ -1182,6 +1202,8 @@ class ButtonHeadScrew(Screw):
         return profile
 
     head_recess = Screw.default_head_recess
+
+    countersink_profile = Screw.default_countersink_profile
 
 
 class ButtonHeadWithCollarScrew(Screw):
@@ -1211,6 +1233,8 @@ class ButtonHeadWithCollarScrew(Screw):
         return profile.fillet2D(0.45 * c, vertices)
 
     head_recess = Screw.default_head_recess
+
+    countersink_profile = Screw.default_countersink_profile
 
 
 class ChamferedHexHeadScrew(Screw):
@@ -1242,6 +1266,22 @@ class ChamferedHexHeadScrew(Screw):
     def head_plan(self) -> cq.Workplane:
         """ Create a hexagon solid """
         return cq.Workplane("XY").polygon(6, polygon_diagonal(self.screw_data["s"]))
+
+    def countersink_profile(
+        self, fit: Literal["Close", "Medium", "Loose"]
+    ) -> cq.Workplane:
+        """ A simple rectangle with gets revolved into a cylinder with an
+            extra 4mm for a socket wrench """
+        try:
+            clearance_hole_diameter = self.clearance_hole_diameters[fit]
+        except KeyError:
+            raise ValueError(
+                f"{fit} invalid, must be one of {list(self.clearance_hole_diameters.keys())}"
+            )
+        (k, s) = (self.screw_data[p] for p in ["k", "s"])
+        e = polygon_diagonal(s, 6)
+        width = clearance_hole_diameter - self.thread_diameter + e + 8 * MM
+        return cq.Workplane("XZ").rect(width / 2, k, centered=False)
 
 
 class ChamferedHexHeadWithFlangeScrew(Screw):
@@ -1275,6 +1315,21 @@ class ChamferedHexHeadWithFlangeScrew(Screw):
         )
         return profile
 
+    def countersink_profile(
+        self, fit: Literal["Close", "Medium", "Loose"]
+    ) -> cq.Workplane:
+        """ A simple rectangle with gets revolved into a cylinder with an
+            extra 4mm for a socket wrench """
+        try:
+            clearance_hole_diameter = self.clearance_hole_diameters[fit]
+        except KeyError:
+            raise ValueError(
+                f"{fit} invalid, must be one of {list(self.clearance_hole_diameters.keys())}"
+            )
+        (dc, k) = (self.screw_data[p] for p in ["dc", "k"])
+        width = clearance_hole_diameter - self.thread_diameter + dc + 8 * MM
+        return cq.Workplane("XZ").rect(width / 2, k, centered=False)
+
 
 class CheeseHeadScrew(Screw):
     """
@@ -1299,6 +1354,8 @@ class CheeseHeadScrew(Screw):
         return profile.fillet2D(k * 0.25, vertices)
 
     head_recess = Screw.default_head_recess
+
+    countersink_profile = Screw.default_countersink_profile
 
 
 class CounterSunkScrew(Screw):
@@ -1332,6 +1389,27 @@ class CounterSunkScrew(Screw):
 
     head_recess = Screw.default_head_recess
 
+    def countersink_profile(
+        self, fit: Literal["Close", "Medium", "Loose"]
+    ) -> cq.Workplane:
+        """ Create 2D profile of countersink profile """
+        (a, k) = (self.screw_data[p] for p in ["a", "k"])
+        side_length = k / cos(radians(a / 2))
+
+        try:
+            clearance_hole_diameter = self.clearance_hole_diameters[fit]
+        except KeyError:
+            raise ValueError(
+                f"{fit} invalid, must be one of {list(self.clearance_hole_diameters.keys())}"
+            )
+        return (
+            cq.Workplane("XZ")
+            .hLineTo(clearance_hole_diameter / 2)
+            .polarLine(side_length, a / 2)
+            .hLineTo(0)
+            .close()
+        )
+
 
 class PanHeadScrew(Screw):
     """
@@ -1358,6 +1436,7 @@ class PanHeadScrew(Screw):
         return profile
 
     head_recess = Screw.default_head_recess
+    countersink_profile = Screw.default_countersink_profile
 
 
 class PanHeadWithCollarScrew(Screw):
@@ -1386,6 +1465,8 @@ class PanHeadWithCollarScrew(Screw):
 
     head_recess = Screw.default_head_recess
 
+    countersink_profile = Screw.default_countersink_profile
+
 
 class RaisedCheeseHeadScrew(Screw):
     """
@@ -1410,6 +1491,8 @@ class RaisedCheeseHeadScrew(Screw):
         return profile
 
     head_recess = Screw.default_head_recess
+
+    countersink_profile = Screw.default_countersink_profile
 
 
 class RaisedCounterSunkOvalHeadScrew(Screw):
@@ -1445,6 +1528,8 @@ class RaisedCounterSunkOvalHeadScrew(Screw):
 
     head_recess = Screw.default_head_recess
 
+    countersink_profile = CounterSunkScrew.countersink_profile
+
 
 class SocketHeadCapScrew(Screw):
     """
@@ -1461,6 +1546,8 @@ class SocketHeadCapScrew(Screw):
         return profile.fillet2D(k * 0.075, vertices)
 
     head_recess = Screw.default_head_recess
+
+    countersink_profile = Screw.default_countersink_profile
 
 
 T = TypeVar("T", bound="Workplane")
@@ -1588,7 +1675,13 @@ for screw_class in screw_classes:
             screw = screw_class(
                 screw_type=screw_type, size=size, length=10, simple=True
             )
-            solid = screw.cq_object
+            solid = (
+                cq.Workplane("XZ")
+                .add(screw.countersink_profile("Loose").val())
+                .toPending()
+                .revolve()
+            )
+            # solid = screw.cq_object
             if "show_object" in locals():
                 show_object(solid, name=f"{screw_type}-{size}-head")
 
