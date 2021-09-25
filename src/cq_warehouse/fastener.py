@@ -1406,20 +1406,14 @@ class CounterSunkScrew(Screw):
         self, fit: Literal["Close", "Medium", "Loose"]
     ) -> cq.Workplane:
         """ Create 2D profile of countersink profile """
-        (a, k) = (self.screw_data[p] for p in ["a", "k"])
+        (a, dk, k) = (self.screw_data[p] for p in ["a", "dk", "k"])
         side_length = k / cos(radians(a / 2))
 
-        try:
-            clearance_hole_diameter = self.clearance_hole_diameters[fit]
-        except KeyError:
-            raise ValueError(
-                f"{fit} invalid, must be one of {list(self.clearance_hole_diameters.keys())}"
-            )
         return (
             cq.Workplane("XZ")
-            .hLineTo(clearance_hole_diameter / 2)
-            .polarLine(side_length, a / 2)
-            .hLineTo(0)
+            .vLineTo(k)
+            .hLineTo(dk / 2)
+            .polarLine(side_length, -90 - a / 2)
             .close()
         )
 
@@ -1541,7 +1535,19 @@ class RaisedCounterSunkOvalHeadScrew(Screw):
 
     head_recess = Screw.default_head_recess
 
-    countersink_profile = CounterSunkScrew.countersink_profile
+    def countersink_profile(
+        self, fit: Literal["Close", "Medium", "Loose"]
+    ) -> cq.Workplane:
+        """ A flat bottomed cone """
+        (a, k, dk) = (self.screw_data[p] for p in ["a", "k", "dk"])
+        side_length = k / cos(radians(a / 2))
+        return (
+            cq.Workplane("XZ")
+            .vLineTo(k)
+            .hLineTo(dk / 2)
+            .polarLine(side_length, -90 - a / 2)
+            .close()
+        )
 
 
 class SocketHeadCapScrew(Screw):
@@ -1570,7 +1576,7 @@ def _clearanceHole(
     self: T,
     screw: Screw,
     fit: Optional[Literal["Close", "Medium", "Loose"]] = "Medium",
-    extraDepth: Optional[float] = 0,
+    depth: Optional[float] = None,
     counterSunk: Optional[bool] = True,
     baseAssembly: Optional[cq.Assembly] = None,
     clean: Optional[bool] = True,
@@ -1587,11 +1593,14 @@ def _clearanceHole(
             f"fit must be one of {list(screw.clearance_hole_diameters.keys())} not {fit}"
         )
 
+    if depth is None:
+        depth = self.largestDimension()
+
     bore_direction = cq.Vector(0, 0, -1)
     origin = cq.Vector(0, 0, 0)
     shank_hole = cq.Solid.makeCylinder(
         radius=clearance_hole_diameter / 2.0,
-        height=screw.length + extraDepth,
+        height=depth,
         pnt=origin,
         dir=bore_direction,
     )
@@ -1606,9 +1615,10 @@ def _clearanceHole(
             .translate((0, 0, -head_offset))
             .val()
         )
-        screw_hole = countersink_cutter.fuse(
-            shank_hole.translate(bore_direction * head_offset)
-        )
+        # screw_hole = countersink_cutter.fuse(
+        #     shank_hole.translate(bore_direction * head_offset)
+        # )
+        screw_hole = countersink_cutter.fuse(shank_hole)
     else:
         head_offset = 0
         screw_hole = shank_hole
@@ -1684,54 +1694,53 @@ cq.Workplane.clearanceHole = _clearanceHole
 #     RaisedCounterSunkOvalHeadScrew,
 #     SocketHeadCapScrew,
 # ]
-screw_classes = Screw.__subclasses__()
-target_size = "M6-1"
-screw_type_list = [
-    (screw_class, screw_type)
-    for screw_class in screw_classes
-    for screw_type in screw_class.types()
-    if target_size in screw_class.sizes(screw_type)
-]
-screw_list = [
-    screw_type[0](screw_type=screw_type[1], size=target_size, length=20, simple=True)
-    for screw_type in screw_type_list
-]
-number_of_screws = len(screw_list)
-screw_diameters = [screw.head_diameter for screw in screw_list]
-total_diameters = sum(screw_diameters) + 5 * MM * number_of_screws
-disk_radius = total_diameters / (2 * pi)
-# cap_screw = SocketHeadCapScrew(screw_type="iso4762", size="M6-1", length=(1 / 2) * IN)
+# screw_classes = Screw.__subclasses__()
+# target_size = "M6-1"
+# screw_type_list = [
+#     (screw_class, screw_type)
+#     for screw_class in screw_classes
+#     for screw_type in screw_class.types()
+#     if target_size in screw_class.sizes(screw_type)
+# ]
+# screw_list = [
+#     screw_type[0](screw_type=screw_type[1], size=target_size, length=20, simple=True)
+#     for screw_type in screw_type_list
+# ]
+# number_of_screws = len(screw_list)
+# screw_diameters = [screw.head_diameter for screw in screw_list]
+# total_diameters = sum(screw_diameters) + 5 * MM * number_of_screws
+# disk_radius = total_diameters / (2 * pi)
+# # cap_screw = SocketHeadCapScrew(screw_type="iso4762", size="M6-1", length=(1 / 2) * IN)
 
-print(screw_diameters)
+# print(screw_diameters)
 
-# number_of_screws = 18
-# disk_radius = 50
-disk_assembly = cq.Assembly(name="part_number_1")
-disk = cq.Workplane("XY").circle(disk_radius).extrude(20)
-# for i, screw in enumerate(screw_list[0:1]):
-for i, screw in enumerate(screw_list):
-    disk = (
-        cq.Workplane("XY")
-        .add(disk.val())
-        .toPending()
-        .faces(">Z")
-        .workplane()
-        .polarArray(disk_radius, i * (360 / number_of_screws), 360, 1)
-        # .hole(2)
-        .clearanceHole(
-            screw=screw,
-            fit="Close",
-            counterSunk=True,
-            extraDepth=0.01 * IN,
-            baseAssembly=disk_assembly,
-            clean=False,
-        )
-    )
-disk_assembly.add(disk, name="plate", color=cq.Color(146 / 255, 72 / 255, 3 / 255))
+# # number_of_screws = 18
+# # disk_radius = 50
+# disk_assembly = cq.Assembly(name="part_number_1")
+# disk = cq.Workplane("XY").circle(disk_radius).extrude(20)
+# # for i, screw in enumerate(screw_list[0:1]):
+# for i, screw in enumerate(screw_list):
+#     disk = (
+#         cq.Workplane("XY")
+#         .add(disk.val())
+#         .toPending()
+#         .faces(">Z")
+#         .workplane()
+#         .polarArray(disk_radius, i * (360 / number_of_screws), 360, 1)
+#         # .hole(2)
+#         .clearanceHole(
+#             screw=screw,
+#             fit="Close",
+#             counterSunk=True,
+#             baseAssembly=disk_assembly,
+#             clean=False,
+#         )
+#     )
+# disk_assembly.add(disk, name="plate", color=cq.Color(162 / 255, 138 / 255, 255 / 255))
 
-if "show_object" in locals():
-    show_object(disk, name="disk")
-    show_object(disk_assembly, name="disk_assembly")
+# if "show_object" in locals():
+#     show_object(disk, name="disk")
+#     show_object(disk_assembly, name="disk_assembly")
 
 # result = (
 #     cq.Workplane(cq.Plane.XY())
