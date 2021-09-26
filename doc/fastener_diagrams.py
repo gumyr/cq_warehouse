@@ -6,7 +6,8 @@ name: fastener_diagrams.py
 by:   Gumyr
 date: August 14th 2021
 
-desc:
+desc: Create a disc with countersunk holes around the perimeter with
+      every type of screw in it.
 
 
 license:
@@ -55,6 +56,20 @@ screw_type_list = [
     for screw_type in screw_class.types()
     if target_size in screw_class.sizes(screw_type)
 ]
+print(
+    f"The disc contains {len(screw_type_list)} {target_size} screws of the following types:"
+)
+screw_type_dict = dict()
+for screw_type in screw_type_list:
+    if screw_type[0].__name__ in list(screw_type_dict.keys()):
+        screw_type_dict[screw_type[0].__name__].append(screw_type[1])
+    else:
+        screw_type_dict[screw_type[0].__name__] = [screw_type[1]]
+
+for screw_class, screw_types in screw_type_dict.items():
+    screws = ", ".join(screw_types)
+    print(f"- {screw_class} : {screws}")
+
 screw_list = [
     screw_type[0](screw_type=screw_type[1], size=target_size, length=20, simple=True)
     for screw_type in screw_type_list
