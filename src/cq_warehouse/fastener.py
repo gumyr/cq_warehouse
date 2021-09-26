@@ -1284,7 +1284,7 @@ class ChamferedHexHeadScrew(Screw):
         self, fit: Literal["Close", "Medium", "Loose"]
     ) -> cq.Workplane:
         """ A simple rectangle with gets revolved into a cylinder with an
-            extra 4mm for a socket wrench """
+            extra 3mm for a socket wrench """
         try:
             clearance_hole_diameter = self.clearance_hole_diameters[fit]
         except KeyError:
@@ -1293,7 +1293,7 @@ class ChamferedHexHeadScrew(Screw):
             )
         (k, s) = (self.screw_data[p] for p in ["k", "s"])
         e = polygon_diagonal(s, 6)
-        width = clearance_hole_diameter - self.thread_diameter + e + 8 * MM
+        width = clearance_hole_diameter - self.thread_diameter + e + 6 * MM
         return cq.Workplane("XZ").rect(width / 2, k, centered=False)
 
 
@@ -1332,15 +1332,16 @@ class ChamferedHexHeadWithFlangeScrew(Screw):
         self, fit: Literal["Close", "Medium", "Loose"]
     ) -> cq.Workplane:
         """ A simple rectangle with gets revolved into a cylinder with an
-            extra 4mm for a socket wrench """
+            extra 3mm for a socket wrench """
         try:
             clearance_hole_diameter = self.clearance_hole_diameters[fit]
         except KeyError:
             raise ValueError(
                 f"{fit} invalid, must be one of {list(self.clearance_hole_diameters.keys())}"
             )
-        (dc, k) = (self.screw_data[p] for p in ["dc", "k"])
-        width = clearance_hole_diameter - self.thread_diameter + dc + 8 * MM
+        (dc, s, k) = (self.screw_data[p] for p in ["dc", "s", "k"])
+        clearance = clearance_hole_diameter - self.thread_diameter
+        width = max(dc + clearance, polygon_diagonal(s, 6) + 6 * MM)
         return cq.Workplane("XZ").rect(width / 2, k, centered=False)
 
 
@@ -1572,8 +1573,9 @@ class SocketHeadCapScrew(Screw):
 T = TypeVar("T", bound="Workplane")
 
 
-def _clearanceHole(
+def _screwHole(
     self: T,
+    hole_diameters: dict,
     screw: Screw,
     fit: Optional[Literal["Close", "Medium", "Loose"]] = "Medium",
     depth: Optional[float] = None,
@@ -1582,16 +1584,13 @@ def _clearanceHole(
     clean: Optional[bool] = True,
 ) -> T:
     """
-    Makes a counterbore clearance hole for the given screw for each item on the stack.
+    Makes a counterbore clearance or tap hole for the given screw for each item on the stack.
     The surface of the hole is at the current workplane.
     """
-
     try:
-        clearance_hole_diameter = screw.clearance_hole_diameters[fit]
+        hole_diameter = hole_diameters[fit]
     except KeyError:
-        raise ValueError(
-            f"fit must be one of {list(screw.clearance_hole_diameters.keys())} not {fit}"
-        )
+        raise ValueError(f"fit must be one of {list(hole_diameters.keys())} not {fit}")
 
     if depth is None:
         depth = self.largestDimension()
@@ -1599,10 +1598,7 @@ def _clearanceHole(
     bore_direction = cq.Vector(0, 0, -1)
     origin = cq.Vector(0, 0, 0)
     shank_hole = cq.Solid.makeCylinder(
-        radius=clearance_hole_diameter / 2.0,
-        height=depth,
-        pnt=origin,
-        dir=bore_direction,
+        radius=hole_diameter / 2.0, height=depth, pnt=origin, dir=bore_direction,
     )
     if counterSunk:
         countersink_profile = screw.countersink_profile(fit)
@@ -1615,17 +1611,14 @@ def _clearanceHole(
             .translate((0, 0, -head_offset))
             .val()
         )
-        # screw_hole = countersink_cutter.fuse(
-        #     shank_hole.translate(bore_direction * head_offset)
-        # )
         screw_hole = countersink_cutter.fuse(shank_hole)
     else:
         head_offset = 0
         screw_hole = shank_hole
 
     # Record the location of each hole for use in the assembly
-    test_object = cq.Solid.makeBox(1, 1, 1)
-    relocated_test_objects = self.eachpoint(lambda loc: test_object.moved(loc), True)
+    null_object = cq.Solid.makeBox(1, 1, 1)
+    relocated_test_objects = self.eachpoint(lambda loc: null_object.moved(loc), True)
     hole_locations = [loc.location() for loc in relocated_test_objects.vals()]
 
     # Add screws to the base assembly if it was provided
@@ -1641,7 +1634,155 @@ def _clearanceHole(
     return self.cutEach(lambda loc: screw_hole.moved(loc), True, clean)
 
 
+cq.Workplane.screwHole = _screwHole
+
+
+def _clearanceHole(
+    self: T,
+    screw: Screw,
+    fit: Optional[Literal["Close", "Medium", "Loose"]] = "Loose",
+    depth: Optional[float] = None,
+    counterSunk: Optional[bool] = True,
+    baseAssembly: Optional[cq.Assembly] = None,
+    clean: Optional[bool] = True,
+) -> T:
+    return self.screwHole(
+        screw.clearance_hole_diameters,
+        screw,
+        fit,
+        depth,
+        counterSunk,
+        baseAssembly,
+        clean,
+    )
+
+
+def _tapHole(
+    self: T,
+    screw: Screw,
+    fit: Optional[Literal["Soft", "Hard"]] = "Soft",
+    depth: Optional[float] = None,
+    counterSunk: Optional[bool] = True,
+    baseAssembly: Optional[cq.Assembly] = None,
+    clean: Optional[bool] = True,
+) -> T:
+    return self.screwHole(
+        screw.tap_hole_diameters, screw, fit, depth, counterSunk, baseAssembly, clean
+    )
+
+
+def _addEach(
+    self: T,
+    fcn: Callable[[cq.Location], cq.Shape],
+    useLocalCoords: bool = False,
+    clean: bool = True,
+    glue: bool = True,
+) -> T:
+    """
+    Evaluates the provided function at each point on the stack (ie, eachpoint)
+    and then adds the result from the context solid.
+    :param fcn: a function suitable for use in the eachpoint method: ie, that accepts a vector
+    :param useLocalCoords: same as for :py:meth:`eachpoint`
+    :param boolean clean: call :py:meth:`clean` afterwards to have a clean shape
+    :raises ValueError: if no solids or compounds are found in the stack or parent chain
+    :return: a CQ object that contains the resulting solid
+    """
+    ctxSolid = self.findSolid()
+
+    # will contain all of the counterbores as a single compound
+    results = cast(List[cq.Shape], self.eachpoint(fcn, useLocalCoords).vals())
+
+    s = ctxSolid.union(*results, glue=glue)
+
+    if clean:
+        s = s.clean()
+
+    return self.newObject([s])
+
+
+cq.Workplane.addEach = _addEach
+
+
+def _threadedHole(
+    self: T,
+    screw: Screw,
+    hand: Literal["right", "left"] = "right",
+    simple: Optional[bool] = False,
+    depth: Optional[float] = None,
+    counterSunk: Optional[bool] = True,
+    fit: Optional[Literal["Close", "Medium", "Loose"]] = "Loose",
+    baseAssembly: Optional[cq.Assembly] = None,
+    clean: Optional[bool] = True,
+) -> T:
+
+    """
+    Makes a counterbore clearance or tap hole for the given screw for each item on the stack.
+    The surface of the hole is at the current workplane.
+    """
+
+    if depth is None:
+        depth = self.largestDimension()
+
+    thread = InternalThread(
+        major_diameter=screw.thread_diameter,
+        pitch=screw.thread_pitch,
+        length=depth,
+        hand=hand,
+        simple=simple,
+    )
+
+    bore_direction = cq.Vector(0, 0, -1)
+    origin = cq.Vector(0, 0, 0)
+    if counterSunk:
+        countersink_profile = screw.countersink_profile(fit)
+        head_offset = countersink_profile.vertices(">Z").val().Z
+        shank_hole = cq.Solid.makeCylinder(
+            radius=thread.internal_thread_socket_radius,
+            height=depth - head_offset,
+            pnt=origin,
+            dir=bore_direction,
+        )
+        countersink_cutter = (
+            cq.Workplane("XZ")
+            .add(countersink_profile.val())
+            .toPending()
+            .revolve()
+            .translate((0, 0, -head_offset))
+            .val()
+        )
+        screw_hole = countersink_cutter.fuse(shank_hole.translate((0, 0, -head_offset)))
+    else:
+        shank_hole = cq.Solid.makeCylinder(
+            radius=thread.internal_thread_socket_radius,
+            height=depth,
+            pnt=origin,
+            dir=bore_direction,
+        )
+        head_offset = 0
+        screw_hole = shank_hole
+
+    # Record the location of each hole for use in the assembly
+    null_object = cq.Solid.makeBox(1, 1, 1)
+    relocated_test_objects = self.eachpoint(lambda loc: null_object.moved(loc), True)
+    hole_locations = [loc.location() for loc in relocated_test_objects.vals()]
+
+    # Add screws to the base assembly if it was provided
+    if baseAssembly is not None:
+        for hole_loc in hole_locations:
+            baseAssembly.add(
+                screw.cq_object,
+                loc=hole_loc
+                * cq.Location(bore_direction * (head_offset - screw.length_offset())),
+            )
+
+    # Make holes in the stack solid object
+    part = self.cutEach(lambda loc: screw_hole.moved(loc), True, clean)
+    return part.addEach(lambda loc: thread.cq_object.moved(loc), True, clean, True)
+
+
 cq.Workplane.clearanceHole = _clearanceHole
+cq.Workplane.tapHole = _tapHole
+cq.Workplane.threadedHole = _threadedHole
 
 # base_assembly = cq.Assembly(name="part_number_1")
 # # cap_screw = SocketHeadCapScrew(size="#8-32", length=(1 / 2) * IN)
@@ -1694,53 +1835,53 @@ cq.Workplane.clearanceHole = _clearanceHole
 #     RaisedCounterSunkOvalHeadScrew,
 #     SocketHeadCapScrew,
 # ]
-# screw_classes = Screw.__subclasses__()
-# target_size = "M6-1"
-# screw_type_list = [
-#     (screw_class, screw_type)
-#     for screw_class in screw_classes
-#     for screw_type in screw_class.types()
-#     if target_size in screw_class.sizes(screw_type)
-# ]
-# screw_list = [
-#     screw_type[0](screw_type=screw_type[1], size=target_size, length=20, simple=True)
-#     for screw_type in screw_type_list
-# ]
-# number_of_screws = len(screw_list)
-# screw_diameters = [screw.head_diameter for screw in screw_list]
-# total_diameters = sum(screw_diameters) + 5 * MM * number_of_screws
-# disk_radius = total_diameters / (2 * pi)
-# # cap_screw = SocketHeadCapScrew(screw_type="iso4762", size="M6-1", length=(1 / 2) * IN)
+screw_classes = Screw.__subclasses__()
+target_size = "M6-1"
+screw_type_list = [
+    (screw_class, screw_type)
+    for screw_class in screw_classes
+    for screw_type in screw_class.types()
+    if target_size in screw_class.sizes(screw_type)
+]
+screw_list = [
+    screw_type[0](screw_type=screw_type[1], size=target_size, length=20, simple=True)
+    for screw_type in screw_type_list
+]
+number_of_screws = len(screw_list)
+screw_diameters = [screw.head_diameter for screw in screw_list]
+total_diameters = sum(screw_diameters) + 5 * MM * number_of_screws
+disk_radius = total_diameters / (2 * pi)
+# cap_screw = SocketHeadCapScrew(screw_type="iso4762", size="M6-1", length=(1 / 2) * IN)
 
 # print(screw_diameters)
 
 # # number_of_screws = 18
 # # disk_radius = 50
-# disk_assembly = cq.Assembly(name="part_number_1")
-# disk = cq.Workplane("XY").circle(disk_radius).extrude(20)
-# # for i, screw in enumerate(screw_list[0:1]):
-# for i, screw in enumerate(screw_list):
-#     disk = (
-#         cq.Workplane("XY")
-#         .add(disk.val())
-#         .toPending()
-#         .faces(">Z")
-#         .workplane()
-#         .polarArray(disk_radius, i * (360 / number_of_screws), 360, 1)
-#         # .hole(2)
-#         .clearanceHole(
-#             screw=screw,
-#             fit="Close",
-#             counterSunk=True,
-#             baseAssembly=disk_assembly,
-#             clean=False,
-#         )
-#     )
-# disk_assembly.add(disk, name="plate", color=cq.Color(162 / 255, 138 / 255, 255 / 255))
+disk_assembly = cq.Assembly(name="part_number_1")
+disk = cq.Workplane("XY").circle(disk_radius).extrude(20)
+# for i, screw in enumerate(screw_list[0:1]):
+for i, screw in enumerate(screw_list):
+    disk = (
+        cq.Workplane("XY")
+        .add(disk.val())
+        .toPending()
+        .faces(">Z")
+        .workplane()
+        .polarArray(disk_radius, i * (360 / number_of_screws), 360, 1)
+        # .hole(2)
+        .clearanceHole(
+            screw=screw,
+            fit="Close",
+            counterSunk=True,
+            baseAssembly=disk_assembly,
+            clean=False,
+        )
+    )
+disk_assembly.add(disk, name="plate", color=cq.Color(162 / 255, 138 / 255, 255 / 255))
 
-# if "show_object" in locals():
-#     show_object(disk, name="disk")
-#     show_object(disk_assembly, name="disk_assembly")
+if "show_object" in locals():
+    show_object(disk, name="disk")
+    show_object(disk_assembly, name="disk_assembly")
 
 # result = (
 #     cq.Workplane(cq.Plane.XY())
