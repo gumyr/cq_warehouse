@@ -41,6 +41,11 @@ MM = 1
 IN = 25.4 * MM
 
 
+def method_exists(method: str) -> bool:
+    """ Did the derived class create this method """
+    return hasattr(self.__class__, method) and callable(getattr(self.__class__, method))
+
+
 def polygon_diagonal(width: float, num_sides: Optional[int] = 6) -> float:
     """ Distance across polygon diagonals given width across flats """
     return width / cos(pi / num_sides)
@@ -180,7 +185,8 @@ def lookup_drill_diameters(drill_hole_sizes: dict) -> dict:
 
     # Read the drill size csv file and build a drill_size dictionary (Ah, the imperial system)
     drill_sizes = {}
-    with open("drill_sizes.csv", newline="") as csvfile:
+    with pkg_resources.open_text(cq_warehouse, "drill_sizes.csv") as csvfile:
+        # with open("drill_sizes.csv", newline="") as csvfile:
         reader = csv.DictReader(csvfile)
         fieldnames = reader.fieldnames
         for row in reader:
@@ -202,11 +208,8 @@ def lookup_drill_diameters(drill_hole_sizes: dict) -> dict:
     return drill_hole_diameters
 
 
-# TODO: Use the Wire fillet2D method as a base
 def _fillet2D(self, radius: float, vertices: List[cq.Vertex]) -> cq.Wire:
-    return cq.Workplane(
-        cq.Face.makeFromWires(self.val()).fillet2D(radius, vertices).outerWire()
-    )
+    return cq.Workplane(self.val().fillet2D(radius, vertices))
 
 
 cq.Workplane.fillet2D = _fillet2D
@@ -693,182 +696,338 @@ class InternalThread(Thread):
 class Nut(ABC):
     """ Base Class used to create standard or custom threaded nuts """
 
+    # Read clearance and tap hole dimesions tables
+    # Close, Medium, Loose
+    clearance_hole_drill_sizes = read_fastener_parameters_from_csv(
+        "clearance_hole_sizes.csv"
+    )
+    clearance_hole_data = lookup_drill_diameters(clearance_hole_drill_sizes)
+
+    # Soft (Aluminum, Brass, & Plastics) or Hard (Steel, Stainless, & Iron)
+    tap_hole_drill_sizes = read_fastener_parameters_from_csv("tap_hole_sizes.csv")
+    tap_hole_data = lookup_drill_diameters(tap_hole_drill_sizes)
+
+    @property
+    def tap_drill_sizes(self):
+        """ A dictionary of drill sizes for tapped holes """
+        try:
+            return self.tap_hole_drill_sizes[self.size]
+        except KeyError:
+            raise ValueError(f"No clearance hole data for size {self.size}")
+
+    @property
+    def tap_hole_diameters(self):
+        """ A dictionary of drill diameters for tapped holes """
+        try:
+            return self.tap_hole_data[self.size]
+        except KeyError:
+            raise ValueError(f"No clearance hole data for size {self.size}")
+
+    @property
+    def clearance_drill_sizes(self):
+        """ A dictionary of drill sizes for clearance holes """
+        try:
+            return self.clearance_hole_drill_sizes[self.size.split("-")[0]]
+        except KeyError:
+            raise ValueError(f"No clearance hole data for size {self.size}")
+
+    @property
+    def clearance_hole_diameters(self):
+        """ A dictionary of drill diameters for clearance holes """
+        try:
+            return self.clearance_hole_data[self.size.split("-")[0]]
+        except KeyError:
+            raise ValueError(f"No clearance hole data for size {self.size}")
+
     @property
     @classmethod
     @abstractmethod
-    def metric_parameters(cls):
-        """ Each derived class must provide a metric_parameters dictionary """
+    def fastener_data(cls):
+        """ Each derived class must provide a fastener_data dictionary """
         return NotImplementedError
+
+    @abstractmethod
+    def nut_profile(self) -> cq.Workplane:
+        """ Each derived class must provide the profile of the nut """
+        return NotImplementedError
+
+    @abstractmethod
+    def nut_plan(self) -> cq.Workplane:
+        """ Each derived class must provide the plan of the nut """
+        return NotImplementedError
+
+    @abstractmethod
+    def countersink_profile(
+        self, fit: Literal["Close", "Medium", "Loose"]
+    ) -> cq.Workplane:
+        """ Each derived class must provide the profile of a countersink cutter """
+        return NotImplementedError
+
+    @classmethod
+    def types(cls) -> List[str]:
+        """ Return a set of the nut types """
+        return set(p.split(":")[0] for p in list(cls.fastener_data.values())[0].keys())
+
+    @classmethod
+    def sizes(cls, nut_type: str) -> List[str]:
+        """ Return a list of the nut sizes for the given type """
+        return list(isolate_fastener_type(nut_type, cls.fastener_data).keys())
 
     @property
-    @classmethod
-    @abstractmethod
-    def imperial_parameters(cls):
-        """ Each derived class must provide an imperial_parameters dictionary """
-        return NotImplementedError
+    def nut_thickness(self):
+        """ Calculate the maximum thickness of the nut """
+        return self.head.vertices(">Z").val().Z
 
-    @classmethod
-    def metric_sizes(cls) -> str:
-        """ Return a list of the standard screw sizes """
-        return list(cls.metric_parameters.keys())
+    @property
+    def nut_diameter(self):
+        """ Calculate the maximum diameter of the nut """
+        vertices = self.head.vertices().vals()
+        radii = [
+            (cq.Vector(0, 0, v.Z) - cq.Vector(v.toTuple())).Length for v in vertices
+        ]
+        return 2 * max(radii)
 
-    @classmethod
-    def imperial_sizes(cls) -> str:
-        """ Return a list of the standard screw sizes """
-        return list(cls.imperial_parameters.keys())
+    @property
+    def cq_object(self):
+        """ A cadquery Solid screw as defined by class attributes """
+        return self._cq_object
 
-    def __init__(self):
-        if hasattr(self, "size"):
-            self.extract_nut_parameters()
-        self.cq_object = self.make_nut()
-
-    def extract_nut_parameters(self):
-        """ Parse the nut size string into thread_diameter, thread_pitch, width and thickness """
-        if self.size in self.metric_parameters.keys():
-            nut_data = self.metric_parameters[self.size]
-            self.width = nut_data["Width"]
-            self.thickness = nut_data["Height"]
-            size_parts = self.size.split("-")
-            self.thread_diameter = float(size_parts[0][1:])
-            self.thread_pitch = float(size_parts[1])
-        elif self.size in self.imperial_parameters.keys():
-            nut_data = self.imperial_parameters[self.size]
-            self.width = nut_data["Width"]
-            self.thickness = nut_data["Height"]
-            (self.thread_diameter, self.thread_pitch) = decode_imperial_size(self.size)
-        else:
+    @cache
+    def __init__(
+        self,
+        size: str,
+        nut_type: str,
+        hand: Literal["right", "left"] = "right",
+        simple: bool = False,
+    ):
+        """ Parse Nut input parameters """
+        size_parts = size.strip().split("-")
+        if not len(size_parts) == 2:
             raise ValueError(
-                f"Invalid nut size {self.size} - must be one of:"
-                f"{list(self.metric_parameters.keys())+list(self.imperial_parameters.keys())}"
+                f"{size_parts} invalid, must be formatted as size-pitch or size-TPI"
             )
 
-    def make_nut_body(self, internal_thread_socket_radius) -> cq.Workplane:
-        """ Replaced by derived class implementation """
+        self.size = size
+        self.is_metric = self.size[0] == "M"
+        if self.is_metric:
+            self.thread_diameter = float(size_parts[0][1:])
+            self.thread_pitch = float(size_parts[1])
+        else:
+            (self.thread_diameter, self.thread_pitch) = decode_imperial_size(self.size)
 
-    def make_nut(self) -> cq.Solid:
-        """ Create an arbitrary sized nut """
+        if nut_type not in self.types():
+            raise ValueError(f"{nut_type} invalid, must be one of {self.types()}")
+        self.nut_type = nut_type
+        if hand in ["left", "right"]:
+            self.hand = hand
+        else:
+            raise ValueError(f"{hand} invalid, must be one of 'left' or 'right'")
+        self.simple = simple
+        try:
+            self.nut_data = evaluate_parameter_dict(
+                isolate_fastener_type(self.nut_type, self.fastener_data)[self.size],
+                is_metric=self.is_metric,
+            )
+        except KeyError:
+            raise ValueError(
+                f"{size} invalid, must be one of {self.sizes(self.nut_type)}"
+            )
+        self._cq_object = self.make_nut().val()
 
+    def make_nut(self) -> cq.Workplane:
+        """ Create a screw head from the 2D shapes defined in the derived class """
+
+        # Create the thread
         thread = InternalThread(
             major_diameter=self.thread_diameter,
             pitch=self.thread_pitch,
-            length=self.thickness,
+            length=self.nut_data["m"],
             hand=self.hand,
             simple=self.simple,
         )
-        nut = (
-            self.make_nut_body(thread.internal_thread_socket_radius)
-            .union(thread.cq_object, glue=True)
-            .val()
+
+        profile = self.nut_profile()
+        max_nut_height = profile.vertices(">Z").val().Z
+        nut_thread_height = self.nut_data["m"]
+
+        # Create the basic nut shape
+        nut = cq.Workplane("XZ").add(profile.val()).toPending().revolve()
+
+        cq.Wire.makeCircle
+
+        # Modify the head to conform to the shape of head_plan (e.g. hex)
+        nut_blank = (
+            cq.Workplane("XY")
+            .add(self.nut_plan().val())
+            .toPending()
+            .add(
+                cq.Wire.makeCircle(
+                    thread.internal_thread_socket_radius,
+                    cq.Vector(0, 0, 0),
+                    cq.Vector(0, 0, 1),
+                )
+            )
+            .toPending()
+            .extrude(nut_thread_height)
+            .add(self.nut_plan().val().translate((0, 0, nut_thread_height)))
+            .toPending()
+            .extrude(max_nut_height - nut_thread_height)
         )
-        return nut
+        nut = nut.intersect(nut_blank)
+
+        # Add a flange as it exists outside of the head plan
+        if method_exists("flange_profile"):
+            nut = nut.union(
+                cq.Workplane("XZ")
+                .add(self.flange_profile().val())
+                .toPending()
+                .revolve()
+            )
+
+        # Add the thread to the nut body
+        nut = nut.union(thread.cq_object, glue=True)
+
+        return nut.val()
+
+    def default_nut_profile(self):
+        """ Create 2D profile of hex nuts with double chamfers """
+        (m, s) = (self.nut_data[p] for p in ["m", "s"])
+        e = polygon_diagonal(s, 6)
+        # Chamfer angle must be between 15 and 30 degrees
+        cs = (e - s) * tan(radians(15)) / 2
+        profile = (
+            cq.Workplane("XZ")
+            .hLineTo(s / 2)
+            .lineTo(e / 2, cs)
+            .vLineTo(m - cs)
+            .lineTo(s / 2, m)
+            .hLineTo(0)
+            .close()
+        )
+        return profile
+
+    def default_nut_plan(self) -> cq.Workplane:
+        """ Create a hexagon solid """
+        return cq.Workplane("XY").polygon(6, polygon_diagonal(self.nut_data["s"]))
+
+    def default_countersink_profile(
+        self, fit: Literal["Close", "Medium", "Loose"]
+    ) -> cq.Workplane:
+        """ A simple rectangle with gets revolved into a cylinder with an
+            extra 3mm for a socket wrench """
+        try:
+            clearance_hole_diameter = self.clearance_hole_diameters[fit]
+        except KeyError:
+            raise ValueError(
+                f"{fit} invalid, must be one of {list(self.clearance_hole_diameters.keys())}"
+            )
+        (k, s) = (self.nut_data[p] for p in ["k", "s"])
+        e = polygon_diagonal(s, 6)
+        width = clearance_hole_diameter - self.thread_diameter + e + 6 * MM
+        return cq.Workplane("XZ").rect(width / 2, k, centered=False)
+
+
+class DomedCapNut(Nut):
+    """
+    din 1587 Hexagon domed cap nuts
+    """
+
+    fastener_data = read_fastener_parameters_from_csv("domed_cap_nut_parameters.csv")
+
+    def default_nut_profile(self):
+        """ Create 2D profile of hex nuts with double chamfers """
+        (dk, m, s) = (self.nut_data[p] for p in ["dk", "m", "s"])
+        e = polygon_diagonal(s, 6)
+        # Chamfer angle must be between 15 and 30 degrees
+        cs = (e - s) * tan(radians(15)) / 2
+        profile = (
+            cq.Workplane("XZ")
+            .moveTo(1 * MM, 0)
+            .hLineTo(s / 2)
+            .lineTo(e / 2, cs)
+            .vLineTo(m - cs)
+            .lineTo(s / 2, m)
+            .hLineTo(dk / 2)
+            .radiusArc((0, m + dk / 2), dk / 2)
+            .vLineTo(m + dk / 2 - 1 * MM)
+            .radiusArc((dk / 2 - 1 * MM, m), -(dk / 2 - 1 * MM))
+            .hLineTo(1 * MM)
+            .close()
+        )
+        return profile
+
+    nut_plan = Nut.default_nut_plan
 
 
 class HexNut(Nut):
-    """ Create a hex nut """
+    """
+    ISO4032	M1.6-M64	Hexagon nuts, Style 1
+    ISO4033	M5-M36      Hexagon nuts, Style 2
+    ISO4035	M1.6-M64	Hexagon thin nuts, chamfered
+    """
 
-    metric_parameters = evaluate_parameter_dict_of_dict(
-        read_fastener_parameters_from_csv("metric_hex_parameters.csv"), is_metric=True,
-    )
-    imperial_parameters = evaluate_parameter_dict_of_dict(
-        read_fastener_parameters_from_csv("imperial_hex_parameters.csv"),
-        is_metric=False,
-    )
+    fastener_data = read_fastener_parameters_from_csv("hex_nut_parameters.csv")
 
-    @overload
-    def __init__(
-        self, size: str, hand: Literal["right", "left"] = "right", simple: bool = False,
-    ):
-        ...
+    nut_profile = Nut.default_nut_profile
+    nut_plan = Nut.default_nut_plan
 
-    @overload
-    def __init__(
-        self,
-        width: Optional[float] = None,
-        thread_diameter: Optional[float] = None,
-        thread_pitch: Optional[float] = None,
-        thickness: Optional[float] = None,
-        hand: Literal["right", "left"] = "right",
-        simple: bool = False,
-    ):
-        ...
 
-    @cache
-    def __init__(self, **kwargs):
-        self.hand = "right"
-        self.simple = False
-        for key, value in kwargs.items():
-            setattr(self, key, value)
-        super().__init__()
+class HexNutWithFlange(Nut):
+    """
+    EN1661	M5	M20	Hexagon nuts with flange
+    """
 
-    def make_nut_body(self, internal_thread_socket_radius) -> cq.Workplane:
-        """ Create a hex nut body with chamferred top and bottom """
+    fastener_data = read_fastener_parameters_from_csv("hexagon_nut_parameters.csv")
 
-        # Distance across the tips of the hex
-        hex_diameter = self.width / cos(pi / 6)
-        # Chamfer between the hex tips and flats
-        chamfer_size = (hex_diameter - self.width) / 2
+    nut_profile = Nut.default_nut_profile
+    nut_plan = Nut.default_nut_plan
 
-        nut_body = (
-            cq.Workplane("XY")
-            .circle(hex_diameter / 2)  # Create a circle that contains the hexagon
-            .circle(internal_thread_socket_radius)  # .. with a hole in the center
-            .extrude(self.thickness)
-            .edges(cq.selectors.RadiusNthSelector(1))
-            .chamfer(chamfer_size / 2, chamfer_size)  # Chamfer the circular edges
-            .intersect(
-                cq.Workplane("XY").polygon(6, hex_diameter).extrude(self.thickness)
-            )
+    def flange_profile(self):
+        """ Flange for hexagon Bolts """
+        (dc, c) = (self.screw_data[p] for p in ["dc", "c"])
+        flange_angle = 25
+        tangent_point = cq.Vector(
+            (c / 2) * cos(radians(90 - flange_angle)),
+            (c / 2) * sin(radians(90 - flange_angle)),
+        ) + cq.Vector((dc - c) / 2, c / 2)
+        profile = (
+            cq.Workplane("XZ")
+            .hLineTo(dc / 2 - c / 2)
+            .radiusArc(tangent_point, -c / 2)
+            .polarLine(dc / 2 - c / 2, 180 - flange_angle)
+            .hLineTo(0)
+            .close()
         )
-        return nut_body
+        return profile
+
+
+class UnchamferedHexagonNut(Nut):
+    """
+    ISO4036	M1.6-M10	Hexagon thin nuts, unchamfered
+    """
+
+    fastener_data = read_fastener_parameters_from_csv(
+        "unchamfered_hex_nut_parameters.csv"
+    )
+
+    def default_nut_profile(self):
+        """ Create 2D profile of hex nuts with double chamfers """
+        (m, s) = (self.nut_data[p] for p in ["m", "s"])
+        return cq.Workplane("XZ").rect(polygon_diagonal(s, 6) / 2, m, centered=False)
 
 
 class SquareNut(Nut):
-    """ Create a square nut """
+    """
+    DIN 557 - Square Nuts
+    """
 
-    metric_parameters = evaluate_parameter_dict_of_dict(
-        read_fastener_parameters_from_csv("metric_hex_parameters.csv"), is_metric=True,
-    )
+    fastener_data = read_fastener_parameters_from_csv("square_nut_parameters.csv")
 
-    imperial_parameters = evaluate_parameter_dict_of_dict(
-        read_fastener_parameters_from_csv("imperial_hex_parameters.csv"),
-        is_metric=False,
-    )
+    nut_profile = Nut.default_nut_profile
 
-    @overload
-    def __init__(
-        self, size: str, hand: Literal["right", "left"] = "right", simple: bool = False,
-    ):
-        ...
-
-    @overload
-    def __init__(
-        self,
-        width: Optional[float] = None,
-        thread_diameter: Optional[float] = None,
-        thread_pitch: Optional[float] = None,
-        thickness: Optional[float] = None,
-        hand: Literal["right", "left"] = "right",
-        simple: bool = False,
-    ):
-        ...
-
-    @cache
-    def __init__(self, **kwargs):
-        self.hand = "right"
-        self.simple = False
-        for key, value in kwargs.items():
-            setattr(self, key, value)
-        super().__init__()
-
-    def make_nut_body(self, internal_thread_socket_radius) -> cq.Workplane:
-
-        nut_body = (
-            cq.Workplane("XY")
-            .rect(self.width, self.width)
-            .circle(internal_thread_socket_radius)
-            .extrude(self.thickness)
-        )
-        return nut_body
+    def nut_plan(self) -> cq.Workplane:
+        """ Simple square for the plan """
+        return cq.Workplane("XY").rect(self.nut_data["s"], self.nut_data["s"])
 
 
 class Screw(ABC):
@@ -1047,11 +1206,11 @@ class Screw(ABC):
     def make_head(self) -> cq.Workplane:
         """ Create a screw head from the 2D shapes defined in the derived class """
 
-        def method_exists(method: str) -> bool:
-            """ Did the derived class create this method """
-            return hasattr(self.__class__, method) and callable(
-                getattr(self.__class__, method)
-            )
+        # def method_exists(method: str) -> bool:
+        #     """ Did the derived class create this method """
+        #     return hasattr(self.__class__, method) and callable(
+        #         getattr(self.__class__, method)
+        #     )
 
         # Determine what shape creation methods have been defined
         has_profile = method_exists("head_profile")
@@ -1250,7 +1409,7 @@ class ButtonHeadWithCollarScrew(Screw):
         return cq.Workplane("XZ").rect(width / 2, self.screw_data["k"], centered=False)
 
 
-class ChamferedHexHeadScrew(Screw):
+class HexHeadScrew(Screw):
     """
     iso4014 - Hexagon head bolt
     iso4017 - Hexagon head screws
@@ -1297,7 +1456,7 @@ class ChamferedHexHeadScrew(Screw):
         return cq.Workplane("XZ").rect(width / 2, k, centered=False)
 
 
-class ChamferedHexHeadWithFlangeScrew(Screw):
+class HexHeadWithFlangeScrew(Screw):
     """
     en1662 - Hexagon bolts with flange small series
     en1665 - Hexagon head bolts with flange
@@ -1307,8 +1466,8 @@ class ChamferedHexHeadWithFlangeScrew(Screw):
         "chamfered_hex_head_with_flange_parameters.csv"
     )
 
-    head_profile = ChamferedHexHeadScrew.head_profile
-    head_plan = ChamferedHexHeadScrew.head_plan
+    head_profile = HexHeadScrew.head_profile
+    head_plan = HexHeadScrew.head_plan
 
     def flange_profile(self):
         """ Flange for hexagon Bolts """
@@ -1835,53 +1994,53 @@ cq.Workplane.threadedHole = _threadedHole
 #     RaisedCounterSunkOvalHeadScrew,
 #     SocketHeadCapScrew,
 # ]
-screw_classes = Screw.__subclasses__()
-target_size = "M6-1"
-screw_type_list = [
-    (screw_class, screw_type)
-    for screw_class in screw_classes
-    for screw_type in screw_class.types()
-    if target_size in screw_class.sizes(screw_type)
-]
-screw_list = [
-    screw_type[0](screw_type=screw_type[1], size=target_size, length=20, simple=True)
-    for screw_type in screw_type_list
-]
-number_of_screws = len(screw_list)
-screw_diameters = [screw.head_diameter for screw in screw_list]
-total_diameters = sum(screw_diameters) + 5 * MM * number_of_screws
-disk_radius = total_diameters / (2 * pi)
-# cap_screw = SocketHeadCapScrew(screw_type="iso4762", size="M6-1", length=(1 / 2) * IN)
+# screw_classes = Screw.__subclasses__()
+# target_size = "M6-1"
+# screw_type_list = [
+#     (screw_class, screw_type)
+#     for screw_class in screw_classes
+#     for screw_type in screw_class.types()
+#     if target_size in screw_class.sizes(screw_type)
+# ]
+# screw_list = [
+#     screw_type[0](screw_type=screw_type[1], size=target_size, length=20, simple=True)
+#     for screw_type in screw_type_list
+# ]
+# number_of_screws = len(screw_list)
+# screw_diameters = [screw.head_diameter for screw in screw_list]
+# total_diameters = sum(screw_diameters) + 5 * MM * number_of_screws
+# disk_radius = total_diameters / (2 * pi)
+# # cap_screw = SocketHeadCapScrew(screw_type="iso4762", size="M6-1", length=(1 / 2) * IN)
 
-# print(screw_diameters)
+# # print(screw_diameters)
 
-# # number_of_screws = 18
-# # disk_radius = 50
-disk_assembly = cq.Assembly(name="part_number_1")
-disk = cq.Workplane("XY").circle(disk_radius).extrude(20)
-# for i, screw in enumerate(screw_list[0:1]):
-for i, screw in enumerate(screw_list):
-    disk = (
-        cq.Workplane("XY")
-        .add(disk.val())
-        .toPending()
-        .faces(">Z")
-        .workplane()
-        .polarArray(disk_radius, i * (360 / number_of_screws), 360, 1)
-        # .hole(2)
-        .clearanceHole(
-            screw=screw,
-            fit="Close",
-            counterSunk=True,
-            baseAssembly=disk_assembly,
-            clean=False,
-        )
-    )
-disk_assembly.add(disk, name="plate", color=cq.Color(162 / 255, 138 / 255, 255 / 255))
+# # # number_of_screws = 18
+# # # disk_radius = 50
+# disk_assembly = cq.Assembly(name="part_number_1")
+# disk = cq.Workplane("XY").circle(disk_radius).extrude(20)
+# # for i, screw in enumerate(screw_list[0:1]):
+# for i, screw in enumerate(screw_list):
+#     disk = (
+#         cq.Workplane("XY")
+#         .add(disk.val())
+#         .toPending()
+#         .faces(">Z")
+#         .workplane()
+#         .polarArray(disk_radius, i * (360 / number_of_screws), 360, 1)
+#         # .hole(2)
+#         .clearanceHole(
+#             screw=screw,
+#             fit="Close",
+#             counterSunk=True,
+#             baseAssembly=disk_assembly,
+#             clean=False,
+#         )
+#     )
+# disk_assembly.add(disk, name="plate", color=cq.Color(162 / 255, 138 / 255, 255 / 255))
 
-if "show_object" in locals():
-    show_object(disk, name="disk")
-    show_object(disk_assembly, name="disk_assembly")
+# if "show_object" in locals():
+#     show_object(disk, name="disk")
+#     show_object(disk_assembly, name="disk_assembly")
 
 # result = (
 #     cq.Workplane(cq.Plane.XY())
