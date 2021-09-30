@@ -694,7 +694,7 @@ class InternalThread(Thread):
 
 
 class Nut(ABC):
-    """ Base Class used to create standard or custom threaded nuts """
+    """ Base Class used to create standard threaded nuts """
 
     # Read clearance and tap hole dimesions tables
     # Close, Medium, Loose
@@ -852,8 +852,6 @@ class Nut(ABC):
 
         # Create the basic nut shape
         nut = cq.Workplane("XZ").add(profile.val()).toPending().revolve()
-
-        cq.Wire.makeCircle
 
         # Modify the head to conform to the shape of head_plan (e.g. hex)
         nut_blank = (
@@ -1727,6 +1725,193 @@ class SocketHeadCapScrew(Screw):
     head_recess = Screw.default_head_recess
 
     countersink_profile = Screw.default_countersink_profile
+
+
+class Washer(ABC):
+    """ Base Class used to create standard washers """
+
+    # Read clearance and tap hole dimesions tables
+    # Close, Medium, Loose
+    clearance_hole_drill_sizes = read_fastener_parameters_from_csv(
+        "clearance_hole_sizes.csv"
+    )
+    clearance_hole_data = lookup_drill_diameters(clearance_hole_drill_sizes)
+
+    @property
+    @classmethod
+    @abstractmethod
+    def fastener_data(cls):
+        """ Each derived class must provide a fastener_data dictionary """
+        return NotImplementedError
+
+    @abstractmethod
+    def washer_profile(self) -> cq.Workplane:
+        """ Each derived class must provide the profile of the washer """
+        return NotImplementedError
+
+    @abstractmethod
+    def countersink_profile(
+        self, fit: Literal["Close", "Medium", "Loose"]
+    ) -> cq.Workplane:
+        """ Each derived class must provide the profile of a countersink cutter """
+        return NotImplementedError
+
+    @classmethod
+    def types(cls) -> List[str]:
+        """ Return a set of the washer types """
+        return set(p.split(":")[0] for p in list(cls.fastener_data.values())[0].keys())
+
+    @classmethod
+    def sizes(cls, washer_type: str) -> List[str]:
+        """ Return a list of the washer sizes for the given type """
+        return list(isolate_fastener_type(washer_type, cls.fastener_data).keys())
+
+    @property
+    def washer_thickness(self):
+        """ Calculate the maximum thickness of the washer """
+        return self.head.vertices(">Z").val().Z
+
+    @property
+    def washer_diameter(self):
+        """ Calculate the maximum diameter of the washer """
+        vertices = self.head.vertices().vals()
+        radii = [
+            (cq.Vector(0, 0, v.Z) - cq.Vector(v.toTuple())).Length for v in vertices
+        ]
+        return 2 * max(radii)
+
+    @property
+    def cq_object(self):
+        """ A cadquery Solid screw as defined by class attributes """
+        return self._cq_object
+
+    @cache
+    def __init__(
+        self, size: str, washer_type: str,
+    ):
+        """ Parse Washer input parameters """
+        size_parts = size.strip().split("-")
+        if not len(size_parts) == 2:
+            raise ValueError(
+                f"{size_parts} invalid, must be formatted as size-pitch or size-TPI"
+            )
+
+        self.size = size
+        self.is_metric = self.size[0] == "M"
+
+        if washer_type not in self.types():
+            raise ValueError(f"{washer_type} invalid, must be one of {self.types()}")
+        self.washer_type = washer_type
+        try:
+            self.washer_data = evaluate_parameter_dict(
+                isolate_fastener_type(self.washer_type, self.fastener_data)[self.size],
+                is_metric=self.is_metric,
+            )
+        except KeyError:
+            raise ValueError(
+                f"{size} invalid, must be one of {self.sizes(self.washer_type)}"
+            )
+        self._cq_object = self.make_washer().val()
+
+    def make_washer(self) -> cq.Workplane:
+        """ Create a screw head from the 2D shapes defined in the derived class """
+
+        # Create the basic washer shape
+        return (
+            cq.Workplane("XZ")
+            .add(self.washer_profile().val())
+            .toPending()
+            .revolve()
+            .val()
+        )
+
+    def default_washer_profile(self):
+        """ Create 2D profile of hex washers with double chamfers """
+        (d1, d2, h) = (self.washer_data[p] for p in ["d1", "d1", "h"])
+        profile = (
+            cq.Workplane("XZ")
+            .rect(((d2 - d1) / 2, h), centered=False)
+            .translate((d1 / 2, 0))
+        )
+        return profile
+
+    def default_countersink_profile(
+        self, fit: Literal["Close", "Medium", "Loose"]
+    ) -> cq.Workplane:
+        """ A simple rectangle with gets revolved into a cylinder """
+        try:
+            clearance_hole_diameter = self.clearance_hole_diameters[fit]
+        except KeyError:
+            raise ValueError(
+                f"{fit} invalid, must be one of {list(self.clearance_hole_diameters.keys())}"
+            )
+        gap = clearance_hole_diameter - self.thread_diameter
+        (d2, h) = (self.washer_data[p] for p in ["d2", "h"])
+        return cq.Workplane("XZ").rect(d2 / 2 + gap, h, centered=False)
+
+
+class PlainWasher(Washer):
+    """
+    iso7089 - Plain washers, Form A
+    iso7091 - Plain washers
+    iso7093 - Plain washers — Large series
+    iso7094 - Plain washers - Extra large series
+    """
+
+    fastener_data = read_fastener_parameters_from_csv("plain_washer_parameters.csv")
+    washer_profile = Washer.default_washer_profile
+    washer_countersink_profile = Washer.default_countersink_profile
+
+
+class ChamferedWasher(Washer):
+    """
+    iso7090 - Plain washers, Form B
+    """
+
+    fastener_data = read_fastener_parameters_from_csv("chamfered_washer_parameters.csv")
+
+    def washer_profile(self):
+        """ Create 2D profile of hex washers with double chamfers """
+        (d1, d2, h) = (self.washer_data[p] for p in ["d1", "d1", "h"])
+        profile = (
+            cq.Workplane("XZ")
+            .moveTo(d1 / 2, 0)
+            .hLineTo(d2 / 2)
+            .vLineTo(0.75 * h)
+            .lineTo(d2 / 2 - h * 0.25, h)
+            .hLineTo(d1 / 2)
+            .close()
+        )
+        return profile
+
+    washer_countersink_profile = Washer.default_countersink_profile
+
+
+class CheeseHeadWasher(Washer):
+    """
+    iso7092 - Washers for cheese head screws
+    """
+
+    fastener_data = read_fastener_parameters_from_csv(
+        "cheese_head_washer_parameters.csv"
+    )
+
+    def washer_profile(self):
+        """ Create 2D profile of hex washers with double chamfers """
+        (d1, d2, h) = (self.washer_data[p] for p in ["d1", "d1", "h"])
+        profile = (
+            cq.Workplane("XZ")
+            .moveTo(d1 / 2 + h / 4, 0)
+            .hLineTo(d2 / 2)
+            .vLineTo(h)
+            .hLineTo(d1 / 2 + h / 4)
+            .lineTo(d1 / 2, 0.75 * h)
+            .vLineTo(h / 4)
+            .close()
+        )
+        return profile
+
+    washer_countersink_profile = Washer.default_countersink_profile
 
 
 T = TypeVar("T", bound="Workplane")
