@@ -373,6 +373,26 @@ def square_recess(size: str) -> Tuple[cq.Workplane, float]:
     return (cq.Workplane("XY").rect(m, m), depths[size])
 
 
+def select_by_size_fn(cls, size: str) -> dict:
+    """ Given a fastener size, return a dictionary of {class:[type,...]} """
+    classes = cls.__subclasses__()
+    type_list = [
+        (fastener_class, fastener_type)
+        for fastener_class in classes
+        for fastener_type in fastener_class.types()
+        if size in fastener_class.sizes(fastener_type)
+    ]
+    type_dict = dict()
+    for fastener_type in type_list:
+        if fastener_type[0].__name__ in list(type_dict.keys()):
+            # type_dict[fastener_type[0].__name__].append(fastener_type[1])
+            type_dict[fastener_type[0]].append(fastener_type[1])
+        else:
+            # type_dict[fastener_type[0].__name__] = [fastener_type[1]]
+            type_dict[fastener_type[0]] = [fastener_type[1]]
+    return type_dict
+
+
 # pylint: disable=no-member
 # attributes are created in derived classes which cause the base class to raise linting errors
 # is there a better way to do this?
@@ -744,6 +764,11 @@ class Nut(ABC):
         except KeyError:
             raise ValueError(f"No clearance hole data for size {self.size}")
 
+    @classmethod
+    def select_by_size(cls, size: str) -> dict:
+        """ Return a dictionary of list of fastener types of this size """
+        return select_by_size_fn(cls, size)
+
     @property
     @classmethod
     @abstractmethod
@@ -767,6 +792,11 @@ class Nut(ABC):
     ) -> cq.Workplane:
         """ Each derived class must provide the profile of a countersink cutter """
         return NotImplementedError
+
+    @property
+    def nut_class(self):
+        """ Which class created this nut """
+        return type(self).__name__
 
     @classmethod
     def types(cls) -> List[str]:
@@ -1167,6 +1197,11 @@ class Screw(ABC):
         except KeyError:
             raise ValueError(f"No clearance hole data for size {self.size}")
 
+    @classmethod
+    def select_by_size(cls, size: str) -> dict:
+        """ Return a dictionary of list of fastener types of this size """
+        return select_by_size_fn(cls, size)
+
     @property
     @classmethod
     @abstractmethod
@@ -1191,6 +1226,18 @@ class Screw(ABC):
         """ Return a list of the screw sizes for the given type """
         return list(isolate_fastener_type(screw_type, cls.fastener_data).keys())
 
+    def range(self) -> Tuple[float, float]:
+        """ Minimum and maximum lengths """
+        try:
+            min = self.screw_data["short"]
+        except KeyError:
+            min = None
+        try:
+            max = self.screw_data["long"]
+        except KeyError:
+            max = None
+        return (min, max)
+
     def length_offset(self):
         """
         To enable screws to include the head height in their length (e.g. Countersunk),
@@ -1198,6 +1245,11 @@ class Screw(ABC):
         appropriate head height.
         """
         return 0
+
+    @property
+    def screw_class(self):
+        """ Which class created this screw """
+        return type(self).__name__
 
     @property
     def head_height(self):
@@ -1580,9 +1632,7 @@ class HexHeadScrew(Screw):
     iso4017 - Hexagon head screws
     """
 
-    fastener_data = read_fastener_parameters_from_csv(
-        "chamfered_hex_head_parameters.csv"
-    )
+    fastener_data = read_fastener_parameters_from_csv("hex_head_parameters.csv")
 
     def head_profile(self):
         """ Create 2D profile of hex head screws """
@@ -1628,7 +1678,7 @@ class HexHeadWithFlangeScrew(Screw):
     """
 
     fastener_data = read_fastener_parameters_from_csv(
-        "chamfered_hex_head_with_flange_parameters.csv"
+        "hex_head_with_flange_parameters.csv"
     )
 
     head_profile = HexHeadScrew.head_profile
@@ -1849,6 +1899,11 @@ class Washer(ABC):
         """ Each derived class must provide the profile of a countersink cutter """
         return NotImplementedError
 
+    @property
+    def washer_class(self):
+        """ Which class created this washer """
+        return type(self).__name__
+
     @classmethod
     def types(cls) -> List[str]:
         """ Return a set of the washer types """
@@ -1858,6 +1913,11 @@ class Washer(ABC):
     def sizes(cls, washer_type: str) -> List[str]:
         """ Return a list of the washer sizes for the given type """
         return list(isolate_fastener_type(washer_type, cls.fastener_data).keys())
+
+    @classmethod
+    def select_by_size(cls, size: str) -> dict:
+        """ Return a dictionary of list of fastener types of this size """
+        return select_by_size_fn(cls, size)
 
     @property
     def washer_thickness(self):
