@@ -27,6 +27,19 @@ license:
     limitations under the License.
 
 """
+# TODO: add conical end (118 degrees) to blind holes - DONE
+# TODO: hex head M6, the head clearance diameter is 14.547mm independent of fit (e=11.05mm)
+#       1/2" bolt - s=12.45mm, e=14.38mm, socket outside diameter=17.92mm - DONE
+# TODO: fit Close, Normal, Loose - DONE
+# TODO: add valid length values instead of range - DONE
+# TODO: add correct dimensions for threaded section
+# TODO: add helix line to simple thread
+# TODO: add washers to workplane holes
+# TODO: calculate the actual depth of part at threaded hole location
+#        compound = self.findSolid()
+#        return compound.BoundingBox().DiagonalLength
+
+
 from abc import ABC, abstractmethod
 from typing import (
     Literal,
@@ -47,8 +60,12 @@ import cadquery as cq
 from cadquery.cq import Workplane
 import cq_warehouse
 
+cq.Workplane
+
 MM = 1
 IN = 25.4 * MM
+
+cq.Workplane
 
 
 def polygon_diagonal(width: float, num_sides: Optional[int] = 6) -> float:
@@ -191,7 +208,6 @@ def lookup_drill_diameters(drill_hole_sizes: dict) -> dict:
     # Read the drill size csv file and build a drill_size dictionary (Ah, the imperial system)
     drill_sizes = {}
     with pkg_resources.open_text(cq_warehouse, "drill_sizes.csv") as csvfile:
-        # with open("drill_sizes.csv", newline="") as csvfile:
         reader = csv.DictReader(csvfile)
         fieldnames = reader.fieldnames
         for row in reader:
@@ -211,6 +227,25 @@ def lookup_drill_diameters(drill_hole_sizes: dict) -> dict:
                     hole_data[fit] = imperial_str_to_float(drill)
         drill_hole_diameters[size] = hole_data
     return drill_hole_diameters
+
+
+def lookup_nominal_screw_lengths() -> dict:
+    """ Return a dict of dict of drill size to drill diameter """
+
+    # Read the nominal screw length csv file and build a dictionary
+    nominal_screw_lengths = {}
+    with pkg_resources.open_text(cq_warehouse, "nominal_screw_lengths.csv") as csvfile:
+        reader = csv.DictReader(csvfile)
+        reader.fieldnames
+        for row in reader:
+            unit_factor = MM if row["Unit"] == "mm" else IN
+            sizes = [
+                unit_factor * float(size)
+                for size in str(row["Nominal_Sizes"]).split(",")
+            ]
+            nominal_screw_lengths[row["Screw_Type"]] = sizes
+
+    return nominal_screw_lengths
 
 
 def _fillet2D(self, radius: float, vertices: List[cq.Vertex]) -> cq.Wire:
@@ -375,21 +410,15 @@ def square_recess(size: str) -> Tuple[cq.Workplane, float]:
 
 def select_by_size_fn(cls, size: str) -> dict:
     """ Given a fastener size, return a dictionary of {class:[type,...]} """
-    classes = cls.__subclasses__()
-    type_list = [
-        (fastener_class, fastener_type)
-        for fastener_class in classes
-        for fastener_type in fastener_class.types()
-        if size in fastener_class.sizes(fastener_type)
-    ]
     type_dict = dict()
-    for fastener_type in type_list:
-        if fastener_type[0].__name__ in list(type_dict.keys()):
-            # type_dict[fastener_type[0].__name__].append(fastener_type[1])
-            type_dict[fastener_type[0]].append(fastener_type[1])
-        else:
-            # type_dict[fastener_type[0].__name__] = [fastener_type[1]]
-            type_dict[fastener_type[0]] = [fastener_type[1]]
+    for fastener_class in cls.__subclasses__():
+        for fastener_type in fastener_class.types():
+            if size in fastener_class.sizes(fastener_type):
+                if fastener_class in type_dict.keys():
+                    type_dict[fastener_class].append(fastener_type)
+                else:
+                    type_dict[fastener_class] = [fastener_type]
+
     return type_dict
 
 
@@ -788,14 +817,14 @@ class Nut(ABC):
 
     @abstractmethod
     def countersink_profile(
-        self, fit: Literal["Close", "Medium", "Loose"]
+        self, fit: Literal["Close", "Normal", "Loose"]
     ) -> cq.Workplane:
         """ Each derived class must provide the profile of a countersink cutter """
         return NotImplementedError
 
     @property
     def nut_class(self):
-        """ Which class created this nut """
+        """ Which derived class created this nut """
         return type(self).__name__
 
     @classmethod
@@ -862,6 +891,7 @@ class Nut(ABC):
         else:
             raise ValueError(f"{hand} invalid, must be one of 'left' or 'right'")
         self.simple = simple
+        self.socket_clearance = 6 * MM  # Used as extra clearance when countersinking
         try:
             self.nut_data = evaluate_parameter_dict(
                 isolate_fastener_type(self.nut_type, self.fastener_data)[self.size],
@@ -960,20 +990,13 @@ class Nut(ABC):
         return cq.Workplane("XY").polygon(6, polygon_diagonal(self.nut_data["s"]))
         # return cq.Workplane("XY").circle(self.nut_data["s"] / 2)
 
-    def default_countersink_profile(
-        self, fit: Literal["Close", "Medium", "Loose"]
-    ) -> cq.Workplane:
+    def default_countersink_profile(self, fit) -> cq.Workplane:
         """ A simple rectangle with gets revolved into a cylinder with an
-            extra 3mm for a socket wrench """
-        try:
-            clearance_hole_diameter = self.clearance_hole_diameters[fit]
-        except KeyError:
-            raise ValueError(
-                f"{fit} invalid, must be one of {list(self.clearance_hole_diameters.keys())}"
-            )
+            extra socket_clearance (defaults to 6mm across the diameter) for a socket wrench """
+        # Note that fit is only used for some flanged nuts but is here for uniformity
+        del fit
         (m, s) = (self.nut_data[p] for p in ["m", "s"])
-        e = polygon_diagonal(s, 6)
-        width = clearance_hole_diameter - self.thread_diameter + e + 6 * MM
+        width = polygon_diagonal(s, 6) + self.socket_clearance
         return cq.Workplane("XZ").rect(width / 2, m, centered=False)
 
 
@@ -1006,21 +1029,13 @@ class DomedCapNut(Nut):
         )
         return profile
 
-    def countersink_profile(
-        self, fit: Literal["Close", "Medium", "Loose"]
-    ) -> cq.Workplane:
+    def countersink_profile(self, fit) -> cq.Workplane:
         """ A simple rectangle with gets revolved into a cylinder with an
-            extra 3mm for a socket wrench """
-        try:
-            clearance_hole_diameter = self.clearance_hole_diameters[fit]
-        except KeyError:
-            raise ValueError(
-                f"{fit} invalid, must be one of {list(self.clearance_hole_diameters.keys())}"
-            )
+            extra socket_clearance (defaults to 6mm across the diameter) for a socket wrench """
+        # Note that fit is only used for some flanged nuts but is here for uniformity
+        del fit
         (dk, m, s) = (self.nut_data[p] for p in ["dk", "m", "s"])
-        e = polygon_diagonal(s, 6)
-        gap = clearance_hole_diameter - self.thread_diameter
-        width = e + gap + 6 * MM
+        width = polygon_diagonal(s, 6) + self.socket_clearance
         return cq.Workplane("XZ").rect(width / 2, m + dk / 2, centered=False)
 
     nut_plan = Nut.default_nut_plan
@@ -1071,10 +1086,10 @@ class HexNutWithFlange(Nut):
         return profile
 
     def countersink_profile(
-        self, fit: Literal["Close", "Medium", "Loose"]
+        self, fit: Literal["Close", "Normal", "Loose"]
     ) -> cq.Workplane:
-        """ A simple rectangle with gets revolved into a cylinder with an
-            extra 3mm for a socket wrench """
+        """ A simple rectangle with gets revolved into a cylinder with
+            at least socket_clearance (default 6mm across the diameter) for a socket wrench """
         try:
             clearance_hole_diameter = self.clearance_hole_diameters[fit]
         except KeyError:
@@ -1083,7 +1098,7 @@ class HexNutWithFlange(Nut):
             )
         (dc, s, m) = (self.nut_data[p] for p in ["dc", "s", "m"])
         clearance = clearance_hole_diameter - self.thread_diameter
-        width = max(dc + clearance, polygon_diagonal(s, 6) + 6 * MM)
+        width = max(dc + clearance, polygon_diagonal(s, 6) + self.socket_clearance)
         return cq.Workplane("XZ").rect(width / 2, m, centered=False)
 
     nut_plan = Nut.default_nut_plan
@@ -1134,20 +1149,13 @@ class SquareNut(Nut):
         """ Simple square for the plan """
         return cq.Workplane("XY").rect(self.nut_data["s"], self.nut_data["s"])
 
-    def countersink_profile(
-        self, fit: Literal["Close", "Medium", "Loose"]
-    ) -> cq.Workplane:
+    def countersink_profile(self, fit) -> cq.Workplane:
         """ A simple rectangle with gets revolved into a cylinder with an
-            extra 3mm for a socket wrench """
-        try:
-            clearance_hole_diameter = self.clearance_hole_diameters[fit]
-        except KeyError:
-            raise ValueError(
-                f"{fit} invalid, must be one of {list(self.clearance_hole_diameters.keys())}"
-            )
+            extra socket_clearance (defaults to 6mm across the diameter) for a socket wrench """
+        # Note that fit is only used for some flanged nuts but is here for uniformity
+        del fit
         (m, s) = (self.nut_data[p] for p in ["m", "s"])
-        e = polygon_diagonal(s, 4)
-        width = clearance_hole_diameter - self.thread_diameter + e + 6 * MM
+        width = polygon_diagonal(s, 4) + self.socket_clearance
         return cq.Workplane("XZ").rect(width / 2, m, centered=False)
 
 
@@ -1164,6 +1172,9 @@ class Screw(ABC):
     # Soft (Aluminum, Brass, & Plastics) or Hard (Steel, Stainless, & Iron)
     tap_hole_drill_sizes = read_fastener_parameters_from_csv("tap_hole_sizes.csv")
     tap_hole_data = lookup_drill_diameters(tap_hole_drill_sizes)
+
+    # Build a dictionary of nominal screw lengths keyed by screw type
+    nominal_screw_lengths = lookup_nominal_screw_lengths()
 
     @property
     def tap_drill_sizes(self):
@@ -1211,7 +1222,7 @@ class Screw(ABC):
 
     @abstractmethod
     def countersink_profile(
-        self, fit: Literal["Close", "Medium", "Loose"]
+        self, fit: Literal["Close", "Normal", "Loose"]
     ) -> cq.Workplane:
         """ Each derived class must provide the profile of a countersink cutter """
         return NotImplementedError
@@ -1226,18 +1237,6 @@ class Screw(ABC):
         """ Return a list of the screw sizes for the given type """
         return list(isolate_fastener_type(screw_type, cls.fastener_data).keys())
 
-    def range(self) -> Tuple[float, float]:
-        """ Minimum and maximum lengths """
-        try:
-            min = self.screw_data["short"]
-        except KeyError:
-            min = None
-        try:
-            max = self.screw_data["long"]
-        except KeyError:
-            max = None
-        return (min, max)
-
     def length_offset(self):
         """
         To enable screws to include the head height in their length (e.g. Countersunk),
@@ -1246,9 +1245,42 @@ class Screw(ABC):
         """
         return 0
 
+    def min_hole_depth(self, counter_sunk: bool = True) -> float:
+        """ Minimum depth of a hole able to accept the screw """
+        countersink_profile = self.countersink_profile("Loose")
+        head_offset = countersink_profile.vertices(">Z").val().Z
+        if counter_sunk:
+            return self.length + head_offset - self.length_offset()
+        else:
+            return self.length - self.length_offset()
+
+    @property
+    def nominal_lengths(self) -> List[float]:
+        """ A list of nominal screw lengths for this screw """
+        try:
+            min = self.screw_data["short"]
+        except KeyError:
+            min = None
+        try:
+            max = self.screw_data["long"]
+        except KeyError:
+            max = None
+        if (
+            min is None
+            or max is None
+            or not self.screw_type in Screw.nominal_screw_lengths.keys()
+        ):
+            return None
+        else:
+            return [
+                size
+                for size in Screw.nominal_screw_lengths[self.screw_type]
+                if min <= size <= max
+            ]
+
     @property
     def screw_class(self):
-        """ Which class created this screw """
+        """ Which derived class created this screw """
         return type(self).__name__
 
     @property
@@ -1322,6 +1354,9 @@ class Screw(ABC):
             raise ValueError(
                 f"{size} invalid, must be one of {self.sizes(self.screw_type)}"
             )
+
+        self.socket_clearance = 6 * MM  # Only used for hex head screws
+
         self.max_thread_length = length - self.length_offset()
         self.body_length = 0
         self.thread_length = length - self.body_length - self.length_offset()
@@ -1471,7 +1506,7 @@ class Screw(ABC):
         return (recess_plan, recess_depth, recess_taper)
 
     def default_countersink_profile(
-        self, fit: Literal["Close", "Medium", "Loose"]
+        self, fit: Literal["Close", "Normal", "Loose"]
     ) -> cq.Workplane:
         """ A simple rectangle with gets revolved into a cylinder """
         try:
@@ -1539,7 +1574,7 @@ class ButtonHeadWithCollarScrew(Screw):
 
     # countersink_profile = Screw.default_countersink_profile
     def countersink_profile(
-        self, fit: Literal["Close", "Medium", "Loose"]
+        self, fit: Literal["Close", "Normal", "Loose"]
     ) -> cq.Workplane:
         """ A simple rectangle with gets revolved into a cylinder """
         try:
@@ -1611,7 +1646,7 @@ class CounterSunkScrew(Screw):
     head_recess = Screw.default_head_recess
 
     def countersink_profile(
-        self, fit: Literal["Close", "Medium", "Loose"]
+        self, fit: Literal["Close", "Normal", "Loose"]
     ) -> cq.Workplane:
         """ Create 2D profile of countersink profile """
         (a, dk, k) = (self.screw_data[p] for p in ["a", "dk", "k"])
@@ -1655,19 +1690,15 @@ class HexHeadScrew(Screw):
         return cq.Workplane("XY").polygon(6, polygon_diagonal(self.screw_data["s"]))
 
     def countersink_profile(
-        self, fit: Literal["Close", "Medium", "Loose"]
+        self, fit: Literal["Close", "Normal", "Loose"]
     ) -> cq.Workplane:
         """ A simple rectangle with gets revolved into a cylinder with an
-            extra 3mm for a socket wrench """
-        try:
-            clearance_hole_diameter = self.clearance_hole_diameters[fit]
-        except KeyError:
-            raise ValueError(
-                f"{fit} invalid, must be one of {list(self.clearance_hole_diameters.keys())}"
-            )
+            extra socket_clearance (defaults to 6mm across the diameter) for a socket wrench """
+        # Note that fit isn't used but remains for uniformity in the workplane hole methods
+        del fit
         (k, s) = (self.screw_data[p] for p in ["k", "s"])
         e = polygon_diagonal(s, 6)
-        width = clearance_hole_diameter - self.thread_diameter + e + 6 * MM
+        width = e + self.socket_clearance + e
         return cq.Workplane("XZ").rect(width / 2, k, centered=False)
 
 
@@ -1703,10 +1734,10 @@ class HexHeadWithFlangeScrew(Screw):
         return profile
 
     def countersink_profile(
-        self, fit: Literal["Close", "Medium", "Loose"]
+        self, fit: Literal["Close", "Normal", "Loose"]
     ) -> cq.Workplane:
-        """ A simple rectangle with gets revolved into a cylinder with an
-            extra 3mm for a socket wrench """
+        """ A simple rectangle with gets revolved into a cylinder with
+            at least socket_clearance (default 6mm across the diameter) for a socket wrench """
         try:
             clearance_hole_diameter = self.clearance_hole_diameters[fit]
         except KeyError:
@@ -1714,8 +1745,10 @@ class HexHeadWithFlangeScrew(Screw):
                 f"{fit} invalid, must be one of {list(self.clearance_hole_diameters.keys())}"
             )
         (dc, s, k) = (self.screw_data[p] for p in ["dc", "s", "k"])
-        clearance = clearance_hole_diameter - self.thread_diameter
-        width = max(dc + clearance, polygon_diagonal(s, 6) + 6 * MM)
+        shaft_clearance = clearance_hole_diameter - self.thread_diameter
+        width = max(
+            dc + shaft_clearance, polygon_diagonal(s, 6) + self.socket_clearance
+        )
         return cq.Workplane("XZ").rect(width / 2, k, centered=False)
 
 
@@ -1837,7 +1870,7 @@ class RaisedCounterSunkOvalHeadScrew(Screw):
     head_recess = Screw.default_head_recess
 
     def countersink_profile(
-        self, fit: Literal["Close", "Medium", "Loose"]
+        self, fit: Literal["Close", "Normal", "Loose"]
     ) -> cq.Workplane:
         """ A flat bottomed cone """
         (a, k, dk) = (self.screw_data[p] for p in ["a", "k", "dk"])
@@ -1894,14 +1927,14 @@ class Washer(ABC):
 
     @abstractmethod
     def countersink_profile(
-        self, fit: Literal["Close", "Medium", "Loose"]
+        self, fit: Literal["Close", "Normal", "Loose"]
     ) -> cq.Workplane:
         """ Each derived class must provide the profile of a countersink cutter """
         return NotImplementedError
 
     @property
     def washer_class(self):
-        """ Which class created this washer """
+        """ Which derived class created this washer """
         return type(self).__name__
 
     @classmethod
@@ -1989,7 +2022,7 @@ class Washer(ABC):
         return profile
 
     def default_countersink_profile(
-        self, fit: Literal["Close", "Medium", "Loose"]
+        self, fit: Literal["Close", "Normal", "Loose"]
     ) -> cq.Workplane:
         """ A simple rectangle with gets revolved into a cylinder """
         try:
@@ -2074,7 +2107,8 @@ def _fastenerHole(
     self: T,
     hole_diameters: dict,
     fastener: Union[Nut, Screw],
-    fit: Optional[Literal["Close", "Medium", "Loose"]] = "Loose",
+    fit: Optional[Literal["Close", "Normal", "Loose"]] = None,
+    material: Optional[Literal["Soft", "Hard"]] = None,
     depth: Optional[float] = None,
     counterSunk: Optional[bool] = True,
     baseAssembly: Optional[cq.Assembly] = None,
@@ -2084,10 +2118,11 @@ def _fastenerHole(
     Makes a counterbore clearance or tap hole for the given screw for each item on the stack.
     The surface of the hole is at the current workplane.
     """
+    key = fit if material is None else material
     try:
-        hole_diameter = hole_diameters[fit]
+        hole_diameter = hole_diameters[key]
     except KeyError:
-        raise ValueError(f"fit must be one of {list(hole_diameters.keys())} not {fit}")
+        raise ValueError(f"{key} invalid, must be one of {list(hole_diameters.keys())}")
 
     if depth is None:
         depth = self.largestDimension()
@@ -2108,17 +2143,23 @@ def _fastenerHole(
             .translate((0, 0, -head_offset))
             .val()
         )
-        screw_hole = countersink_cutter.fuse(shank_hole)
+        fastener_hole = countersink_cutter.fuse(shank_hole)
     else:
         head_offset = 0
-        screw_hole = shank_hole
+        fastener_hole = shank_hole
+
+    cskAngle = 82  # Common tip angle
+    r = hole_diameter / 2.0
+    h = r / tan(radians(cskAngle / 2.0))
+    drill_tip = cq.Solid.makeCone(r, 0.0, h, bore_direction * depth, bore_direction)
+    fastener_hole = fastener_hole.fuse(drill_tip)
 
     # Record the location of each hole for use in the assembly
     null_object = cq.Solid.makeBox(1, 1, 1)
     relocated_test_objects = self.eachpoint(lambda loc: null_object.moved(loc), True)
     hole_locations = [loc.location() for loc in relocated_test_objects.vals()]
 
-    # Add screws to the base assembly if it was provided
+    # Add fasteners to the base assembly if it was provided
     if baseAssembly is not None:
         for hole_loc in hole_locations:
             baseAssembly.add(
@@ -2130,7 +2171,7 @@ def _fastenerHole(
             )
 
     # Make holes in the stack solid object
-    return self.cutEach(lambda loc: screw_hole.moved(loc), True, clean)
+    return self.cutEach(lambda loc: fastener_hole.moved(loc), True, clean)
 
 
 cq.Workplane.fastenerHole = _fastenerHole
@@ -2139,94 +2180,60 @@ cq.Workplane.fastenerHole = _fastenerHole
 def _clearanceHole(
     self: T,
     fastener: Union[Nut, Screw],
-    fit: Optional[Literal["Close", "Medium", "Loose"]] = "Loose",
+    fit: Optional[Literal["Close", "Normal", "Loose"]] = "Normal",
     depth: Optional[float] = None,
     counterSunk: Optional[bool] = True,
     baseAssembly: Optional[cq.Assembly] = None,
     clean: Optional[bool] = True,
 ) -> T:
     return self.fastenerHole(
-        fastener.clearance_hole_diameters,
-        fastener,
-        fit,
-        depth,
-        counterSunk,
-        baseAssembly,
-        clean,
+        hole_diameters=fastener.clearance_hole_diameters,
+        fastener=fastener,
+        fit=fit,
+        depth=depth,
+        counterSunk=counterSunk,
+        baseAssembly=baseAssembly,
+        clean=clean,
     )
 
 
 def _tapHole(
     self: T,
     fastener: Union[Nut, Screw],
-    fit: Optional[Literal["Soft", "Hard"]] = "Soft",
+    material: Optional[Literal["Soft", "Hard"]] = "Soft",
     depth: Optional[float] = None,
     counterSunk: Optional[bool] = True,
+    fit: Optional[Literal["Close", "Normal", "Loose"]] = "Normal",
     baseAssembly: Optional[cq.Assembly] = None,
     clean: Optional[bool] = True,
 ) -> T:
     return self.fastenerHole(
-        fastener.tap_hole_diameters,
-        fastener,
-        fit,
-        depth,
-        counterSunk,
-        baseAssembly,
-        clean,
+        hole_diameters=fastener.tap_hole_diameters,
+        fastener=fastener,
+        fit=fit,
+        material=material,
+        depth=depth,
+        counterSunk=counterSunk,
+        baseAssembly=baseAssembly,
+        clean=clean,
     )
-
-
-def _addEach(
-    self: T,
-    fcn: Callable[[cq.Location], cq.Shape],
-    useLocalCoords: bool = False,
-    clean: bool = True,
-    glue: bool = True,
-) -> T:
-    """
-    Evaluates the provided function at each point on the stack (ie, eachpoint)
-    and then adds the result from the context solid.
-    :param fcn: a function suitable for use in the eachpoint method: ie, that accepts a vector
-    :param useLocalCoords: same as for :py:meth:`eachpoint`
-    :param boolean clean: call :py:meth:`clean` afterwards to have a clean shape
-    :raises ValueError: if no solids or compounds are found in the stack or parent chain
-    :return: a CQ object that contains the resulting solid
-    """
-    ctxSolid = self.findSolid()
-
-    # will contain all of the counterbores as a single compound
-    results = cast(List[cq.Shape], self.eachpoint(fcn, useLocalCoords).vals())
-
-    s = ctxSolid.union(*results, glue=glue)
-
-    if clean:
-        s = s.clean()
-
-    return self.newObject([s])
-
-
-cq.Workplane.addEach = _addEach
 
 
 def _threadedHole(
     self: T,
-    fastener: Union[Nut, Screw],
+    fastener: Screw,
+    depth: float,
     hand: Literal["right", "left"] = "right",
     simple: Optional[bool] = False,
-    depth: Optional[float] = None,
     counterSunk: Optional[bool] = True,
-    fit: Optional[Literal["Close", "Medium", "Loose"]] = "Loose",
+    fit: Optional[Literal["Close", "Normal", "Loose"]] = "Normal",
     baseAssembly: Optional[cq.Assembly] = None,
     clean: Optional[bool] = True,
 ) -> T:
 
     """
-    Makes a counterbore clearance or tap hole for the given screw for each item on the stack.
-    The surface of the hole is at the current workplane.
+    Makes a threaded hole at the current point(s) on the current workplane
     """
-
-    if depth is None:
-        depth = self.largestDimension()
 
     thread = InternalThread(
         major_diameter=fastener.thread_diameter,
@@ -2284,7 +2291,16 @@ def _threadedHole(
 
     # Make holes in the stack solid object
     part = self.cutEach(lambda loc: screw_hole.moved(loc), True, clean)
-    return part.addEach(lambda loc: thread.cq_object.moved(loc), True, clean, True)
+
+    # Add threaded inserts
+    for hole_loc in hole_locations:
+        part = part.union(
+            thread.cq_object.moved(hole_loc * cq.Location(bore_direction * depth)),
+            glue=True,
+        )
+    if clean:
+        part = part.clean()
+    return part
 
 
 cq.Workplane.clearanceHole = _clearanceHole

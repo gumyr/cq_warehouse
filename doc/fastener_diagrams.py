@@ -81,7 +81,14 @@ screw_list = [
     for screw_type in screw_type_list
 ]
 for screw in screw_list:
-    print(f"{screw.screw_class}({screw.screw_type}) length range: {screw.range()}")
+    print(
+        f"{screw.screw_class}({screw.screw_type}) length range: {screw.nominal_lengths}"
+    )
+
+screw_vars = [v for v in vars(screw_list[0]) if not v.startswith("_")]
+print(f"Screw vars: {screw_vars}")
+screw_methods = [f for f in dir(CheeseHeadScrew) if not f.startswith("_")]
+print(f"Screw methods: {screw_methods}")
 #
 # Calculate the size of the disk such that there is room for all the screws in the perimeter
 screw_diameters = [screw.head_diameter for screw in screw_list]
@@ -93,18 +100,18 @@ disk_radius = total_diameters / (2 * pi)
 disk_assembly = cq.Assembly(name="figure")
 # As all of the screws are unique, cycle over the disk creating clearance holes
 # and accumulating the screws in the disk_assembly
-disk = cq.Workplane("XY").circle(disk_radius).extrude(20)
+disk = cq.Workplane("XY").circle(disk_radius).extrude(30)
 for i, screw in enumerate(screw_list):
+    depth = None if i % 2 == 0 else screw.min_hole_depth(True)
     disk = (
-        cq.Workplane("XY")
-        .add(disk.val())
-        .toPending()
+        disk.toPending()
         .faces(">Z")
         .workplane()
         .polarArray(disk_radius, i * (360 / number_of_screws), 360, 1)
         .clearanceHole(
             fastener=screw,
             fit="Close",
+            depth=depth,
             counterSunk=True,
             baseAssembly=disk_assembly,
             clean=False,
@@ -148,20 +155,29 @@ disk_radius = total_diameters / (2 * pi)
 # and accumulating the nuts in the disk_assembly
 for i, nut in enumerate(nut_list):
     disk = (
-        cq.Workplane("XY")
-        .add(disk.val())
-        .toPending()
+        disk.toPending()
         .faces(">Z")
         .workplane()
         .polarArray(disk_radius, i * (360 / number_of_nuts), 360, 1)
-        .clearanceHole(
+        .tapHole(
             fastener=nut,
+            material="Soft",
+            counterSunk=False,
             fit="Close",
-            counterSunk=True,
             baseAssembly=disk_assembly,
             clean=False,
         )
     )
+
+#
+# ------------------------ Threaded Hole ------------------------
+#
+disk = (
+    disk.toPending()
+    .faces(">Z")
+    .pushPoints([(0, 0)])
+    .threadedHole(fastener=screw_list[0], depth=20, simple=True, counterSunk=False,)
+)
 
 
 # Finally, add the finished disk to the assembly
