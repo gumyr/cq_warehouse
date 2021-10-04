@@ -38,7 +38,7 @@ license:
 # TODO: calculate the actual depth of part at threaded hole location
 #        compound = self.findSolid()
 #        return compound.BoundingBox().DiagonalLength
-
+# TODO: update setscrews
 
 from abc import ABC, abstractmethod
 from typing import (
@@ -544,7 +544,6 @@ class Thread(ABC):
         # prepare_revolve_wires() defined in derived class
         (outer_wire, inner_wires) = self.prepare_revolve_wires(thread_wire)
 
-        # thread = cq.Workplane("XY").add(outer_wire).add(inner_wires).revolve()
         sign = 1 if self.hand == "right" else -1
         thread = cq.Solid.extrudeLinearWithRotation(
             outerWire=outer_wire,
@@ -926,7 +925,7 @@ class Nut(ABC):
         nut_thread_height = self.nut_data["m"]
 
         # Create the basic nut shape
-        nut = cq.Workplane("XZ").add(profile.val()).toPending().revolve()
+        nut = profile.toPending().revolve()
 
         # Modify the head to conform to the shape of head_plan (e.g. hex)
         nut_blank = (
@@ -1318,8 +1317,9 @@ class Screw(ABC):
         size: str,
         length: float,
         screw_type: str,
-        hand: Literal["right", "left"] = "right",
-        simple: bool = False,
+        hand: Optional[Literal["right", "left"]] = "right",
+        simple: Optional[bool] = False,
+        socket_clearance: Optional[float] = 6 * MM,
     ):
         """ Parse Screw input parameters """
         size_parts = size.strip().split("-")
@@ -1354,8 +1354,7 @@ class Screw(ABC):
             raise ValueError(
                 f"{size} invalid, must be one of {self.sizes(self.screw_type)}"
             )
-
-        self.socket_clearance = 6 * MM  # Only used for hex head screws
+        self.socket_clearance = socket_clearance  # Only used for hex head screws
 
         self.max_thread_length = length - self.length_offset()
         self.body_length = 0
@@ -1925,13 +1924,6 @@ class Washer(ABC):
         """ Each derived class must provide the profile of the washer """
         return NotImplementedError
 
-    @abstractmethod
-    def countersink_profile(
-        self, fit: Literal["Close", "Normal", "Loose"]
-    ) -> cq.Workplane:
-        """ Each derived class must provide the profile of a countersink cutter """
-        return NotImplementedError
-
     @property
     def washer_class(self):
         """ Which derived class created this washer """
@@ -1955,12 +1947,12 @@ class Washer(ABC):
     @property
     def washer_thickness(self):
         """ Calculate the maximum thickness of the washer """
-        return self.head.vertices(">Z").val().Z
+        return cq.Workplane(self.cq_object).vertices(">Z").val().Z
 
     @property
     def washer_diameter(self):
         """ Calculate the maximum diameter of the washer """
-        vertices = self.head.vertices().vals()
+        vertices = cq.Workplane(self.cq_object).vertices().vals()
         radii = [
             (cq.Vector(0, 0, v.Z) - cq.Vector(v.toTuple())).Length for v in vertices
         ]
@@ -1975,13 +1967,6 @@ class Washer(ABC):
     def __init__(
         self, size: str, washer_type: str,
     ):
-        """ Parse Washer input parameters """
-        size_parts = size.strip().split("-")
-        if not len(size_parts) == 2:
-            raise ValueError(
-                f"{size_parts} invalid, must be formatted as size-pitch or size-TPI"
-            )
-
         self.size = size
         self.is_metric = self.size[0] == "M"
 
@@ -2003,20 +1988,14 @@ class Washer(ABC):
         """ Create a screw head from the 2D shapes defined in the derived class """
 
         # Create the basic washer shape
-        return (
-            cq.Workplane("XZ")
-            .add(self.washer_profile().val())
-            .toPending()
-            .revolve()
-            .val()
-        )
+        return self.washer_profile().toPending().revolve()
 
     def default_washer_profile(self):
         """ Create 2D profile of hex washers with double chamfers """
-        (d1, d2, h) = (self.washer_data[p] for p in ["d1", "d1", "h"])
+        (d1, d2, h) = (self.washer_data[p] for p in ["d1", "d2", "h"])
         profile = (
             cq.Workplane("XZ")
-            .rect(((d2 - d1) / 2, h), centered=False)
+            .rect((d2 - d1) / 2, h, centered=False)
             .translate((d1 / 2, 0))
         )
         return profile
@@ -2058,7 +2037,7 @@ class ChamferedWasher(Washer):
 
     def washer_profile(self):
         """ Create 2D profile of hex washers with double chamfers """
-        (d1, d2, h) = (self.washer_data[p] for p in ["d1", "d1", "h"])
+        (d1, d2, h) = (self.washer_data[p] for p in ["d1", "d2", "h"])
         profile = (
             cq.Workplane("XZ")
             .moveTo(d1 / 2, 0)
@@ -2084,7 +2063,7 @@ class CheeseHeadWasher(Washer):
 
     def washer_profile(self):
         """ Create 2D profile of hex washers with double chamfers """
-        (d1, d2, h) = (self.washer_data[p] for p in ["d1", "d1", "h"])
+        (d1, d2, h) = (self.washer_data[p] for p in ["d1", "d2", "h"])
         profile = (
             cq.Workplane("XZ")
             .moveTo(d1 / 2 + h / 4, 0)
@@ -2107,6 +2086,7 @@ def _fastenerHole(
     self: T,
     hole_diameters: dict,
     fastener: Union[Nut, Screw],
+    washers: List[Washer],
     fit: Optional[Literal["Close", "Normal", "Loose"]] = None,
     material: Optional[Literal["Soft", "Hard"]] = None,
     depth: Optional[float] = None,
@@ -2136,9 +2116,7 @@ def _fastenerHole(
         countersink_profile = fastener.countersink_profile(fit)
         head_offset = countersink_profile.vertices(">Z").val().Z
         countersink_cutter = (
-            cq.Workplane("XZ")
-            .add(countersink_profile.val())
-            .toPending()
+            countersink_profile.toPending()
             .revolve()
             .translate((0, 0, -head_offset))
             .val()
@@ -2159,14 +2137,32 @@ def _fastenerHole(
     relocated_test_objects = self.eachpoint(lambda loc: null_object.moved(loc), True)
     hole_locations = [loc.location() for loc in relocated_test_objects.vals()]
 
-    # Add fasteners to the base assembly if it was provided
+    # Add fasteners and washers to the base assembly if it was provided
     if baseAssembly is not None:
         for hole_loc in hole_locations:
+            washer_thicknesses = 0
+            if not washers is None:
+                for washer in washers:
+                    baseAssembly.add(
+                        washer.cq_object,
+                        loc=hole_loc
+                        * cq.Location(
+                            bore_direction
+                            * (
+                                head_offset
+                                - fastener.length_offset()
+                                - washer_thicknesses
+                            )
+                        ),
+                    )
+                    washer_thicknesses += washer.washer_thickness
+
             baseAssembly.add(
                 fastener.cq_object,
                 loc=hole_loc
                 * cq.Location(
-                    bore_direction * (head_offset - fastener.length_offset())
+                    bore_direction
+                    * (head_offset - fastener.length_offset() - washer_thicknesses)
                 ),
             )
 
@@ -2180,6 +2176,7 @@ cq.Workplane.fastenerHole = _fastenerHole
 def _clearanceHole(
     self: T,
     fastener: Union[Nut, Screw],
+    washers: Optional[List[Washer]] = None,
     fit: Optional[Literal["Close", "Normal", "Loose"]] = "Normal",
     depth: Optional[float] = None,
     counterSunk: Optional[bool] = True,
@@ -2189,6 +2186,7 @@ def _clearanceHole(
     return self.fastenerHole(
         hole_diameters=fastener.clearance_hole_diameters,
         fastener=fastener,
+        washers=washers,
         fit=fit,
         depth=depth,
         counterSunk=counterSunk,
@@ -2200,6 +2198,7 @@ def _clearanceHole(
 def _tapHole(
     self: T,
     fastener: Union[Nut, Screw],
+    washers: Optional[List[Washer]] = None,
     material: Optional[Literal["Soft", "Hard"]] = "Soft",
     depth: Optional[float] = None,
     counterSunk: Optional[bool] = True,
@@ -2210,6 +2209,7 @@ def _tapHole(
     return self.fastenerHole(
         hole_diameters=fastener.tap_hole_diameters,
         fastener=fastener,
+        washers=washers,
         fit=fit,
         material=material,
         depth=depth,
@@ -2255,9 +2255,7 @@ def _threadedHole(
             dir=bore_direction,
         )
         countersink_cutter = (
-            cq.Workplane("XZ")
-            .add(countersink_profile.val())
-            .toPending()
+            countersink_profile.toPending()
             .revolve()
             .translate((0, 0, -head_offset))
             .val()
@@ -2449,4 +2447,7 @@ cq.Workplane.threadedHole = _threadedHole
 # if "show_object" in locals():
 #     show_object(domed_cap_nut.cq_object, name="DomedCapNut-din1587-M6-1")
 #     show_object(hex_nut.cq_object, name="HexNut-iso4032-M6-1")
+# washer = PlainWasher(washer_type="iso7089", size="M6")
+# if "show_object" in locals():
+#     show_object(washer.cq_object, name="PlainWasher-iso7089-M6")
 

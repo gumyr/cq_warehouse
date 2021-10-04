@@ -48,6 +48,10 @@ from cq_warehouse.fastener import (
     HexNutWithFlange,
     UnchamferedHexagonNut,
     SquareNut,
+    Washer,
+    PlainWasher,
+    ChamferedWasher,
+    CheeseHeadWasher,
 )
 
 MM = 1
@@ -117,6 +121,32 @@ for i, screw in enumerate(screw_list):
             clean=False,
         )
     )
+# ------------------------ Washers ------------------------
+
+washer_classes = Washer.__subclasses__()
+target_size = "M6"
+washer_type_dict = Washer.select_by_size(target_size)
+washer_type_list = [
+    (washer_class, washer_type)
+    for washer_class, washer_types in washer_type_dict.items()
+    for washer_type in washer_types
+    if target_size in washer_class.sizes(washer_type)
+]
+number_of_washers = len(washer_type_list)
+print(
+    f"The disc contains {number_of_washers} {target_size} washers of the following types:"
+)
+#
+# Display the list of washers which will populate the holes in the disk
+for washer_class, washer_types in washer_type_dict.items():
+    washers = ", ".join(washer_types)
+    print(f"- {washer_class.__name__} : {washers}")
+#
+# Instantiate all of the washers, use simple=True to dramatically lessen the elapsed time
+washer_list = [
+    washer_type[0](washer_type=washer_type[1], size=target_size)
+    for washer_type in washer_type_list
+]
 
 # ------------------------ Nuts ------------------------
 #
@@ -147,13 +177,14 @@ nut_list = [
 # Calculate the size of the disk such that there is room for all the nuts in the perimeter
 nut_diameters = [nut.nut_diameter for nut in nut_list]
 total_diameters = sum(nut_diameters) + 5 * MM * number_of_nuts
-disk_radius = total_diameters / (2 * pi)
+disk_radius = 1.5 * total_diameters / (2 * pi)
 
 #
 # Create the cadquery objects
 # As all of the nuts are unique, cycle over the disk creating clearance holes
 # and accumulating the nuts in the disk_assembly
 for i, nut in enumerate(nut_list):
+    washers = [washer_list[j % number_of_washers] for j in range(i, i + 2)]
     disk = (
         disk.toPending()
         .faces(">Z")
@@ -161,6 +192,7 @@ for i, nut in enumerate(nut_list):
         .polarArray(disk_radius, i * (360 / number_of_nuts), 360, 1)
         .tapHole(
             fastener=nut,
+            washers=washers,
             material="Soft",
             counterSunk=False,
             fit="Close",
