@@ -209,7 +209,19 @@ disk = (
 
 
 # Finally, add the finished disk to the assembly
+print(f"Screw.__subclasses__():{Screw.__subclasses__()}")
 disk_assembly.add(disk, name="plate", color=cq.Color(162 / 255, 138 / 255, 255 / 255))
+print(f"CounterSunkScrew types: {CounterSunkScrew.types()}")
+print(f'CounterSunkScrew sizes: {CounterSunkScrew.sizes("iso7046")}')
+print(
+    f'CounterSunkScrew.nominal_length_range["iso7046"]: {CounterSunkScrew.nominal_length_range["iso7046"]}'
+)
+
+screw = CounterSunkScrew(screw_type="iso7046", size="M6-1", length=10)
+print(f"clearance_hole_diameters: {screw.clearance_hole_diameters}")
+print(f"clearance_hole_drill_sizes: {screw.clearance_drill_sizes}")
+print(f"tap_hole_diameters: {screw.tap_hole_diameters}")
+print(f"tap_drill_sizes: {screw.tap_drill_sizes}")
 
 screw_vars = [v for v in vars(Screw) if not v.startswith("_")]
 print(f"Screw base class vars: {screw_vars}")

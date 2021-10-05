@@ -435,7 +435,7 @@ class Thread(ABC):
         length: float,
         hand: Literal["right", "left"] = "right",
         hollow: bool = False,
-        simple: bool = False,
+        simple: bool = True,
         thread_angle: Optional[float] = 60.0,  # Default to ISO standard
     ):
         self.major_diameter = major_diameter
@@ -816,7 +816,7 @@ class Nut(ABC):
         size: str,
         nut_type: str,
         hand: Literal["right", "left"] = "right",
-        simple: bool = False,
+        simple: bool = True,
     ):
         """ Parse Nut input parameters """
         size_parts = size.strip().split("-")
@@ -957,7 +957,7 @@ class DomedCapNut(Nut):
     nut_type: str
         din 1587 Hexagon domed cap nuts
     hand: Literal["right", "left"] = "right"
-    simple: bool = False
+    simple: bool = True
     """
 
     fastener_data = read_fastener_parameters_from_csv("domed_cap_nut_parameters.csv")
@@ -1004,7 +1004,7 @@ class HexNut(Nut):
         iso4033	Hexagon nuts, Style 2
         iso4035	Hexagon thin nuts, chamfered
     hand: Literal["right", "left"] = "right"
-    simple: bool = False
+    simple: bool = True
     """
 
     fastener_data = read_fastener_parameters_from_csv("hex_nut_parameters.csv")
@@ -1020,7 +1020,7 @@ class HexNutWithFlange(Nut):
     nut_type: str
         en1661 Hexagon nuts with flange
     hand: Literal["right", "left"] = "right"
-    simple: bool = False
+    simple: bool = True
     """
 
     fastener_data = read_fastener_parameters_from_csv(
@@ -1073,7 +1073,7 @@ class UnchamferedHexagonNut(Nut):
     nut_type: str
         iso4036 Hexagon thin nuts, unchamfered
     hand: Literal["right", "left"] = "right"
-    simple: bool = False
+    simple: bool = True
     """
 
     fastener_data = read_fastener_parameters_from_csv(
@@ -1095,7 +1095,7 @@ class SquareNut(Nut):
     nut_type: str
         din557 - Square Nuts
     hand: Literal["right", "left"] = "right"
-    simple: bool = False
+    simple: bool = True
     """
 
     fastener_data = read_fastener_parameters_from_csv("square_nut_parameters.csv")
@@ -1145,7 +1145,7 @@ class Screw(ABC):
     tap_hole_data = lookup_drill_diameters(tap_hole_drill_sizes)
 
     # Build a dictionary of nominal screw lengths keyed by screw type
-    nominal_screw_lengths = lookup_nominal_screw_lengths()
+    nominal_length_range = lookup_nominal_screw_lengths()
 
     @property
     def tap_drill_sizes(self):
@@ -1179,11 +1179,6 @@ class Screw(ABC):
         except KeyError as e:
             raise ValueError(f"No clearance hole data for size {self.size}") from e
 
-    @classmethod
-    def select_by_size(cls, size: str) -> dict:
-        """ Return a dictionary of list of fastener types of this size """
-        return select_by_size_fn(cls, size)
-
     @property
     @classmethod
     @abstractmethod
@@ -1197,6 +1192,11 @@ class Screw(ABC):
     ) -> cq.Workplane:
         """ Each derived class must provide the profile of a countersink cutter """
         return NotImplementedError
+
+    @classmethod
+    def select_by_size(cls, size: str) -> dict:
+        """ Return a dictionary of list of fastener types of this size """
+        return select_by_size_fn(cls, size)
 
     @classmethod
     def types(cls) -> List[str]:
@@ -1240,13 +1240,13 @@ class Screw(ABC):
         if (
             range_min is None
             or range_max is None
-            or not self.screw_type in Screw.nominal_screw_lengths.keys()
+            or not self.screw_type in Screw.nominal_length_range.keys()
         ):
             result = None
         else:
             result = [
                 size
-                for size in Screw.nominal_screw_lengths[self.screw_type]
+                for size in Screw.nominal_length_range[self.screw_type]
                 if range_min <= size <= range_max
             ]
         return result

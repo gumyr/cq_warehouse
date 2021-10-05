@@ -28,10 +28,8 @@ or CAM systems.
     - [HexNut](#hexnut)
     - [SquareNut](#squarenut)
     - [Screw](#screw)
-    - [SocketHeadCapScrew](#socketheadcapscrew)
-    - [ButtonHeadCapScrew](#buttonheadcapscrew)
-    - [HexBolt](#hexbolt)
-    - [SetScrew](#setscrew)
+      - [Screw Selection](#screw-selection)
+    - [Clearance, Tap and Threaded Holes](#clearance-tap-and-threaded-holes)
     - [Thread](#thread)
     - [ExternalThread](#externalthread)
     - [InternalThread](#internalthread)
@@ -472,100 +470,166 @@ This class exposes instance variables for the detailed input parameters as well 
 - `cq_object` (cq.Solid) : cadquery Solid object
 
 ### Screw
-As the base class of all other screw and bolt classes it isn't intended for end users.
-### SocketHeadCapScrew
-![SocketHeadCapScrew](doc/socketheadcapscrew.png)
-
-SocketHeadCapScrew creates socket head cap screws of either standard or custom sizes. Standard sizes are described by the 'imperial_socket_head_cap_screw_parameters.csv' or 'metric_socket_head_cap_screw_parameters.csv' files. The parameters are:
-- `size` (str) : standard sizes
+As the base class of all other screw and bolt classes. All of the derived screw classes share the same interface as follows:
+- `screw_type` (str) : type identifier - e.g. `"iso4014"`
+- `size` (str) : standard sizes - e.g. `"M6-1"`
 - `length` (float) : distance from base of head to tip of thread
 - `hand` (Literal["right", "left"] = "right") : thread direction
-- `simple` (bool = False) : simplify thread
+- `simple` (bool = True) : simplify thread
 
-or
-- `length` (float) : distance from base of head to tip of thread
-- `head_diameter` (float) : maximum head diameter
-- `head_height` (float) : maximum head height (+Z direction)
-- `thread_diameter` (float) : major thread diameter
-- `thread_pitch` (float) : thread pitch (IN / TPI for imperial)
-- `thread_length` (float) : length of the threaded section
-- `socket_size` (float) : distance between flats within the socket
-- `socket_depth` (float) : socket depth
-- `hand` (Literal["right", "left"] = "right") : thread direction
-- `simple` (bool = False) : simplify thread
+In addition, to allow screws that have no recess (e.g. hex head bolts) to be countersunk the gap around the hex head which allows a socket wrench to be inserted can be specified with:
+- `socket_clearance` (float = 6 * MM)
 
-This class exposes instance variables for the detailed input parameters as well as:
+Each screw instance creates a set of properties that provide the Solid CAD object as well as valuable parameters, as follows (values intended for internal use are not shown):
+
+- `clearance_drill_sizes` - see [Clearance, Tap and Threaded Holes](#clearance-tap-and-threaded-holes)
+- `clearance_hole_diameters` - see [Clearance, Tap and Threaded Holes](#clearance-tap-and-threaded-holes)
 - `cq_object` (cq.Solid) : cadquery Solid object
-- `head` (cq.Solid) : the screw head cadquery Solid object
-- `shank` (cq.Solid) : the shank cadquery Solid object
-### ButtonHeadCapScrew
-![ButtonHeadCapScrew](doc/buttonheadcapscrew.png)
+- `head_diameter` (float) : maximum diameter of the head
+- `head_height` (float) : maximum height of the head
+- `nominal_lengths` (list[float]) : nominal lengths values
+- `screw_class` - (str) : display friendly class name
+- `tap_drill_sizes` - [Clearance, Tap and Threaded Holes](#clearance-tap-and-threaded-holes)
+- `tap_hole_diameters` - [Clearance, Tap and Threaded Holes](#clearance-tap-and-threaded-holes)
 
-ButtonHeadCapScrew creates button head cap screws of either standard or custom sizes. Standard sizes are described by the 'imperial_button_head_cap_screw_parameters.csv' or 'metric_button_head_cap_screw_parameters.csv' files. The parameters are:
-- `size` (str) : standard sizes
-- `length` (float) : distance from base of head to tip of thread
-- `hand` (Literal["right", "left"] = "right") : thread direction
-- `simple` (bool = False) : simplify thread
+The following method helps with hole creation:
 
-or
-- `length` (float) : distance from base of head to tip of thread
-- `head_diameter` (float) : maximum head diameter
-- `head_height` (float) : head height (+Z direction) without socket
-- `thread_diameter` (float) : major thread diameter
-- `thread_pitch` (float) : thread pitch (IN / TPI for imperial)
-- `thread_length` (float) : length of the threaded section
-- `socket_size` (float) : distance between flats within the socket
-- `socket_depth` (float) : socket depth
-- `hand` (Literal["right", "left"] = "right") : thread direction
-- `simple` (bool = False) : simplify thread
+- `min_hole_depth(counter_sunk: bool = True)`  : distance from surface to tip of screw
 
-This class exposes instance variables for the detailed input parameters as well as:
-- `cq_object` (cq.Solid) : cadquery Solid object
-- `head` (cq.Solid) : the screw head cadquery Solid object
-- `shank` (cq.Solid) : the shank cadquery Solid object
-### HexBolt
-![HexBolt](doc/hexbolt.png)
+#### Screw Selection
+As there are many classes and types of screws to select from, the Screw class provides some methods that can help find the correct screw for your application. As a reminder, to find the subclasses of the Screw class, use `__subclasses__()`:
+```python
+Screw.__subclasses__()  # [<class 'cq_warehouse.fastener.ButtonHeadScrew'>, ...]
+```
+Here is a summary of the class methods:
+- `types()` : (set{str}) - create a set of screw types, e.g.:
+```python
+CounterSunkScrew.types() # {'iso14582', 'iso10642', 'iso14581', 'iso2009', 'iso7046'}
+```
+- `sizes(screw_type:str)` : (list[str]) - create a list of screw sizes, e.g.:
+```python
+CounterSunkScrew.sizes("iso7046") # ['M1.6-0.35', 'M2-0.4', 'M2.5-0.45', 'M3-0.5', 'M3.5-0.6', 'M4-0.7', 'M5-0.8', 'M6-1', 'M8-1.25', 'M10-1.5']
+```
+- `select_by_size(size:str)` : (dict{class:[type,...],} - e.g.:
+```python
+Screw.select_by_size("M6-1") # {<class 'cq_warehouse.fastener.ButtonHeadScrew'>: ['iso7380_1'], <class 'cq_warehouse.fastener.ButtonHeadWithCollarScrew'>: ['iso7380_2'], ...}
+```
+As of current release of cq_warehouse, displaying this dictionary results in the following (note that the Class descriptors have been converted to names with the `__name__` method):
+- ButtonHeadScrew : iso7380_1
+- ButtonHeadWithCollarScrew : iso7380_2
+- CheeseHeadScrew : iso7048, iso1207, iso14580
+- CounterSunkScrew : iso7046, iso14582, iso14581, iso10642, iso2009
+- HexHeadScrew : iso4017, din931, iso4014
+- HexHeadWithFlangeScrew : din1665, din1662
+- PanHeadScrew : iso14583, iso1580
+- PanHeadWithCollarScrew : din967
+- RaisedCheeseHeadScrew : iso7045
+- RaisedCounterSunkOvalHeadScrew : iso14584, iso7047, iso2010
+- SetScrew : iso4026
+- SocketHeadCapScrew : iso4762
 
-HexBolt creates hexagonal bolts of either standard or custom sizes. Standard sizes are described by the 'imperial_hex_parameters.csv' or 'metric_hex_parameters.csv' files. The parameters are:
-- `size` (str) : standard sizes
-- `length` (float) : distance from base of head to tip of thread
-- `hand` (Literal["right", "left"] = "right") : thread direction
-- `simple` (bool = False) : simplify thread
+To see if a given screw type has screws in the length you are looking for, each screw class provides a dictionary of available lengths, as follows:
+- `nominal_length_range[screw_type:str]` : (list[float]) - all the nominal lengths for this screw type, e.g.:
+```python
+CounterSunkScrew.nominal_length_range["iso7046"] # [3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 12.0, 14.0, 16.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0, 55.0, 60.0]
+```
+During instantiation of a screw any value of `length` may be used; however, the above nominal_length_range only a subset of this range is valid for any given screw size. This sub-range is given with the `nominal_lengths` property as follows:
+```python
+screw = CounterSunkScrew(screw_type="iso7046",size="M6-1",length=12*MM)
+screw.nominal_lengths # [8.0, 10.0, 12.0, 14.0, 16.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0, 55.0, 60.0]
+```
+### Clearance, Tap and Threaded Holes
+When designing parts with CadQuery a common operation is to place holes appropriate to a specific fastener into the part. This operation is optimized with cq_warehouse by the following three new Workplane methods:
+- `cq.Workplane.clearanceHole`,
+- `cq.Workplane.tapHole`, and
+- `cq.Workplane.threadedHole`.
 
-or
-- `length` (float) : distance from base of head to tip of thread
-- `head_width` (float) : width across the flat sections
-- `head_height` (float) : head height (+Z direction)
-- `thread_diameter` (float) : major thread diameter
-- `thread_pitch` (float) : thread pitch (IN / TPI for imperial)
-- `thread_length` (float) : length of the threaded section
-- `hand` (Literal["right", "left"] = "right") : thread direction
-- `simple` (bool = False) : simplify thread
+These methods use data provided by a fastener instance (either a `Nut` or a `Screw`) to both create the appropriate hole (possibly countersunk) in your part as well as add the fastener to a CadQuery Assembly in the location of the hole. In addition, a list of washers can be provided which will get placed under the head of the screw or nut in the provided Assembly.
 
-This class exposes instance variables for the detailed input parameters as well as:
-- `cq_object` (cq.Solid) : cadquery Solid object
-- `head` (cq.Solid) : the screw head cadquery Solid object
-- `shank` (cq.Solid) : the shank cadquery Solid object
-### SetScrew
-![SetScrew](doc/setscrew.png)
+For example, let's re-build the parametric bearing pillow block found in the [CadQuery Quickstart](https://cadquerytest.readthedocs.io/en/readthedocs/quickstart.html):
+```python
+import cadquery as cq
+from cq_warehouse.fastener import SocketHeadCapScrew
 
-SetScrew creates setscrews of either standard or custom sizes. Standard sizes are described by the 'imperial_set_screw_parameters.csv' or 'metric_set_screw_parameters.csv' files. The parameters are:
-- `size` (str) : standard sizes
-- `length` (float) : distance from base of head to tip of thread
-- `hand` (Literal["right", "left"] = "right") : thread direction
-- `simple` (bool = False) : simplify thread
+height = 60.0
+width = 80.0
+thickness = 10.0
+diameter = 22.0
+padding = 12.0
 
-or
-- `length` (float) : distance from base of head to tip of thread
-- `thread_diameter` (float) : major thread diameter
-- `thread_pitch` (float) : thread pitch (IN / TPI for imperial)
-- `socket_size` (float) : distance between flats within the socket
-- `socket_depth` (float) : socket depth
-- `hand` (Literal["right", "left"] = "right") : thread direction
-- `simple` (bool = False) : simplify thread
+# make the screw
+screw = SocketHeadCapScrew(screw_type="iso4762", size="M2-0.4", length=16)
+# make the assembly
+pillow_block = cq.Assembly(None, name="pillow_block")
+# make the base
+base = (
+    cq.Workplane("XY")
+    .box(height, width, thickness)
+    .faces(">Z")
+    .workplane()
+    .hole(diameter)
+    .faces(">Z")
+    .workplane()
+    .rect(height - padding, width - padding, forConstruction=True)
+    .vertices()
+    .clearanceHole(fastener=screw, baseAssembly=pillow_block)
+)
+pillow_block.add(base)
+# Render the assembly
+show_object(pillow_block)
+```
+Which results in:
+![pillow_block](doc/pillow_block.png)
+The differences between this code and the Read the Docs version are:
+- screw dimensions aren't required
+- the screw is created during instantiation of the `SocketHeadCapScrew` class
+- an assembly is created and later the base is added to that assembly
+- the call to cskHole is replaced with clearanceHole
 
-This class exposes instance variables for the detailed input parameters as well as:
-- `cq_object` (cq.Solid) : cadquery Solid object
+The APIs of these three methods are:
+
+clearanceHole: A hole that allows the screw to freely move
+- `fastener`: Union[Nut, Screw],
+- `washers`: Optional[List[Washer]] = None,
+- `fit`: Optional[Literal["Close", "Normal", "Loose"]] = "Normal",
+- `depth`: Optional[float] = None,
+- `counterSunk`: Optional[bool] = True,
+- `baseAssembly`: Optional[cq.Assembly] = None,
+- `clean`: Optional[bool] = True,
+
+tapHole: A hole ready for a tap to cut a thread
+- `fastener`: Union[Nut, Screw],
+- `washers`: Optional[List[Washer]] = None,
+- `material`: Optional[Literal["Soft", "Hard"]] = "Soft",
+- `depth`: Optional[float] = None,
+- `counterSunk`: Optional[bool] = True,
+- `fit`: Optional[Literal["Close", "Normal", "Loose"]] = "Normal",
+- `baseAssembly`: Optional[cq.Assembly] = None,
+- `clean`: Optional[bool] = True,
+
+threadedHole: A hole with a integral thread
+- `fastener`: Screw,
+- `depth`: float,
+- `hand`: Literal["right", "left"] = "right",
+- `simple`: Optional[bool] = False,
+- `counterSunk`: Optional[bool] = True,
+- `fit`: Optional[Literal["Close", "Normal", "Loose"]] = "Normal",
+- `baseAssembly`: Optional[cq.Assembly] = None,
+- `clean`: Optional[bool] = True,
+
+One can see, the API for all three methods are very similar. The `fit` parameter is used for clearance hole dimensions and to calculate the gap around the head of a countersunk screw. The `material` parameter controls the size of the tap hole as they differ as a function of the material the part is made off. For clearance and tap holes, `depth` values of `None` are treated as thru holes. The threaded hole method requires that `depth` be specified as a consequence of how the thread is constructed.
+
+The data used in the creation of these holes is available via three instance methods:
+```python
+screw = CounterSunkScrew(screw_type="iso7046", size="M6-1", length=10)
+screw.clearance_hole_diameters # {'Close': 6.4, 'Normal': 6.6, 'Loose': 7.0}
+
+screw.clearance_drill_sizes # {'Close': '6.4', 'Normal': '6.6', 'Loose': '7'}
+screw.tap_hole_diameters # {'Soft': 5.0, 'Hard': 5.4}
+screw.tap_drill_sizes # {'Soft': '5', 'Hard': '5.4'}
+```
+Note that with imperial sized holes (e.g. 7/16), the drill sizes could be a fractional size (e.g. 25/64) or a numbered or lettered size (e.g. U). This information can be added to your designs with the cq_warehouse.dimensions package.
+
 ### Thread
 As the base class of the other thread classes it isn't intended for end users. Both external and internal threads are ISO standard by default as shown in the following diagram (from https://en.wikipedia.org/wiki/ISO_metric_screw_thread):
 ![ISO_and_UTS_Thread_Dimensions](https://upload.wikimedia.org/wikipedia/commons/4/4b/ISO_and_UTS_Thread_Dimensions.svg)
