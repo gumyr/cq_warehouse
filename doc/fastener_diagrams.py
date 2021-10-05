@@ -89,10 +89,6 @@ for screw in screw_list:
         f"{screw.screw_class}({screw.screw_type}) length range: {screw.nominal_lengths}"
     )
 
-screw_vars = [v for v in vars(screw_list[0]) if not v.startswith("_")]
-print(f"Screw vars: {screw_vars}")
-screw_methods = [f for f in dir(CheeseHeadScrew) if not f.startswith("_")]
-print(f"Screw methods: {screw_methods}")
 #
 # Calculate the size of the disk such that there is room for all the screws in the perimeter
 screw_diameters = [screw.head_diameter for screw in screw_list]
@@ -215,22 +211,15 @@ disk = (
 # Finally, add the finished disk to the assembly
 disk_assembly.add(disk, name="plate", color=cq.Color(162 / 255, 138 / 255, 255 / 255))
 
+screw_vars = [v for v in vars(Screw) if not v.startswith("_")]
+print(f"Screw base class vars: {screw_vars}")
+screw_methods = [f for f in dir(Screw) if not f.startswith("_")]
+print(f"Screw base class methods: {screw_methods}")
+screw_vars = [v for v in vars(screw_list[0]) if not v.startswith("_")]
+print(f"Screw derived class vars: {screw_vars}")
+screw_methods = [f for f in dir(CheeseHeadScrew) if not f.startswith("_")]
+print(f"Screw derived class methods: {screw_methods}")
+
 if "show_object" in locals():
     show_object(disk, name="disk")
     show_object(disk_assembly, name="disk_assembly")
-
-
-# external_thread = ExternalThread(
-#     major_diameter=(1 / 4) * IN, pitch=IN / 20, length=(1 / 4) * IN
-# ).cq_object
-# internal_thread = InternalThread(
-#     major_diameter=3 * MM, pitch=0.5, length=3 * MM
-# ).cq_object
-
-# if "show_object" in locals():
-#     show_object(
-#         external_thread, name="ExternalThread",
-#     )
-#     show_object(
-#         internal_thread, name="InternalThread",
-#     )
