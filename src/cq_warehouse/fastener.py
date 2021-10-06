@@ -783,9 +783,9 @@ class Nut(ABC):
         return set(p.split(":")[0] for p in list(cls.fastener_data.values())[0].keys())
 
     @classmethod
-    def sizes(cls, nut_type: str) -> List[str]:
+    def sizes(cls, fastener_type: str) -> List[str]:
         """ Return a list of the nut sizes for the given type """
-        return list(isolate_fastener_type(nut_type, cls.fastener_data).keys())
+        return list(isolate_fastener_type(fastener_type, cls.fastener_data).keys())
 
     @property
     def nut_thickness(self):
@@ -814,7 +814,7 @@ class Nut(ABC):
     def __init__(
         self,
         size: str,
-        nut_type: str,
+        fastener_type: str,
         hand: Literal["right", "left"] = "right",
         simple: bool = True,
     ):
@@ -833,9 +833,9 @@ class Nut(ABC):
         else:
             (self.thread_diameter, self.thread_pitch) = decode_imperial_size(self.size)
 
-        if nut_type not in self.types():
-            raise ValueError(f"{nut_type} invalid, must be one of {self.types()}")
-        self.nut_type = nut_type
+        if fastener_type not in self.types():
+            raise ValueError(f"{fastener_type} invalid, must be one of {self.types()}")
+        self.fastener_type = fastener_type
         if hand in ["left", "right"]:
             self.hand = hand
         else:
@@ -844,12 +844,14 @@ class Nut(ABC):
         self.socket_clearance = 6 * MM  # Used as extra clearance when countersinking
         try:
             self.nut_data = evaluate_parameter_dict(
-                isolate_fastener_type(self.nut_type, self.fastener_data)[self.size],
+                isolate_fastener_type(self.fastener_type, self.fastener_data)[
+                    self.size
+                ],
                 is_metric=self.is_metric,
             )
         except KeyError as e:
             raise ValueError(
-                f"{size} invalid, must be one of {self.sizes(self.nut_type)}"
+                f"{size} invalid, must be one of {self.sizes(self.fastener_type)}"
             ) from e
         self._cq_object = self.make_nut().val()
 
@@ -954,7 +956,7 @@ class Nut(ABC):
 class DomedCapNut(Nut):
     """
     size: str
-    nut_type: str
+    fastener_type: str
         din 1587 Hexagon domed cap nuts
     hand: Literal["right", "left"] = "right"
     simple: bool = True
@@ -999,7 +1001,7 @@ class DomedCapNut(Nut):
 class HexNut(Nut):
     """
     size: str
-    nut_type: str
+    fastener_type: str
         iso4032	Hexagon nuts, Style 1
         iso4033	Hexagon nuts, Style 2
         iso4035	Hexagon thin nuts, chamfered
@@ -1017,7 +1019,7 @@ class HexNut(Nut):
 class HexNutWithFlange(Nut):
     """
     size: str
-    nut_type: str
+    fastener_type: str
         en1661 Hexagon nuts with flange
     hand: Literal["right", "left"] = "right"
     simple: bool = True
@@ -1070,7 +1072,7 @@ class HexNutWithFlange(Nut):
 class UnchamferedHexagonNut(Nut):
     """
     size: str
-    nut_type: str
+    fastener_type: str
         iso4036 Hexagon thin nuts, unchamfered
     hand: Literal["right", "left"] = "right"
     simple: bool = True
@@ -1092,7 +1094,7 @@ class UnchamferedHexagonNut(Nut):
 class SquareNut(Nut):
     """
     size: str
-    nut_type: str
+    fastener_type: str
         din557 - Square Nuts
     hand: Literal["right", "left"] = "right"
     simple: bool = True
@@ -1204,9 +1206,9 @@ class Screw(ABC):
         return set(p.split(":")[0] for p in list(cls.fastener_data.values())[0].keys())
 
     @classmethod
-    def sizes(cls, screw_type: str) -> List[str]:
+    def sizes(cls, fastener_type: str) -> List[str]:
         """ Return a list of the screw sizes for the given type """
-        return list(isolate_fastener_type(screw_type, cls.fastener_data).keys())
+        return list(isolate_fastener_type(fastener_type, cls.fastener_data).keys())
 
     def length_offset(self):
         """
@@ -1240,13 +1242,13 @@ class Screw(ABC):
         if (
             range_min is None
             or range_max is None
-            or not self.screw_type in Screw.nominal_length_range.keys()
+            or not self.fastener_type in Screw.nominal_length_range.keys()
         ):
             result = None
         else:
             result = [
                 size
-                for size in Screw.nominal_length_range[self.screw_type]
+                for size in Screw.nominal_length_range[self.fastener_type]
                 if range_min <= size <= range_max
             ]
         return result
@@ -1298,7 +1300,7 @@ class Screw(ABC):
         self,
         size: str,
         length: float,
-        screw_type: str,
+        fastener_type: str,
         hand: Optional[Literal["right", "left"]] = "right",
         simple: Optional[bool] = True,
         socket_clearance: Optional[float] = 6 * MM,
@@ -1319,9 +1321,9 @@ class Screw(ABC):
             (self.thread_diameter, self.thread_pitch) = decode_imperial_size(self.size)
 
         self.length = length
-        if screw_type not in self.types():
-            raise ValueError(f"{screw_type} invalid, must be one of {self.types()}")
-        self.screw_type = screw_type
+        if fastener_type not in self.types():
+            raise ValueError(f"{fastener_type} invalid, must be one of {self.types()}")
+        self.fastener_type = fastener_type
         if hand in ["left", "right"]:
             self.hand = hand
         else:
@@ -1329,12 +1331,14 @@ class Screw(ABC):
         self.simple = simple
         try:
             self.screw_data = evaluate_parameter_dict(
-                isolate_fastener_type(self.screw_type, self.fastener_data)[self.size],
+                isolate_fastener_type(self.fastener_type, self.fastener_data)[
+                    self.size
+                ],
                 is_metric=self.is_metric,
             )
         except KeyError as e:
             raise ValueError(
-                f"{size} invalid, must be one of {self.sizes(self.screw_type)}"
+                f"{size} invalid, must be one of {self.sizes(self.fastener_type)}"
             ) from e
         self.socket_clearance = socket_clearance  # Only used for hex head screws
 
@@ -1513,7 +1517,7 @@ class ButtonHeadScrew(Screw):
     """
     size: str
     length: float
-    screw_type: str
+    fastener_type: str
         iso7380_1 - Hexagon socket button head screws
     hand: Optional[Literal["right", "left"]] = "right"
     simple: Optional[bool] = False
@@ -1543,7 +1547,7 @@ class ButtonHeadWithCollarScrew(Screw):
     """
     size: str
     length: float
-    screw_type: str
+    fastener_type: str
         iso7380_2 - Hexagon socket button head screws with collar
     hand: Optional[Literal["right", "left"]] = "right"
     simple: Optional[bool] = False
@@ -1591,7 +1595,7 @@ class CheeseHeadScrew(Screw):
     """
     size: str
     length: float
-    screw_type: str
+    fastener_type: str
         iso1207 - Slotted cheese head screws
         iso7048 - Cross-recessed cheese head screws
         iso14580 - Hexalobular socket cheese head screws
@@ -1623,7 +1627,7 @@ class CounterSunkScrew(Screw):
     """
     size: str
     length: float
-    screw_type: str
+    fastener_type: str
         iso2009 - Slotted countersunk head screws
         iso7046 - Cross recessed countersunk flat head screws
         iso10642 - Hexagon socket countersunk head cap screws
@@ -1675,7 +1679,7 @@ class HexHeadScrew(Screw):
     """
     size: str
     length: float
-    screw_type: str
+    fastener_type: str
         iso4014 - Hexagon head bolt
         iso4017 - Hexagon head screws
     hand: Optional[Literal["right", "left"]] = "right"
@@ -1722,7 +1726,7 @@ class HexHeadWithFlangeScrew(Screw):
     """
     size: str
     length: float
-    screw_type: str
+    fastener_type: str
         en1662 - Hexagon bolts with flange small series
         en1665 - Hexagon head bolts with flange
     hand: Optional[Literal["right", "left"]] = "right"
@@ -1778,7 +1782,7 @@ class PanHeadScrew(Screw):
     """
     size: str
     length: float
-    screw_type: str
+    fastener_type: str
         iso1580 - Slotted pan head screws
         iso14583 - Hexalobular socket pan head screws
     hand: Optional[Literal["right", "left"]] = "right"
@@ -1811,7 +1815,7 @@ class PanHeadWithCollarScrew(Screw):
     """
     size: str
     length: float
-    screw_type: str
+    fastener_type: str
         din967 - Cross recessed pan head screws with collar
     hand: Optional[Literal["right", "left"]] = "right"
     simple: Optional[bool] = False
@@ -1845,7 +1849,7 @@ class RaisedCheeseHeadScrew(Screw):
     """
     size: str
     length: float
-    screw_type: str
+    fastener_type: str
         iso7045 - Cross recessed raised cheese head screws
     hand: Optional[Literal["right", "left"]] = "right"
     simple: Optional[bool] = False
@@ -1877,7 +1881,7 @@ class RaisedCounterSunkOvalHeadScrew(Screw):
     """
     size: str
     length: float
-    screw_type: str
+    fastener_type: str
         iso2010 - Slotted raised countersunk oval head screws
         iso7047 - Cross recessed raised countersunk head screws
         iso14584 - Hexalobular socket raised countersunk head screws
@@ -1930,7 +1934,7 @@ class SetScrew(Screw):
     """
     size: str
     length: float
-    screw_type: str
+    fastener_type: str
         iso4026 - Hexagon socket set screws with flat point
     hand: Optional[Literal["right", "left"]] = "right"
     simple: Optional[bool] = False
@@ -1995,7 +1999,7 @@ class SocketHeadCapScrew(Screw):
     """
     size: str
     length: float
-    screw_type: str
+    fastener_type: str
         iso4762 - Hexagon socket head cap screws
     hand: Optional[Literal["right", "left"]] = "right"
     simple: Optional[bool] = False
@@ -2056,9 +2060,9 @@ class Washer(ABC):
         return set(p.split(":")[0] for p in list(cls.fastener_data.values())[0].keys())
 
     @classmethod
-    def sizes(cls, washer_type: str) -> List[str]:
+    def sizes(cls, fastener_type: str) -> List[str]:
         """ Return a list of the washer sizes for the given type """
-        return list(isolate_fastener_type(washer_type, cls.fastener_data).keys())
+        return list(isolate_fastener_type(fastener_type, cls.fastener_data).keys())
 
     @classmethod
     def select_by_size(cls, size: str) -> dict:
@@ -2086,7 +2090,7 @@ class Washer(ABC):
 
     @cache
     def __init__(
-        self, size: str, washer_type: str,
+        self, size: str, fastener_type: str,
     ):
         self.size = size
         self.is_metric = self.size[0] == "M"
@@ -2096,17 +2100,19 @@ class Washer(ABC):
         else:
             self.thread_diameter = imperial_str_to_float(size)
 
-        if washer_type not in self.types():
-            raise ValueError(f"{washer_type} invalid, must be one of {self.types()}")
-        self.washer_type = washer_type
+        if fastener_type not in self.types():
+            raise ValueError(f"{fastener_type} invalid, must be one of {self.types()}")
+        self.fastener_type = fastener_type
         try:
             self.washer_data = evaluate_parameter_dict(
-                isolate_fastener_type(self.washer_type, self.fastener_data)[self.size],
+                isolate_fastener_type(self.fastener_type, self.fastener_data)[
+                    self.size
+                ],
                 is_metric=self.is_metric,
             )
         except KeyError as e:
             raise ValueError(
-                f"{size} invalid, must be one of {self.sizes(self.washer_type)}"
+                f"{size} invalid, must be one of {self.sizes(self.fastener_type)}"
             ) from e
         self._cq_object = self.make_washer().val()
 
@@ -2145,7 +2151,7 @@ class Washer(ABC):
 class PlainWasher(Washer):
     """
     size: str - e.g. "M6"
-    washer_type: str - e.g. "iso7089"
+    fastener_type: str - e.g. "iso7089"
         iso7089 - Plain washers, Form A
         iso7091 - Plain washers
         iso7093 - Plain washers — Large series
@@ -2160,7 +2166,7 @@ class PlainWasher(Washer):
 class ChamferedWasher(Washer):
     """
     size: str - e.g. "M6"
-    washer_type: str - e.g. "iso7090"
+    fastener_type: str - e.g. "iso7090"
         iso7090 - Plain washers, Form B
     """
 
@@ -2186,7 +2192,7 @@ class ChamferedWasher(Washer):
 class CheeseHeadWasher(Washer):
     """
     size: str - e.g. "M6"
-    washer_type: str - e.g. "iso7092"
+    fastener_type: str - e.g. "iso7092"
         iso7092 - Washers for cheese head screws
     """
 

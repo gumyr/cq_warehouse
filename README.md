@@ -387,20 +387,37 @@ A text box with or without a tail pointing to another object used to provide ext
 callout returns a cadquery `Assembly` object.
 
 ## fastener sub-package
-Many mechanical designs will contain threaded fasteners of some kind, either in a threaded hole or threaded screws or bolts holding two or more parts together. The fastener sub-package provides a set of classes with which raw threads can be created such that they can be integrated into other parts as well as a set of classes that create many different types of nuts, screws or bolts. Here is a list of the classes provided:
+Many mechanical designs will contain threaded fasteners of some kind, either in a threaded hole or threaded screws or bolts holding two or more parts together. The fastener sub-package provides a set of classes with which raw threads can be created such that they can be integrated into other parts as well as a set of classes that create many different types of nuts, screws or bolts - as follows:
+![fastener_disc](doc/fastener_disc.png)
+Here is a list of the classes (and fastener types) provided:
 - [Nut](#nut) - the base nut class
-- [HexNut](#hexnut) - a derived class providing hexagonal nuts
-- [SquareNut](#squarenut) - a derived class providing square nuts
+  - `DomedCapNut`: din1587
+  - `HexNut`: iso4033, iso4035, iso4032
+  - `HexNutWithFlange`: din1665
+  - `UnchamferedHexagonNut`: iso4036
+  - `SquareNut`: din557
 - [Screw](#screw) - the base screw class
-- [SocketHeadCapScrew](#socketheadcapscrew) - a derived class providing socket head cap screws
-- [ButtonHeadCapScrew](#buttonheadcapscrew) - a derived class providing button head cap screws
-- [HexBolt](#hexbolt)- a derived class providing hexagonal bolts
-- [SetScrew](#setscrew) - a derived class providing setscrews
+  - `ButtonHeadScrew`: iso7380_1
+  - `ButtonHeadWithCollarScrew`: iso7380_2
+  - `CheeseHeadScrew`: iso14580, iso7048, iso1207
+  - `CounterSunkScrew`: iso2009, iso14582, iso14581, iso10642, iso7046
+  - `HexHeadScrew`: iso4017, din931, iso4014
+  - `HexHeadWithFlangeScrew`: din1662, din1665
+  - `PanHeadScrew`: asme_b_18.6.3, iso1580, iso14583
+  - `PanHeadWithCollarScrew`: din967
+  - `RaisedCheeseHeadScrew`: iso7045
+  - `RaisedCounterSunkOvalHeadScrew`: iso2010, iso7047, iso14584
+  - `SetScrew`: iso4026
+  - `SocketHeadCapScrew`: iso4762, asme_b18.3
+- [Washer](#washer) - the base washer class
+  - `PlainWasher`: iso7094, iso7093, iso7089, iso7091
+  - `ChamferedWasher`: iso7090
+  - `CheeseHeadWasher`: iso7092
 - [Thread](#thread) - the base thread class
-- [ExternalThread](#externalthread) - a derived class providing threads on screws
-- [InternalThread](#internalthread) - a derived class providing threads on nuts
+  - [ExternalThread](#externalthread) - a derived class providing threads on screws
+  - [InternalThread](#internalthread) - a derived class providing threads on nuts
 
-Use of the base classes is only required by those wishing to create new types of nuts or screws. See [Extending the fastener sub-package](#Extending-the-fastener-sub-package) for guidance on how to easily add new sizes or entirely new types of fasteners.
+See [Extending the fastener sub-package](#Extending-the-fastener-sub-package) for guidance on how to easily add new sizes or entirely new types of fasteners.
 
  The following example creates a variety of different sized fasteners:
 ```python
@@ -410,22 +427,14 @@ MM = 1
 IN = 25.4 * MM
 
 nut = HexNut(size="1/4-20")
-setscrew = SetScrew(size="#6-32", length=(1 / 4) * IN)
-capscrew = SocketHeadCapScrew(size="M3-0.5", length=10 * MM)
+setscrew = SetScrew(size="M6-1", fastener_type="iso4026",length=10 * MM)
+capscrew = SocketHeadCapScrew(size="#6-32", fastener_type="asme_b18.3", length=(1/2) * IN)
 ```
-Both metric and imperial sized standard fasteners are directly supported by the fastener sub-package. To display the available standard sizes use the `metric_sizes()` or `imperial_sizes()` methods as follows:
-```python
-print(f"Standard metric hex nut sizes: {HexNut.metric_sizes()}")
-print(f"Standard imperial hex nut sizes: {HexNut.imperial_sizes()}")
-```
+Both metric and imperial sized standard fasteners are directly supported by the fastener sub-package although the majority of the fasteners currently implemented are metric.
 
 Threaded parts are complex for CAD systems to create and significantly increase the storage requirements thus making the system slow and difficult to use. To minimize these requirements all of the fastener classes have a `simple` boolean parameter that when `True` doesn't create actual threads at all. Such simple parts have the same overall dimensions and such that they can be used to check for fitment without dramatically impacting performance.
 
 > **CQ-editor** :warning: Set the Preferences :arrow_right: 3D Viewer :arrow_right: Deviation parameter to 0.01 to avoid crashes due to memory over-consumption when working with threads
-
-The classes that generate actual fasteners provide two interfaces:
-1. An interface for standard sizes with a string `size` parameter to select a standard metric or imperial sized fastener. All `size` parameters are composed of the major diameter, a dash separator, and the thread pitch or TPI. Metric sizes start with capital M (e.g. 'M3-0.5') while imperial sizes can be either a number/fraction (e.g. '5/8-18') or a # followed by the gauge (e.g. '#8-32'). Once the fastener has been instantiated a set of instance variables will be created which contain all of the data used in its creation. These values can be used to orient the fastener in an assembly. Note that all standard sizes are parameterized with `.csv` files and are therefore easy to augment.
-2. An interface for custom sizes where each of the dimensions required to create the fastener is provided directly.
 
 All of the fasteners default to right-handed thread but each of them provide a `hand` sting parameter which can either be `"right"` or `"left"`.
 
@@ -435,7 +444,7 @@ The following sections describe each of the provided classes.
 
 ### Nut
 As the base class of all other nut and bolt classes, all of the derived nut classes share the same interface as follows:
-- `nut_type` (str) : type identifier - e.g. `"iso4032"`
+- `fastener_type` (str) : type identifier - e.g. `"iso4032"`
 - `size` (str) : standard sizes - e.g. `"M6-1"`
 - `hand` (Literal["right", "left"] = "right") : thread direction
 - `simple` (bool = True) : simplify thread
@@ -461,7 +470,7 @@ Here is a summary of the class methods:
 ```python
 HexNut.types() # {'iso4033', 'iso4032', 'iso4035'}
 ```
-- `sizes(nut_type:str)` : (list[str]) - create a list of nut sizes, e.g.:
+- `sizes(fastener_type:str)` : (list[str]) - create a list of nut sizes, e.g.:
 ```python
 HexNut.sizes("iso4033") # ['M1.6-0.35', 'M1.8-0.35', 'M2-0.4', 'M2.5-0.45', 'M3-0.45', 'M3.5-0.6', 'M4-0.7', 'M5-0.8', 'M6-1', 'M8-1.25', 'M10-1.5', 'M12-1.75', 'M14-2', 'M16-2', 'M18-2.5', 'M20-2.5', 'M22-2.5', 'M24-3', 'M27-3', 'M30-3.5', 'M33-3.5', 'M36-4', 'M39-4', 'M42-4.5', 'M45-4.5', 'M48-5', 'M52-5']
 ```
@@ -480,7 +489,7 @@ The following is a list of the current nut classes derived from the base Nut cla
 Detailed information about any of the nut types can be readily found on the internet from manufacture's websites or from the standard document itself.
 ### Screw
 As the base class of all other screw and bolt classes, all of the derived screw classes share the same interface as follows:
-- `screw_type` (str) : type identifier - e.g. `"iso4014"`
+- `fastener_type` (str) : type identifier - e.g. `"iso4014"`
 - `size` (str) : standard sizes - e.g. `"M6-1"`
 - `length` (float) : distance from base of head to tip of thread
 - `hand` (Literal["right", "left"] = "right") : thread direction
@@ -515,7 +524,7 @@ Here is a summary of the class methods:
 ```python
 CounterSunkScrew.types() # {'iso14582', 'iso10642', 'iso14581', 'iso2009', 'iso7046'}
 ```
-- `sizes(screw_type:str)` : (list[str]) - create a list of screw sizes, e.g.:
+- `sizes(fastener_type:str)` : (list[str]) - create a list of screw sizes, e.g.:
 ```python
 CounterSunkScrew.sizes("iso7046") # ['M1.6-0.35', 'M2-0.4', 'M2.5-0.45', 'M3-0.5', 'M3.5-0.6', 'M4-0.7', 'M5-0.8', 'M6-1', 'M8-1.25', 'M10-1.5']
 ```
@@ -524,13 +533,13 @@ CounterSunkScrew.sizes("iso7046") # ['M1.6-0.35', 'M2-0.4', 'M2.5-0.45', 'M3-0.5
 Screw.select_by_size("M6-1") # {<class 'cq_warehouse.fastener.ButtonHeadScrew'>: ['iso7380_1'], <class 'cq_warehouse.fastener.ButtonHeadWithCollarScrew'>: ['iso7380_2'], ...}
 ```
 To see if a given screw type has screws in the length you are looking for, each screw class provides a dictionary of available lengths, as follows:
-- `nominal_length_range[screw_type:str]` : (list[float]) - all the nominal lengths for this screw type, e.g.:
+- `nominal_length_range[fastener_type:str]` : (list[float]) - all the nominal lengths for this screw type, e.g.:
 ```python
 CounterSunkScrew.nominal_length_range["iso7046"] # [3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 12.0, 14.0, 16.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0, 55.0, 60.0]
 ```
 During instantiation of a screw any value of `length` may be used; however, the above nominal_length_range only a subset of this range is valid for any given screw size. This sub-range is given with the `nominal_lengths` property as follows:
 ```python
-screw = CounterSunkScrew(screw_type="iso7046",size="M6-1",length=12*MM)
+screw = CounterSunkScrew(fastener_type="iso7046",size="M6-1",length=12*MM)
 screw.nominal_lengths # [8.0, 10.0, 12.0, 14.0, 16.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0, 55.0, 60.0]
 ```
 #### Derived Screw Classes
@@ -551,7 +560,7 @@ The following is a list of the current screw classes derived from the base Screw
 Detailed information about any of the screw types can be readily found on the internet from manufacture's websites or from the standard document itself.
 ### Washer
 As the base class of all other washer and bolt classes, all of the derived washer classes share the same interface as follows:
-- `washer_type` (str) : type identifier - e.g. `"iso4032"`
+- `fastener_type` (str) : type identifier - e.g. `"iso4032"`
 - `size` (str) : standard sizes - e.g. `"M6-1"`
 
 Each washer instance creates a set of properties that provide the Solid CAD object as well as valuable parameters, as follows (values intended for internal use are not shown):
@@ -573,7 +582,7 @@ Here is a summary of the class methods:
 ```python
 PlainWasher.types() # {'iso7091', 'iso7089', 'iso7093', 'iso7094'}
 ```
-- `sizes(washer_type:str)` : (list[str]) - create a list of washer sizes, e.g.:
+- `sizes(fastener_type:str)` : (list[str]) - create a list of washer sizes, e.g.:
 ```python
 PlainWasher.sizes("iso7091") # ['M1.6', 'M1.7', 'M2', 'M2.3', 'M2.5', 'M2.6', 'M3', 'M3.5', 'M4', 'M5', 'M6', 'M7', 'M8', 'M10', 'M12', 'M14', 'M16', 'M18', 'M20', 'M22', 'M24', 'M26', 'M27', 'M28', 'M30', 'M32', 'M33', 'M35', 'M36']
 ```
@@ -610,7 +619,7 @@ diameter = 22.0
 padding = 12.0
 
 # make the screw
-screw = SocketHeadCapScrew(screw_type="iso4762", size="M2-0.4", length=16, simple=False)
+screw = SocketHeadCapScrew(fastener_type="iso4762", size="M2-0.4", length=16, simple=False)
 # make the assembly
 pillow_block = cq.Assembly(None, name="pillow_block")
 # make the base
@@ -679,7 +688,7 @@ One can see, the API for all three methods are very similar. The `fit` parameter
 
 The data used in the creation of these holes is available via three instance methods:
 ```python
-screw = CounterSunkScrew(screw_type="iso7046", size="M6-1", length=10)
+screw = CounterSunkScrew(fastener_type="iso7046", size="M6-1", length=10)
 screw.clearance_hole_diameters # {'Close': 6.4, 'Normal': 6.6, 'Loose': 7.0}
 
 screw.clearance_drill_sizes # {'Close': '6.4', 'Normal': '6.6', 'Loose': '7'}
@@ -735,8 +744,32 @@ This class exposes instance variables for the input parameters as well as:
 - `cq_object` (cq.Solid) : cadquery Solid object
 ### Extending the fastener sub-package
 The fastener sub-package has been designed to be extended in the following two ways:
-- **Alternate Sizes** - As mentioned previously, the data used to guide the creation of fastener objects is derived from `.csv` files found in the same place as the source code. One can add to set of standard sized fasteners by inserting appropriate data into the tables.
-- **New Fastener Types** - The base/derived class structure was designed to allow the creation of new fastener types/classes. In most cases a new screw can be created by creating the new parameter `.csv` file and the new head cadquery object.
+- **Alternate Sizes** - As mentioned previously, the data used to guide the creation of fastener objects is derived from `.csv` files found in the same place as the source code. One can add to set of standard sized fasteners by inserting appropriate data into the tables. There is a table for each fastener class, an example of the 'socket_head_cap_parameters.csv' is below:
+
+| Size      | iso4762:dk | iso4762:k | ... | asme_b18.3:dk | asme_b18.3:k | asme_b18.3:s |
+| --------- | ---------- | --------- | --- | ------------- | ------------ | ------------ |
+| M1.6-0.35 | 3.14       | 1.6       |
+| M2-0.4    | 3.98       | 2         |
+| M2.5-0.45 | 4.68       | 2.5       |
+| M3-0.5    | 5.68       | 3         |
+| ...       |
+| #0-80     |            |           |     | 0.096         | 0.06         | 0.05         |
+| #1-64     |            |           |     | 0.118         | 0.073        | 1/16         |
+| #1-72     |            |           |     | 0.118         | 0.073        | 1/16         |
+| #2-56     |            |           |     | 0.14          | 0.086        | 5/64         |
+
+The first row must contain a 'Size' and a set of 'fastener_type:parameter' values. The parameters are taken from the ISO standards where 'k' represents the head height of a screw head, 'dk' is represents the head diameter, etc. Refer to the appropriate document for a complete description. The fastener 'Size' field has the format 'M{thread major diameter}-{thread pitch}' for metric fasteners or either '#{guage}-{TPI}' or '{fractional major diameter}-{TPI}' for imperial fasteners (TPI refers to Threads Per Inch).
+
+There is also a 'nominal_screw_lengths.csv' file that contains a list of all the lengths supported by the standard, as follows:
+
+| Screw_Type | Unit | Nominal_Sizes            |
+| ---------- | ---- | ------------------------ |
+| din931     | mm   | 30,35,40,45,50,55,60,... |
+| ...        |      |                          |
+
+The 'short' and 'long' values from the first table (not shown) control the minimum and maximum values in the nominal length ranges for each screw.
+
+- **New Fastener Types** - The base/derived class structure was designed to allow the creation of new fastener types/classes. For new fastener classes a 2D drawing of one half of the fastener profile is required. If the fastener has a non circular plan (e.g. a hex or a square) a 2D drawing of the plan is required. If the fastener contains a flange and a plan, a 2D profile of the plan is required. If these profiles or plans are present, the base class will use them to build the fastener. The Abstract Base Class technology ensures derived classes can't be created with missing components.
 ## extensions sub-package
 This python module provides extensions to the native cadquery code base. Hopefully future generations of cadquery will incorporate this or similar functionality.
 ### Assembly class extensions
