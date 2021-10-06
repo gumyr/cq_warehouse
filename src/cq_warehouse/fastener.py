@@ -1300,7 +1300,7 @@ class Screw(ABC):
         length: float,
         screw_type: str,
         hand: Optional[Literal["right", "left"]] = "right",
-        simple: Optional[bool] = False,
+        simple: Optional[bool] = True,
         socket_clearance: Optional[float] = 6 * MM,
     ):
         """ Parse Screw input parameters """

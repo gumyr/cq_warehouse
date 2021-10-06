@@ -25,11 +25,16 @@ or CAM systems.
     - [callout](#callout)
   - [fastener sub-package](#fastener-sub-package)
     - [Nut](#nut)
-    - [HexNut](#hexnut)
-    - [SquareNut](#squarenut)
+      - [Nut Selection](#nut-selection)
+      - [Derived Nut Classes](#derived-nut-classes)
     - [Screw](#screw)
       - [Screw Selection](#screw-selection)
+      - [Derived Screw Classes](#derived-screw-classes)
+    - [Washer](#washer)
+      - [Washer Selection](#washer-selection)
+      - [Derived Washer Classes](#derived-washer-classes)
     - [Clearance, Tap and Threaded Holes](#clearance-tap-and-threaded-holes)
+      - [API](#api)
     - [Thread](#thread)
     - [ExternalThread](#externalthread)
     - [InternalThread](#internalthread)
@@ -429,48 +434,52 @@ All of the fastener classes provide a `cq_object` instance variable which contai
 The following sections describe each of the provided classes.
 
 ### Nut
-As the base class of all other nut classes it isn't intended for end users.
-### HexNut
-![HexNut](doc/hexnut.png)
-
-HexNut creates hexagonal nuts of either standard or custom sizes. Standard sizes are described by the 'imperial_hex_parameters.csv' or 'metric_hex_parameters.csv' files. The parameters are:
-- `size` (str) : standard sizes
+As the base class of all other nut and bolt classes, all of the derived nut classes share the same interface as follows:
+- `nut_type` (str) : type identifier - e.g. `"iso4032"`
+- `size` (str) : standard sizes - e.g. `"M6-1"`
 - `hand` (Literal["right", "left"] = "right") : thread direction
-- `simple` (bool = False) : simplify thread
+- `simple` (bool = True) : simplify thread
 
-or
-- `width` (float) : width across the flat sections
-- `thread_diameter` (float) : major thread diameter
-- `thread_pitch` (float) : thread pitch (IN / TPI for imperial)
-- `thickness` (float) : maximum nut thickness
-- `hand` (Literal["right", "left"] = "right") : thread direction
-- `simple` (bool = False) : simplify thread
+Each nut instance creates a set of properties that provide the Solid CAD object as well as valuable parameters, as follows (values intended for internal use are not shown):
 
-This class exposes instance variables for the detailed input parameters as well as:
+- `clearance_drill_sizes` - see [Clearance, Tap and Threaded Holes](#clearance-tap-and-threaded-holes)
+- `clearance_hole_diameters` - see [Clearance, Tap and Threaded Holes](#clearance-tap-and-threaded-holes)
 - `cq_object` (cq.Solid) : cadquery Solid object
+- `nut_diameter` (float) : maximum diameter of the nut
+- `nut_thickness` (float) : maximum thickness of the nut
+- `nut_class` - (str) : display friendly class name
+- `tap_drill_sizes` - [Clearance, Tap and Threaded Holes](#clearance-tap-and-threaded-holes)
+- `tap_hole_diameters` - [Clearance, Tap and Threaded Holes](#clearance-tap-and-threaded-holes)
 
+#### Nut Selection
+As there are many classes and types of nuts to select from, the Nut class provides some methods that can help find the correct nut for your application. As a reminder, to find the subclasses of the Nut class, use `__subclasses__()`:
+```python
+Nut.__subclasses__()  # [<class 'cq_warehouse.fastener.DomedCapNut'>, ...]
+```
+Here is a summary of the class methods:
+- `types()` : (set{str}) - create a set of nut types, e.g.:
+```python
+HexNut.types() # {'iso4033', 'iso4032', 'iso4035'}
+```
+- `sizes(nut_type:str)` : (list[str]) - create a list of nut sizes, e.g.:
+```python
+HexNut.sizes("iso4033") # ['M1.6-0.35', 'M1.8-0.35', 'M2-0.4', 'M2.5-0.45', 'M3-0.45', 'M3.5-0.6', 'M4-0.7', 'M5-0.8', 'M6-1', 'M8-1.25', 'M10-1.5', 'M12-1.75', 'M14-2', 'M16-2', 'M18-2.5', 'M20-2.5', 'M22-2.5', 'M24-3', 'M27-3', 'M30-3.5', 'M33-3.5', 'M36-4', 'M39-4', 'M42-4.5', 'M45-4.5', 'M48-5', 'M52-5']
+```
+- `select_by_size(size:str)` : (dict{class:[type,...],} - e.g.:
+```python
+Nut.select_by_size("M6-1") # {<class 'cq_warehouse.fastener.DomedCapNut'>: ['din1587'], <class 'cq_warehouse.fastener.HexNut'>: ['iso4035', 'iso4032', 'iso4033'], <class 'cq_warehouse.fastener.HexNutWithFlange'>: ['din1665'], <class 'cq_warehouse.fastener.UnchamferedHexagonNut'>: ['iso4036'], <class 'cq_warehouse.fastener.SquareNut'>: ['din557']}
+```
+#### Derived Nut Classes
+The following is a list of the current nut classes derived from the base Nut class. Also listed is the types for each of these derived classes where the type refers to a standard that defines the nut parameters. All derived nuts inherit the same API as the base Nut class.
+- `DomedCapNut`: din1587
+- `HexNut`: iso4033, iso4035, iso4032
+- `HexNutWithFlange`: din1665
+- `UnchamferedHexagonNut`: iso4036
+- `SquareNut`: din557
 
-### SquareNut
-![SquareNut](doc/squarenut.png)
-
-SquareNut creates square nuts of either standard or custom sizes. Standard sizes are described by the 'imperial_hex_parameters.csv' or 'metric_hex_parameters.csv' files as the width across the flat sections is the same as for hex nuts. The parameters are:
-- `size` (str) : standard sizes
-- `hand` (Literal["right", "left"] = "right") : thread direction
-- `simple` (bool = False) : simplify thread
-
-or
-- `width` (float) : width
-- `thread_diameter` (float) : major thread diameter
-- `thread_pitch` (float) : thread pitch (IN / TPI for imperial)
-- `thickness` (float) : maximum nut thickness
-- `hand` (Literal["right", "left"] = "right") : thread direction
-- `simple` (bool = False) : simplify thread
-
-This class exposes instance variables for the detailed input parameters as well as:
-- `cq_object` (cq.Solid) : cadquery Solid object
-
+Detailed information about any of the nut types can be readily found on the internet from manufacture's websites or from the standard document itself.
 ### Screw
-As the base class of all other screw and bolt classes. All of the derived screw classes share the same interface as follows:
+As the base class of all other screw and bolt classes, all of the derived screw classes share the same interface as follows:
 - `screw_type` (str) : type identifier - e.g. `"iso4014"`
 - `size` (str) : standard sizes - e.g. `"M6-1"`
 - `length` (float) : distance from base of head to tip of thread
@@ -514,20 +523,6 @@ CounterSunkScrew.sizes("iso7046") # ['M1.6-0.35', 'M2-0.4', 'M2.5-0.45', 'M3-0.5
 ```python
 Screw.select_by_size("M6-1") # {<class 'cq_warehouse.fastener.ButtonHeadScrew'>: ['iso7380_1'], <class 'cq_warehouse.fastener.ButtonHeadWithCollarScrew'>: ['iso7380_2'], ...}
 ```
-As of current release of cq_warehouse, displaying this dictionary results in the following (note that the Class descriptors have been converted to names with the `__name__` method):
-- ButtonHeadScrew : iso7380_1
-- ButtonHeadWithCollarScrew : iso7380_2
-- CheeseHeadScrew : iso7048, iso1207, iso14580
-- CounterSunkScrew : iso7046, iso14582, iso14581, iso10642, iso2009
-- HexHeadScrew : iso4017, din931, iso4014
-- HexHeadWithFlangeScrew : din1665, din1662
-- PanHeadScrew : iso14583, iso1580
-- PanHeadWithCollarScrew : din967
-- RaisedCheeseHeadScrew : iso7045
-- RaisedCounterSunkOvalHeadScrew : iso14584, iso7047, iso2010
-- SetScrew : iso4026
-- SocketHeadCapScrew : iso4762
-
 To see if a given screw type has screws in the length you are looking for, each screw class provides a dictionary of available lengths, as follows:
 - `nominal_length_range[screw_type:str]` : (list[float]) - all the nominal lengths for this screw type, e.g.:
 ```python
@@ -538,6 +533,63 @@ During instantiation of a screw any value of `length` may be used; however, the 
 screw = CounterSunkScrew(screw_type="iso7046",size="M6-1",length=12*MM)
 screw.nominal_lengths # [8.0, 10.0, 12.0, 14.0, 16.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0, 55.0, 60.0]
 ```
+#### Derived Screw Classes
+The following is a list of the current screw classes derived from the base Screw class. Also listed is the types for each of these derived classes where the type refers to a standard that defines the screw parameters. All derived screws inherit the same API as the base Screw class.
+- `ButtonHeadScrew`: iso7380_1
+- `ButtonHeadWithCollarScrew`: iso7380_2
+- `CheeseHeadScrew`: iso14580, iso7048, iso1207
+- `CounterSunkScrew`: iso2009, iso14582, iso14581, iso10642, iso7046
+- `HexHeadScrew`: iso4017, din931, iso4014
+- `HexHeadWithFlangeScrew`: din1662, din1665
+- `PanHeadScrew`: asme_b_18.6.3, iso1580, iso14583
+- `PanHeadWithCollarScrew`: din967
+- `RaisedCheeseHeadScrew`: iso7045
+- `RaisedCounterSunkOvalHeadScrew`: iso2010, iso7047, iso14584
+- `SetScrew`: iso4026
+- `SocketHeadCapScrew`: iso4762, asme_b18.3
+
+Detailed information about any of the screw types can be readily found on the internet from manufacture's websites or from the standard document itself.
+### Washer
+As the base class of all other washer and bolt classes, all of the derived washer classes share the same interface as follows:
+- `washer_type` (str) : type identifier - e.g. `"iso4032"`
+- `size` (str) : standard sizes - e.g. `"M6-1"`
+
+Each washer instance creates a set of properties that provide the Solid CAD object as well as valuable parameters, as follows (values intended for internal use are not shown):
+
+- `clearance_drill_sizes` - see [Clearance, Tap and Threaded Holes](#clearance-tap-and-threaded-holes)
+- `clearance_hole_diameters` - see [Clearance, Tap and Threaded Holes](#clearance-tap-and-threaded-holes)
+- `cq_object` (cq.Solid) : cadquery Solid object
+- `washer_diameter` (float) : maximum diameter of the washer
+- `washer_thickness` (float) : maximum thickness of the washer
+- `washer_class` - (str) : display friendly class name
+
+#### Washer Selection
+As there are many classes and types of washers to select from, the Washer class provides some methods that can help find the correct washer for your application. As a reminder, to find the subclasses of the Washer class, use `__subclasses__()`:
+```python
+Washer.__subclasses__()  # [<class 'cq_warehouse.fastener.PlainWasher'>, <class 'cq_warehouse.fastener.ChamferedWasher'>, <class 'cq_warehouse.fastener.CheeseHeadWasher'>]
+```
+Here is a summary of the class methods:
+- `types()` : (set{str}) - create a set of washer types, e.g.:
+```python
+PlainWasher.types() # {'iso7091', 'iso7089', 'iso7093', 'iso7094'}
+```
+- `sizes(washer_type:str)` : (list[str]) - create a list of washer sizes, e.g.:
+```python
+PlainWasher.sizes("iso7091") # ['M1.6', 'M1.7', 'M2', 'M2.3', 'M2.5', 'M2.6', 'M3', 'M3.5', 'M4', 'M5', 'M6', 'M7', 'M8', 'M10', 'M12', 'M14', 'M16', 'M18', 'M20', 'M22', 'M24', 'M26', 'M27', 'M28', 'M30', 'M32', 'M33', 'M35', 'M36']
+```
+- `select_by_size(size:str)` : (dict{class:[type,...],} - e.g.:
+```python
+Washer.select_by_size("M6") # {<class 'cq_warehouse.fastener.PlainWasher'>: ['iso7094', 'iso7093', 'iso7089', 'iso7091'], <class 'cq_warehouse.fastener.ChamferedWasher'>: ['iso7090'], <class 'cq_warehouse.fastener.CheeseHeadWasher'>: ['iso7092']}
+```
+
+#### Derived Washer Classes
+The following is a list of the current washer classes derived from the base Washer class. Also listed is the types for each of these derived classes where the type refers to a standard that defines the washer parameters. All derived washers inherit the same API as the base Washer class.
+- `PlainWasher`: iso7094, iso7093, iso7089, iso7091
+- `ChamferedWasher`: iso7090
+- `CheeseHeadWasher`: iso7092
+
+Detailed information about any of the washer types can be readily found on the internet from manufacture's websites or from the standard document itself.
+
 ### Clearance, Tap and Threaded Holes
 When designing parts with CadQuery a common operation is to place holes appropriate to a specific fastener into the part. This operation is optimized with cq_warehouse by the following three new Workplane methods:
 - `cq.Workplane.clearanceHole`,
@@ -558,7 +610,7 @@ diameter = 22.0
 padding = 12.0
 
 # make the screw
-screw = SocketHeadCapScrew(screw_type="iso4762", size="M2-0.4", length=16)
+screw = SocketHeadCapScrew(screw_type="iso4762", size="M2-0.4", length=16, simple=False)
 # make the assembly
 pillow_block = cq.Assembly(None, name="pillow_block")
 # make the base
@@ -573,6 +625,8 @@ base = (
     .rect(height - padding, width - padding, forConstruction=True)
     .vertices()
     .clearanceHole(fastener=screw, baseAssembly=pillow_block)
+    .edges("|Z")
+    .fillet(2.0)
 )
 pillow_block.add(base)
 # Render the assembly
@@ -586,9 +640,13 @@ The differences between this code and the Read the Docs version are:
 - an assembly is created and later the base is added to that assembly
 - the call to cskHole is replaced with clearanceHole
 
+Not only were the appropriate holes for M2-0.4 screws created but an assembly was created to store all of the parts in this project all without having to research the dimensions of M2 screws.
+
+Note: In this example the `simple=False` parameter creates accurate threads on each of the screws which significantly increases the complexity of the model. The default of simple is True which models the thread as a simple cylinder which is sufficient for most applications without the performance cost of accurate threads. Also note that the default color of the pillow block "base" was changed to better contrast the screws.
+#### API
 The APIs of these three methods are:
 
-clearanceHole: A hole that allows the screw to freely move
+clearanceHole: A hole that allows the screw to be inserted freely
 - `fastener`: Union[Nut, Screw],
 - `washers`: Optional[List[Washer]] = None,
 - `fit`: Optional[Literal["Close", "Normal", "Loose"]] = "Normal",
@@ -617,7 +675,7 @@ threadedHole: A hole with a integral thread
 - `baseAssembly`: Optional[cq.Assembly] = None,
 - `clean`: Optional[bool] = True,
 
-One can see, the API for all three methods are very similar. The `fit` parameter is used for clearance hole dimensions and to calculate the gap around the head of a countersunk screw. The `material` parameter controls the size of the tap hole as they differ as a function of the material the part is made off. For clearance and tap holes, `depth` values of `None` are treated as thru holes. The threaded hole method requires that `depth` be specified as a consequence of how the thread is constructed.
+One can see, the API for all three methods are very similar. The `fit` parameter is used for clearance hole dimensions and to calculate the gap around the head of a countersunk screw. The `material` parameter controls the size of the tap hole as they differ as a function of the material the part is made of. For clearance and tap holes, `depth` values of `None` are treated as thru holes. The threaded hole method requires that `depth` be specified as a consequence of how the thread is constructed.
 
 The data used in the creation of these holes is available via three instance methods:
 ```python
@@ -628,7 +686,7 @@ screw.clearance_drill_sizes # {'Close': '6.4', 'Normal': '6.6', 'Loose': '7'}
 screw.tap_hole_diameters # {'Soft': 5.0, 'Hard': 5.4}
 screw.tap_drill_sizes # {'Soft': '5', 'Hard': '5.4'}
 ```
-Note that with imperial sized holes (e.g. 7/16), the drill sizes could be a fractional size (e.g. 25/64) or a numbered or lettered size (e.g. U). This information can be added to your designs with the cq_warehouse.dimensions package.
+Note that with imperial sized holes (e.g. 7/16), the drill sizes could be a fractional size (e.g. 25/64) or a numbered or lettered size (e.g. U). This information can be added to your designs with the [drafting sub-package](#drafting-sub-package).
 
 ### Thread
 As the base class of the other thread classes it isn't intended for end users. Both external and internal threads are ISO standard by default as shown in the following diagram (from https://en.wikipedia.org/wiki/ISO_metric_screw_thread):

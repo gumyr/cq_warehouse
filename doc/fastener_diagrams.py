@@ -53,10 +53,14 @@ from cq_warehouse.fastener import (
     ChamferedWasher,
     CheeseHeadWasher,
 )
+from cq_warehouse.drafting import Draft
 
 MM = 1
-IN = 25.4 * MM
 
+fastener_title_callout = Draft(font_size=10, label_normal=(1, -1, 0))
+title_callout = fastener_title_callout.callout(
+    label="cq_warehouse.fastener", origin=(0, 0, 75 * MM), justify="center",
+)
 # ------------------------ Screws ------------------------
 
 #
@@ -67,7 +71,6 @@ screw_type_list = [
     (screw_class, screw_type)
     for screw_class, screw_types in screw_type_dict.items()
     for screw_type in screw_types
-    if target_size in screw_class.sizes(screw_type)
 ]
 number_of_screws = len(screw_type_list)
 print(
@@ -84,10 +87,6 @@ screw_list = [
     screw_type[0](screw_type=screw_type[1], size=target_size, length=20, simple=True)
     for screw_type in screw_type_list
 ]
-for screw in screw_list:
-    print(
-        f"{screw.screw_class}({screw.screw_type}) length range: {screw.nominal_lengths}"
-    )
 
 #
 # Calculate the size of the disk such that there is room for all the screws in the perimeter
@@ -98,6 +97,7 @@ disk_radius = total_diameters / (2 * pi)
 #
 # Create the cadquery objects
 disk_assembly = cq.Assembly(name="figure")
+
 # As all of the screws are unique, cycle over the disk creating clearance holes
 # and accumulating the screws in the disk_assembly
 disk = cq.Workplane("XY").circle(disk_radius).extrude(30)
@@ -117,16 +117,17 @@ for i, screw in enumerate(screw_list):
             clean=False,
         )
     )
-# ------------------------ Washers ------------------------
 
+# ------------------------ Washers ------------------------
+# Create a list of all the "target_size" washers in all the washer classes and types
 washer_classes = Washer.__subclasses__()
 target_size = "M6"
 washer_type_dict = Washer.select_by_size(target_size)
+print(washer_type_dict)
 washer_type_list = [
     (washer_class, washer_type)
     for washer_class, washer_types in washer_type_dict.items()
     for washer_type in washer_types
-    if target_size in washer_class.sizes(washer_type)
 ]
 number_of_washers = len(washer_type_list)
 print(
@@ -154,7 +155,6 @@ nut_type_list = [
     (nut_class, nut_type)
     for nut_class, nut_types in nut_type_dict.items()
     for nut_type in nut_types
-    if target_size in nut_class.sizes(nut_type)
 ]
 number_of_nuts = len(nut_type_list)
 print(f"The disc contains {number_of_nuts} {target_size} nuts of the following types:")
@@ -207,31 +207,10 @@ disk = (
     .threadedHole(fastener=screw_list[0], depth=20, simple=True, counterSunk=False,)
 )
 
-
 # Finally, add the finished disk to the assembly
-print(f"Screw.__subclasses__():{Screw.__subclasses__()}")
 disk_assembly.add(disk, name="plate", color=cq.Color(162 / 255, 138 / 255, 255 / 255))
-print(f"CounterSunkScrew types: {CounterSunkScrew.types()}")
-print(f'CounterSunkScrew sizes: {CounterSunkScrew.sizes("iso7046")}')
-print(
-    f'CounterSunkScrew.nominal_length_range["iso7046"]: {CounterSunkScrew.nominal_length_range["iso7046"]}'
-)
-
-screw = CounterSunkScrew(screw_type="iso7046", size="M6-1", length=10)
-print(f"clearance_hole_diameters: {screw.clearance_hole_diameters}")
-print(f"clearance_hole_drill_sizes: {screw.clearance_drill_sizes}")
-print(f"tap_hole_diameters: {screw.tap_hole_diameters}")
-print(f"tap_drill_sizes: {screw.tap_drill_sizes}")
-
-screw_vars = [v for v in vars(Screw) if not v.startswith("_")]
-print(f"Screw base class vars: {screw_vars}")
-screw_methods = [f for f in dir(Screw) if not f.startswith("_")]
-print(f"Screw base class methods: {screw_methods}")
-screw_vars = [v for v in vars(screw_list[0]) if not v.startswith("_")]
-print(f"Screw derived class vars: {screw_vars}")
-screw_methods = [f for f in dir(CheeseHeadScrew) if not f.startswith("_")]
-print(f"Screw derived class methods: {screw_methods}")
 
 if "show_object" in locals():
     show_object(disk, name="disk")
     show_object(disk_assembly, name="disk_assembly")
+    show_object(title_callout, name="title")
