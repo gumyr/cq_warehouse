@@ -785,7 +785,7 @@ class Nut(ABC):
 
     @property
     def cq_object(self):
-        """ A cadquery Solid screw as defined by class attributes """
+        """ A cadquery Compound screw as defined by class attributes """
         return self._cq_object
 
     def length_offset(self):
@@ -1274,7 +1274,7 @@ class Screw(ABC):
 
     @property
     def cq_object(self):
-        """ A cadquery Solid screw as defined by class attributes """
+        """ A cadquery Compound screw as defined by class attributes """
         return self._cq_object
 
     @cache
@@ -2055,7 +2055,7 @@ class Washer(ABC):
 
     @property
     def cq_object(self):
-        """ A cadquery Solid screw as defined by class attributes """
+        """ A cadquery Compound screw as defined by class attributes """
         return self._cq_object
 
     @cache

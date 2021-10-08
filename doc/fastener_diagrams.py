@@ -123,6 +123,7 @@ for i, screw in enumerate(screw_list):
         screw.size,
         disk_assembly.children[-1].loc,
     )
+    print(type(screw.cq_object))
 
 # ------------------------ Washers ------------------------
 # Create a list of all the "target_size" washers in all the washer classes and types
@@ -150,6 +151,8 @@ washer_list = [
     fastener_type[0](fastener_type=fastener_type[1], size=target_size)
     for fastener_type in fastener_type_list
 ]
+for washer in washer_list:
+    print(type(washer.cq_object))
 
 # ------------------------ Nuts ------------------------
 #
@@ -208,6 +211,7 @@ for i, nut in enumerate(nut_list):
         nut.size,
         disk_assembly.children[-1].loc,
     )
+    print(type(nut.cq_object))
 
 #
 # ------------------------ Threaded Hole ------------------------

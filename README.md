@@ -387,10 +387,10 @@ A text box with or without a tail pointing to another object used to provide ext
 callout returns a cadquery `Assembly` object.
 
 ## fastener sub-package
-Many mechanical designs will contain threaded fasteners of some kind, either in a threaded hole or threaded screws or bolts holding two or more parts together. The fastener sub-package provides a set of classes with which raw threads can be created such that they can be integrated into other parts as well as a set of classes that create many different types of nuts, screws or bolts - as follows:
+Many mechanical designs will contain threaded fasteners of some kind, either in a threaded hole or threaded screws or bolts holding two or more parts together. The fastener sub-package provides a set of classes with which raw threads can be created such that they can be integrated into other parts as well as a set of classes that create many different types of nuts, screws and washers - as follows:
 ![fastener_disc](doc/fastener_disc.png)
 
-The holes for the screws in this figure were created with an extension of the Workplane class, `clearanceHole`, the nuts, `tapHole` and the central hole, `threadedHole`. The washers were automatically placed and all components were add to an Assembly in their correct position and orientations - see [Clearance, Tap and Threaded Holes](#clearance-tap-and-threaded-holes) for details..
+The holes for the screws in this figure were created with an extension of the Workplane class `clearanceHole`, the nuts `tapHole` and the central hole `threadedHole`. The washers were automatically placed and all components were add to an Assembly in their correct position and orientations - see [Clearance, Tap and Threaded Holes](#clearance-tap-and-threaded-holes) for details.
 
 Here is a list of the classes (and fastener types) provided:
 - [Nut](#nut) - the base nut class
@@ -435,13 +435,15 @@ capscrew = SocketHeadCapScrew(size="#6-32", fastener_type="asme_b18.3", length=(
 ```
 Both metric and imperial sized standard fasteners are directly supported by the fastener sub-package although the majority of the fasteners currently implemented are metric.
 
+Many of the fastener standards provide ranges for some of the dimensions - for example a minimum and maximum head diameter. This sub-package generally uses the maximum sizes when a range is available in-order to ensure clearance between a fastener and another part won't be compromised by a physical part that is within specification but larger than the CAD model.
+
 Threaded parts are complex for CAD systems to create and significantly increase the storage requirements thus making the system slow and difficult to use. To minimize these requirements all of the fastener classes have a `simple` boolean parameter that when `True` doesn't create actual threads at all. Such simple parts have the same overall dimensions and such that they can be used to check for fitment without dramatically impacting performance.
 
 > :warning: **CQ-editor** :warning: Set the Preferences :arrow_right: 3D Viewer :arrow_right: Deviation parameter to 0.01 to avoid crashes due to memory over-consumption when working with threads
 
-All of the fasteners default to right-handed thread but each of them provide a `hand` sting parameter which can either be `"right"` or `"left"`.
+All of the fasteners default to right-handed thread but each of them provide a `hand` string parameter which can either be `"right"` or `"left"`.
 
-All of the fastener classes provide a `cq_object` instance variable which contains the cadquery Solid object.
+All of the fastener classes provide a `cq_object` instance variable which contains the cadquery object.
 
 The following sections describe each of the provided classes.
 
@@ -452,11 +454,11 @@ As the base class of all other nut and bolt classes, all of the derived nut clas
 - `hand` (Literal["right", "left"] = "right") : thread direction
 - `simple` (bool = True) : simplify thread
 
-Each nut instance creates a set of properties that provide the Solid CAD object as well as valuable parameters, as follows (values intended for internal use are not shown):
+Each nut instance creates a set of properties that provide the CAD object as well as valuable parameters, as follows (values intended for internal use are not shown):
 
 - `clearance_drill_sizes` - see [Clearance, Tap and Threaded Holes](#clearance-tap-and-threaded-holes)
 - `clearance_hole_diameters` - see [Clearance, Tap and Threaded Holes](#clearance-tap-and-threaded-holes)
-- `cq_object` (cq.Solid) : cadquery Solid object
+- `cq_object` (cq.Compound) : cadquery Compound object
 - `nut_diameter` (float) : maximum diameter of the nut
 - `nut_thickness` (float) : maximum thickness of the nut
 - `nut_class` - (str) : display friendly class name
@@ -501,11 +503,11 @@ As the base class of all other screw and bolt classes, all of the derived screw 
 In addition, to allow screws that have no recess (e.g. hex head bolts) to be countersunk the gap around the hex head which allows a socket wrench to be inserted can be specified with:
 - `socket_clearance` (float = 6 * MM)
 
-Each screw instance creates a set of properties that provide the Solid CAD object as well as valuable parameters, as follows (values intended for internal use are not shown):
+Each screw instance creates a set of properties that provide the Compound CAD object as well as valuable parameters, as follows (values intended for internal use are not shown):
 
 - `clearance_drill_sizes` - see [Clearance, Tap and Threaded Holes](#clearance-tap-and-threaded-holes)
 - `clearance_hole_diameters` - see [Clearance, Tap and Threaded Holes](#clearance-tap-and-threaded-holes)
-- `cq_object` (cq.Solid) : cadquery Solid object
+- `cq_object` (cq.Compound) : cadquery Compound object
 - `head_diameter` (float) : maximum diameter of the head
 - `head_height` (float) : maximum height of the head
 - `nominal_lengths` (list[float]) : nominal lengths values
@@ -566,11 +568,11 @@ As the base class of all other washer and bolt classes, all of the derived washe
 - `fastener_type` (str) : type identifier - e.g. `"iso4032"`
 - `size` (str) : standard sizes - e.g. `"M6-1"`
 
-Each washer instance creates a set of properties that provide the Solid CAD object as well as valuable parameters, as follows (values intended for internal use are not shown):
+Each washer instance creates a set of properties that provide the Compound CAD object as well as valuable parameters, as follows (values intended for internal use are not shown):
 
 - `clearance_drill_sizes` - see [Clearance, Tap and Threaded Holes](#clearance-tap-and-threaded-holes)
 - `clearance_hole_diameters` - see [Clearance, Tap and Threaded Holes](#clearance-tap-and-threaded-holes)
-- `cq_object` (cq.Solid) : cadquery Solid object
+- `cq_object` (cq.Compound) : cadquery Compound object
 - `washer_diameter` (float) : maximum diameter of the washer
 - `washer_thickness` (float) : maximum thickness of the washer
 - `washer_class` - (str) : display friendly class name
