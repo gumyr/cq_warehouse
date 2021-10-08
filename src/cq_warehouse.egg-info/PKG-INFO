@@ -501,7 +501,7 @@ HexNut.sizes("iso4033") # ['M1.6-0.35', 'M1.8-0.35', 'M2-0.4', 'M2.5-0.45', 'M3-
 Nut.select_by_size("M6-1") # {<class 'cq_warehouse.fastener.DomedCapNut'>: ['din1587'], <class 'cq_warehouse.fastener.HexNut'>: ['iso4035', 'iso4032', 'iso4033'], <class 'cq_warehouse.fastener.HexNutWithFlange'>: ['din1665'], <class 'cq_warehouse.fastener.UnchamferedHexagonNut'>: ['iso4036'], <class 'cq_warehouse.fastener.SquareNut'>: ['din557']}
 ```
 #### Derived Nut Classes
-The following is a list of the current nut classes derived from the base Nut class. Also listed is the types for each of these derived classes where the type refers to a standard that defines the nut parameters. All derived nuts inherit the same API as the base Nut class.
+The following is a list of the current nut classes derived from the base Nut class. Also listed is the type for each of these derived classes where the type refers to a standard that defines the nut parameters. All derived nuts inherit the same API as the base Nut class.
 - `DomedCapNut`: din1587
 - `HexNut`: iso4033, iso4035, iso4032
 - `HexNutWithFlange`: din1665
@@ -559,13 +559,13 @@ To see if a given screw type has screws in the length you are looking for, each 
 ```python
 CounterSunkScrew.nominal_length_range["iso7046"] # [3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 12.0, 14.0, 16.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0, 55.0, 60.0]
 ```
-During instantiation of a screw any value of `length` may be used; however, the above nominal_length_range only a subset of this range is valid for any given screw size. This sub-range is given with the `nominal_lengths` property as follows:
+During instantiation of a screw any value of `length` may be used; however, only a subset of the above nominal_length_range is valid for any given screw size. The valid sub-range is given with the `nominal_lengths` property as follows:
 ```python
 screw = CounterSunkScrew(fastener_type="iso7046",size="M6-1",length=12*MM)
 screw.nominal_lengths # [8.0, 10.0, 12.0, 14.0, 16.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0, 55.0, 60.0]
 ```
 #### Derived Screw Classes
-The following is a list of the current screw classes derived from the base Screw class. Also listed is the types for each of these derived classes where the type refers to a standard that defines the screw parameters. All derived screws inherit the same API as the base Screw class.
+The following is a list of the current screw classes derived from the base Screw class. Also listed is the type for each of these derived classes where the type refers to a standard that defines the screw parameters. All derived screws inherit the same API as the base Screw class.
 - `ButtonHeadScrew`: iso7380_1
 - `ButtonHeadWithCollarScrew`: iso7380_2
 - `CheeseHeadScrew`: iso14580, iso7048, iso1207
@@ -614,7 +614,7 @@ Washer.select_by_size("M6") # {<class 'cq_warehouse.fastener.PlainWasher'>: ['is
 ```
 
 #### Derived Washer Classes
-The following is a list of the current washer classes derived from the base Washer class. Also listed is the types for each of these derived classes where the type refers to a standard that defines the washer parameters. All derived washers inherit the same API as the base Washer class.
+The following is a list of the current washer classes derived from the base Washer class. Also listed is the type for each of these derived classes where the type refers to a standard that defines the washer parameters. All derived washers inherit the same API as the base Washer class.
 - `PlainWasher`: iso7094, iso7093, iso7089, iso7091
 - `ChamferedWasher`: iso7090
 - `CheeseHeadWasher`: iso7092
@@ -729,7 +729,7 @@ All thread objects are complex and therefore can be difficult for the OCCT core 
     ...
     return self.head.union(self.shank, glue=True).val()
 ```
-Other build techniques, such as using the `cut()` method to remove an internal thread from an object, often fails or takes an excessive amount of time.
+Other build techniques, such as using the `cut()` method to remove an internal thread from an object, often fail or take an excessive amount of time.
 ### ExternalThread
 ![ExternalThread](doc/externalthread.png)
 
@@ -751,7 +751,7 @@ This class exposes instance variables for the input parameters as well as:
 ### InternalThread
 ![InternalThread](doc/internalthread.png)
 
-This derived class of Thread creates an internal thread object as found on nuts. This object look like a washer with the thread cut into the inside of the object such that it can be efficiently included into another object by placing it into an appropriately sized hole. The parameters are:
+This derived class of Thread creates an internal thread object as found on nuts. This object looks like a washer with the thread cut into the inside of the object such that it can be efficiently included into another object by placing it into an appropriately sized hole. The parameters are:
 - `major_diameter` (float)
 - `pitch` (float)
 - `length` (float)
@@ -767,7 +767,7 @@ This class exposes instance variables for the input parameters as well as:
 - `cq_object` (cq.Solid) : cadquery Solid object
 ### Extending the fastener sub-package
 The fastener sub-package has been designed to be extended in the following two ways:
-- **Alternate Sizes** - As mentioned previously, the data used to guide the creation of fastener objects is derived from `.csv` files found in the same place as the source code. One can add to set of standard sized fasteners by inserting appropriate data into the tables. There is a table for each fastener class, an example of the 'socket_head_cap_parameters.csv' is below:
+- **Alternate Sizes** - As mentioned previously, the data used to guide the creation of fastener objects is derived from `.csv` files found in the same place as the source code. One can add to the set of standard sized fasteners by inserting appropriate data into the tables. There is a table for each fastener class; an example of the 'socket_head_cap_parameters.csv' is below:
 
 | Size      | iso4762:dk | iso4762:k | ... | asme_b18.3:dk | asme_b18.3:k | asme_b18.3:s |
 | --------- | ---------- | --------- | --- | ------------- | ------------ | ------------ |
