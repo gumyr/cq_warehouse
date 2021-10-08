@@ -82,7 +82,7 @@ for screw_class, fastener_types in fastener_type_dict.items():
 # Instantiate all of the screws, use simple=True to dramatically lessen the elapsed time
 screw_list = [
     fastener_type[0](
-        fastener_type=fastener_type[1], size=target_size, length=20, simple=False
+        fastener_type=fastener_type[1], size=target_size, length=20, simple=True
     )
     for fastener_type in fastener_type_list
 ]
@@ -92,7 +92,7 @@ screw_list = [
 screw_diameters = [screw.head_diameter for screw in screw_list]
 total_diameters = sum(screw_diameters) + 5 * MM * number_of_screws
 disk_radius = total_diameters / (2 * pi)
-
+disk_thickness = 30 * MM
 #
 # Create the cadquery objects
 disk_assembly = cq.Assembly(name="figure")
@@ -100,7 +100,7 @@ disk_fasteners = dict()
 
 # As all of the screws are unique, cycle over the disk creating clearance holes
 # and accumulating the screws in the disk_assembly
-disk = cq.Workplane("XY").circle(disk_radius).extrude(30)
+disk = cq.Workplane("XY").circle(disk_radius).extrude(disk_thickness)
 for i, screw in enumerate(screw_list):
     depth = None if i % 2 == 0 else screw.min_hole_depth(True)
     disk = (
@@ -216,7 +216,9 @@ disk = (
     disk.toPending()
     .faces(">Z")
     .pushPoints([(0, 0)])
-    .threadedHole(fastener=screw_list[0], depth=20, simple=False, counterSunk=False,)
+    .threadedHole(
+        fastener=screw_list[0], depth=disk_thickness, simple=True, counterSunk=False,
+    )
 )
 
 # Finally, add the finished disk to the assembly

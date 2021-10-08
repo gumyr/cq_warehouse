@@ -28,23 +28,11 @@ license:
 # from os import setsid
 from typing import Set
 import unittest
+from cq_warehouse import fastener
 from pydantic.main import BaseModel
 from tests import BaseTest
 import cadquery as cq
-from cq_warehouse.fastener import (
-    HexNut,
-    SquareNut,
-    SocketHeadCapScrew,
-    ButtonHeadCapScrew,
-    HexBolt,
-    SetScrew,
-    ExternalThread,
-    InternalThread,
-    decode_imperial_size,
-    imperial_str_to_float,
-    metric_str_to_float,
-    is_safe,
-)
+from cq_warehouse.fastener import *
 
 # import cadquery as cq
 
@@ -67,13 +55,11 @@ class TestSupportFunctions(BaseTest):
 
     def test_imperial_str_to_float(self):
         self.assertAlmostEqual(imperial_str_to_float("1 1/2"), 1.5 * IN)
-        with self.assertRaises(ValueError):
-            imperial_str_to_float("rm -rf *.*")
+        self.assertEqual(imperial_str_to_float("rm -rf *.*"), "rm -rf *.*")
 
     def test_metric_str_to_float(self):
         self.assertEqual(metric_str_to_float(" 1000 "), 1000)
-        with self.assertRaises(ValueError):
-            metric_str_to_float("rm -rf *.*")
+        self.assertEqual(metric_str_to_float("rm -rf *.*"), "rm -rf *.*")
 
 
 class TestExternalThread(BaseTest):
@@ -81,7 +67,7 @@ class TestExternalThread(BaseTest):
         """ Simple validity check for an exterior thread """
 
         thread = ExternalThread(
-            major_diameter=0.1900 * IN, pitch=IN / 32, length=(1 / 4) * IN
+            major_diameter=0.1900 * IN, pitch=IN / 32, length=(1 / 4) * IN, simple=False
         )
         self.assertTrue(thread.cq_object.isValid())
         self.assertIsNone(thread.external_thread_core_radius)
@@ -94,221 +80,433 @@ class TestInternalThread(BaseTest):
         """ Simple validity check for an interior thread """
 
         thread = InternalThread(
-            major_diameter=0.1900 * IN, pitch=IN / 32, length=(1 / 4) * IN
+            major_diameter=0.1900 * IN, pitch=IN / 32, length=(1 / 4) * IN, simple=False
         )
         self.assertTrue(thread.cq_object.isValid())
         with self.assertRaises(ValueError):
             InternalThread(major_diameter=5, pitch=1, length=5, hand="righty")
 
 
-class TestNutParent(BaseTest):
-    def test_nut_parameters(self):
+class TestRecessExceptions(BaseTest):
+    def test_bad_recess(self):
         with self.assertRaises(ValueError):
-            HexNut(size="missing")
+            cross_recess("PH5")
+        with self.assertRaises(ValueError):
+            hexalobular_recess("T0")
+        with self.assertRaises(ValueError):
+            square_recess("R8")
 
 
-class TestHexNut(BaseTest):
-    """ Test HexNut class functionality """
+class TestWashers(BaseTest):
+    """ Test creation of all washers """
 
-    def test_hexnut_interface_options(self):
-        """ Validate both interface types are functional """
-        nut = HexNut(size="M4-0.7", simple=True)
-        self.assertTrue(nut.cq_object.isValid())
-        nut = HexNut(
-            width=7,
-            thickness=3.2,
-            thread_diameter=4,
-            thread_pitch=0.7,
-            hand="left",
-            simple=True,
+    def test_select_by_size(self):
+        self.assertGreater(len(Washer.select_by_size("M6")), 0)
+
+    def test_size(self):
+        """ Validate diameter and thickness of washers """
+        for washer_class in Washer.__subclasses__():
+            for washer_type in washer_class.types():
+                for washer_size in washer_class.sizes(fastener_type=washer_type):
+                    with self.subTest(
+                        washer_class=washer_class.__name__,
+                        fastener_type=washer_type,
+                        size=washer_size,
+                    ):
+                        washer = washer_class(
+                            size=washer_size, fastener_type=washer_type
+                        )
+                        self.assertGreater(washer.washer_diameter, 0)
+                        self.assertGreater(washer.washer_thickness, 0)
+                        # Check the hole data if available
+                        try:
+                            clearance_normal = washer.clearance_hole_diameters["Normal"]
+                            clearance_close = washer.clearance_hole_diameters["Close"]
+                            clearance_loose = washer.clearance_hole_diameters["Loose"]
+                        except ValueError:
+                            pass
+                        else:
+                            self.assertGreater(
+                                clearance_normal, clearance_close,
+                            )
+                            self.assertGreater(
+                                clearance_loose, clearance_normal,
+                            )
+
+                        self.assertEqual(washer.washer_class, washer_class.__name__)
+
+
+class TestNuts(BaseTest):
+    """ Test creation of all nuts """
+
+    def test_select_by_size(self):
+        self.assertGreater(len(Nut.select_by_size("M6-1")), 0)
+
+    def test_bad_size(self):
+        with self.assertRaises(ValueError):
+            DomedCapNut(size="M6", fastener_type="din1587")
+        with self.assertRaises(ValueError):
+            DomedCapNut(size="M6-4", fastener_type="din1587")
+
+    def test_bad_type(self):
+        with self.assertRaises(ValueError):
+            DomedCapNut(size="M6-1", fastener_type="common")
+
+    def test_bad_hand(self):
+        with self.assertRaises(ValueError):
+            DomedCapNut(size="M6-1", fastener_type="din1587", hand="lefty")
+
+    def test_size(self):
+        """ Validate diameter and thickness of nuts """
+        for nut_class in Nut.__subclasses__():
+            for nut_type in nut_class.types():
+                for nut_size in nut_class.sizes(fastener_type=nut_type):
+                    with self.subTest(
+                        nut_class=nut_class.__name__,
+                        fastener_type=nut_type,
+                        size=nut_size,
+                    ):
+                        nut = nut_class(
+                            size=nut_size, fastener_type=nut_type, simple=True
+                        )
+                        self.assertGreater(nut.nut_diameter, 0)
+                        self.assertGreater(nut.nut_thickness, 0)
+                        # Check the hole data if available
+                        try:
+                            clearance_normal = nut.clearance_hole_diameters["Normal"]
+                            clearance_close = nut.clearance_hole_diameters["Close"]
+                            clearance_loose = nut.clearance_hole_diameters["Loose"]
+                            tap_soft = nut.tap_hole_diameters["Soft"]
+                            tap_hard = nut.tap_hole_diameters["Hard"]
+                        except ValueError:
+                            pass
+                        else:
+                            self.assertGreater(
+                                clearance_normal, clearance_close,
+                            )
+                            self.assertGreater(
+                                clearance_loose, clearance_normal,
+                            )
+                            self.assertGreater(
+                                clearance_close, tap_hard,
+                            )
+                            self.assertGreater(
+                                tap_hard, tap_soft,
+                            )
+                        self.assertEqual(nut.nut_class, nut_class.__name__)
+
+    def test_countersink(self):
+        """ Validate diameter and thickness of nuts """
+        for nut_class in Nut.__subclasses__():
+            nut_type = list(nut_class.types())[0]
+            nut_size = nut_class.sizes(fastener_type=nut_type)[0]
+            nut = nut_class(size=nut_size, fastener_type=nut_type, simple=True)
+
+            box = (
+                cq.Workplane("XY")
+                .box(10, 10, 10)
+                .faces(">Z")
+                .workplane()
+                .clearanceHole(fastener=nut, counterSunk=True)
+                .val()
+            )
+            self.assertLess(box.Volume(), 1000)
+
+
+class TestScrews(BaseTest):
+    """ Test creation of all screws """
+
+    def test_select_by_size(self):
+        self.assertGreater(len(Screw.select_by_size("M6-1")), 0)
+
+    def test_bad_size(self):
+        with self.assertRaises(ValueError):
+            ButtonHeadScrew(size="M6", fastener_type="iso7380_1", length=20)
+        with self.assertRaises(ValueError):
+            ButtonHeadScrew(size="M6-4", fastener_type="iso7380_1", length=20)
+
+    def test_bad_type(self):
+        with self.assertRaises(ValueError):
+            ButtonHeadScrew(size="M6-1", fastener_type="common", length=20)
+
+    def test_bad_hand(self):
+        with self.assertRaises(ValueError):
+            ButtonHeadScrew(
+                size="M6-1", fastener_type="iso7380_1", length=20, hand="lefty"
+            )
+
+    def test_screw_shorter_then_head(self):
+        """ Validate check for countersunk screws too short for their head """
+        with self.assertRaises(ValueError):
+            CounterSunkScrew(size="M20-2.5", fastener_type="iso2009", length=10)
+
+    def test_size(self):
+        """ Validate head diameter and height of screws """
+        # ValueError: No tap hole data for size 1-14
+
+        for screw_class in Screw.__subclasses__():
+            for screw_type in screw_class.types():
+                for screw_size in screw_class.sizes(fastener_type=screw_type):
+                    with self.subTest(
+                        screw_class=screw_class.__name__,
+                        fastener_type=screw_type,
+                        size=screw_size,
+                    ):
+                        screw = screw_class(
+                            size=screw_size,
+                            fastener_type=screw_type,
+                            length=15,
+                            simple=True,
+                        )
+                        if screw.head is None:
+                            self.assertEqual(screw.head_height, 0)
+                            self.assertEqual(screw.head_diameter, 0)
+                        else:
+                            self.assertGreater(screw.head_height, 0)
+                            self.assertGreater(screw.head_diameter, 0)
+                        # Check the hole data if available
+                        try:
+                            clearance_normal = screw.clearance_hole_diameters["Normal"]
+                            clearance_close = screw.clearance_hole_diameters["Close"]
+                            clearance_loose = screw.clearance_hole_diameters["Loose"]
+                            tap_soft = screw.tap_hole_diameters["Soft"]
+                            tap_hard = screw.tap_hole_diameters["Hard"]
+                        except ValueError:
+                            pass
+                        else:
+                            self.assertGreater(
+                                clearance_normal, clearance_close,
+                            )
+                            self.assertGreater(
+                                clearance_loose, clearance_normal,
+                            )
+                            self.assertGreater(
+                                clearance_close, tap_hard,
+                            )
+                            self.assertGreater(
+                                tap_hard, tap_soft,
+                            )
+                        self.assertEqual(screw.screw_class, screw_class.__name__)
+
+    def test_countersink(self):
+        """ Validate diameter and thickness of screws """
+        for screw_class in Screw.__subclasses__():
+            screw_type = list(screw_class.types())[0]
+            screw_size = screw_class.sizes(fastener_type=screw_type)[0]
+            screw = screw_class(
+                size=screw_size, fastener_type=screw_type, length=15, simple=True
+            )
+
+            box = (
+                cq.Workplane("XY")
+                .box(10, 10, 10)
+                .faces(">Z")
+                .workplane()
+                .clearanceHole(fastener=screw, counterSunk=True)
+                .val()
+            )
+            self.assertLess(box.Volume(), 1000)
+
+    def test_min_hole_depth(self):
+        screw = SocketHeadCapScrew(
+            size="1 1/2-12", fastener_type="asme_b18.3", length=30, simple=True
         )
-        self.assertTrue(nut.cq_object.isValid())
+        self.assertLess(
+            screw.min_hole_depth(counter_sunk=False),
+            screw.min_hole_depth(counter_sunk=True),
+        )
 
-    def test_hexnut_validity(self):
-        """ Simple validity check for all the stand sized hex head nuts """
+    def test_hollow_thread(self):
+        screw = SetScrew(size="M6-1", fastener_type="iso4026", length=5, simple=False)
+        self.assertEqual(screw.head_diameter, 0)
+        self.assertEqual(screw.head_height, 0)
+        self.assertIsNotNone(screw.cq_object)
+        self.assertIsNone(screw.shank)
+        self.assertGreater(len(screw.nominal_lengths), 0)
 
-        if FULLTEST:
-            test_set = HexNut.metric_sizes() + HexNut.imperial_sizes()
-        else:
-            test_set = HexNut.metric_sizes()[:1]
-        for i, size in enumerate(test_set):
-            if size in ["M6-1", "1/4-20", "1/4-28", "5/16-18", "5/16-24"]:
-                continue
-            if VERBOSE:
-                print(f"Testing HexNut size {size} - {i+1} of {len(test_set)}")
-            with self.subTest(size=size):
-                self.assertTrue(HexNut(size=size).cq_object.isValid())
-
-
-class TestSquareNut(BaseTest):
-    """ Test SquareNut class functionality """
-
-    def test_squarenut_validity(self):
-        """ Simple validity check for all the stand sized square head nuts """
-
-        if FULLTEST:
-            test_set = SquareNut.metric_sizes() + SquareNut.imperial_sizes()
-        else:
-            test_set = SquareNut.imperial_sizes()[:1]
-        for i, size in enumerate(test_set):
-            if size in ["M6-1", "1/4-20", "1/4-28", "5/16-18", "5/16-24"]:
-                continue
-            if VERBOSE:
-                print(f"Testing SquareNut size {size} - {i+1} of {len(test_set)}")
-            with self.subTest(size=size):
-                self.assertTrue(SquareNut(size=size).cq_object.isValid())
-
-
-class TestScrewParent(BaseTest):
-    def test_screw_parameters(self):
-        with self.assertRaises(AttributeError):
-            HexBolt(size="M3-0.5")
+    def test_missing_hole_data(self):
+        """ Check for missing data handling - note test will failure if csv populated """
+        screw = SocketHeadCapScrew(
+            size="1 1/2-12", fastener_type="asme_b18.3", length=30, simple=True
+        )
         with self.assertRaises(ValueError):
-            HexBolt(size="missing", length=5)
-        # thread_length too long
+            screw.tap_hole_diameters["Hard"]
         with self.assertRaises(ValueError):
-            HexBolt(
-                length=5,
-                head_width=5,
-                head_height=3,
-                thread_diameter=2,
-                thread_pitch=0.5,
-                thread_length=12,
-            )
+            screw.tap_hole_diameters["Soft"]
 
-    def test_screw_measurements(self):
-        self.assertGreater(len(HexBolt.metric_sizes()), 0)
-        self.assertGreater(len(HexBolt.imperial_sizes()), 0)
-
-    def test_stepped_bolt(self):
-        head = HexBolt(size="M3-0.5", length=15 * MM, simple=True).head
-        shank = ExternalThread(
-            major_diameter=3 * MM, pitch=0.5 * MM, length=5 * MM, simple=True
-        ).make_shank(body_length=10 * MM, body_diameter=4 * MM)
-        hex_bolt = head.union(shank, glue=True)
-        # cq.exporters.export(hex_bolt.val(), "hex_bolt.step")
-        self.assertTrue(hex_bolt.val().isValid())
+        self.assertIsNone(screw.nominal_lengths)
 
 
-class TestHexBolt(BaseTest):
-    """ Test HexBolt class functionality """
+class TestWorkplaneMethods(BaseTest):
+    def test_clearance_hole(self):
+        screw = SocketHeadCapScrew(size="M6-1", fastener_type="iso4762", length=40)
+        depth = screw.min_hole_depth()
+        pillow_block = cq.Assembly(None, name="pillow_block")
+        box = (
+            cq.Workplane("XY")
+            .box(10, 10, 10)
+            .faces(">Z")
+            .workplane()
+            .clearanceHole(fastener=screw, baseAssembly=pillow_block, depth=depth)
+            .val()
+        )
+        self.assertLess(box.Volume(), 1000)
+        self.assertEqual(len(pillow_block.children), 1)
 
-    def test_hexbolt_validity(self):
-        """ Simple validity check for all the stand sized hex head bolts """
-
-        if FULLTEST:
-            test_set = HexBolt.metric_sizes() + HexBolt.imperial_sizes()
-        else:
-            test_set = HexBolt.metric_sizes()[:1]
-        for i, size in enumerate(test_set):
-            if VERBOSE:
-                print(f"Testing HexBolt size {size} - {i+1} of {len(test_set)}")
-            with self.subTest(size=size):
-                self.assertTrue(HexBolt(size=size, length=5 * MM).cq_object.isValid())
-
-
-class TestSocketHeadCapScrew(BaseTest):
-    """ Test SocketHeadCapScrew class functionality """
-
-    def test_socket_head_cap_screw_validity(self):
-        """ Simple validity check for all the stand sized socket head cap screws """
-
-        if FULLTEST:
-            test_set = (
-                SocketHeadCapScrew.metric_sizes() + SocketHeadCapScrew.imperial_sizes()
-            )
-        else:
-            test_set = SocketHeadCapScrew.metric_sizes()[:1]
-
-        for i, size in enumerate(test_set):
-            if VERBOSE:
-                print(
-                    f"Testing SocketHeadCapScrew size {size} - {i+1} of {len(test_set)}"
+    def test_invalid_clearance_hole(self):
+        for fastener_class in Screw.__subclasses__() + Nut.__subclasses__():
+            fastener_type = list(fastener_class.types())[0]
+            fastener_size = fastener_class.sizes(fastener_type=fastener_type)[0]
+            if fastener_class in Screw.__subclasses__():
+                fastener = fastener_class(
+                    size=fastener_size,
+                    fastener_type=fastener_type,
+                    length=15,
+                    simple=True,
                 )
-            with self.subTest(size=size):
-                self.assertTrue(
-                    SocketHeadCapScrew(size=size, length=5 * MM).cq_object.isValid()
+            else:
+                fastener = fastener_class(
+                    size=fastener_size, fastener_type=fastener_type, simple=True
+                )
+            with self.assertRaises(ValueError):
+                (
+                    cq.Workplane("XY")
+                    .box(10, 10, 10)
+                    .faces(">Z")
+                    .workplane()
+                    .clearanceHole(fastener=fastener, depth=40, fit="Bad")
                 )
 
-    def test_socket_head_cap_screw_thread_length(self):
-        """ Set the thread length parameter """
-        self.assertTrue(
-            SocketHeadCapScrew(
-                length=20,
-                head_diameter=10,
-                head_height=5,
-                thread_diameter=5,
-                thread_pitch=1,
-                thread_length=10,
-                socket_size=4,
-                socket_depth=2,
-                hand="left",
+    def test_tap_hole(self):
+        nut = DomedCapNut(size="M6-1", fastener_type="din1587")
+        washer = ChamferedWasher(size="M6", fastener_type="iso7090")
+        pillow_block = cq.Assembly(None, name="pillow_block")
+        box = (
+            cq.Workplane("XY")
+            .box(10, 10, 10)
+            .faces(">Z")
+            .workplane()
+            .tapHole(fastener=nut, baseAssembly=pillow_block, washers=[washer])
+            .val()
+        )
+        self.assertLess(box.Volume(), 1000)
+        self.assertEqual(len(pillow_block.children), 2)
+
+    def test_invalid_tap_hole(self):
+        for fastener_class in Screw.__subclasses__() + Nut.__subclasses__():
+            fastener_type = list(fastener_class.types())[0]
+            fastener_size = fastener_class.sizes(fastener_type=fastener_type)[0]
+            if fastener_class in Screw.__subclasses__():
+                fastener = fastener_class(
+                    size=fastener_size,
+                    fastener_type=fastener_type,
+                    length=15,
+                    simple=True,
+                )
+            else:
+                fastener = fastener_class(
+                    size=fastener_size, fastener_type=fastener_type, simple=True
+                )
+            with self.assertRaises(ValueError):
+                (
+                    cq.Workplane("XY")
+                    .box(10, 10, 10)
+                    .faces(">Z")
+                    .workplane()
+                    .tapHole(fastener=fastener, depth=40, material="Bad")
+                )
+
+    def test_threaded_hole(self):
+        screw = SocketHeadCapScrew(size="M6-1", fastener_type="iso4762", length=40)
+        washer = ChamferedWasher(size="M6", fastener_type="iso7090")
+        pillow_block = cq.Assembly(None, name="pillow_block")
+        box = (
+            cq.Workplane("XY")
+            .box(20, 20, 20)
+            .faces(">Z")
+            .workplane()
+            .threadedHole(
+                fastener=screw,
+                depth=20,
+                baseAssembly=pillow_block,
+                washers=[washer, washer],
                 simple=True,
-            ).cq_object.isValid()
-        )
-
-
-class TestButtonHeadCapScrew(BaseTest):
-    """ Test ButtonHeadCapScrew class functionality """
-
-    def test_button_head_cap_screw_validity(self):
-        """ Simple validity check for all the stand sized button head cap screws """
-
-        if FULLTEST:
-            test_set = (
-                ButtonHeadCapScrew.metric_sizes() + ButtonHeadCapScrew.imperial_sizes()
+                counterSunk=False,
             )
-        else:
-            test_set = ButtonHeadCapScrew.metric_sizes()[:1]
-        for i, size in enumerate(test_set):
-            if VERBOSE:
-                print(
-                    f"Testing ButtonHeadCapScrew size {size} - {i+1} of {len(test_set)}"
-                )
-            with self.subTest(size=size):
-                self.assertTrue(
-                    ButtonHeadCapScrew(size=size, length=5 * MM).cq_object.isValid()
-                )
+            .val()
+        )
+        self.assertLess(box.Volume(), 8000)
+        self.assertEqual(len(pillow_block.children), 3)
 
 
-class TestSetScrew(BaseTest):
-    """ Test SetScrew class functionality """
+# class TestHexNut(BaseTest):
+#     """ Test HexNut class functionality """
 
-    def test_setscrew_validity(self):
-        """ Simple validity check for all the stand sized setscrews """
+#     def test_hexnut_validity(self):
+#         """ Simple validity check for all the stand sized hex head nuts """
 
-        self.assertIsNone(SetScrew(size="#4-40", length=5).make_head())
-        self.assertIsNone(SetScrew(size="#4-40", length=5).head)
-        self.assertIsNone(SetScrew(size="#4-40", length=5).shank)
+#         if FULLTEST:
+#             test_set = HexNut.metric_sizes() + HexNut.imperial_sizes()
+#         else:
+#             test_set = HexNut.metric_sizes()[:1]
+#         for i, size in enumerate(test_set):
+#             if size in ["M6-1", "1/4-20", "1/4-28", "5/16-18", "5/16-24"]:
+#                 continue
+#             if VERBOSE:
+#                 print(f"Testing HexNut size {size} - {i+1} of {len(test_set)}")
+#             with self.subTest(size=size):
+#                 self.assertTrue(HexNut(size=size).cq_object.isValid())
 
-        if FULLTEST:
-            test_set = SetScrew.metric_sizes()
-        else:
-            test_set = SetScrew.metric_sizes()[:1]
-        for i, size in enumerate(test_set):
-            if size in ["M20-2.5"]:
-                continue
-            if VERBOSE:
-                print(f"Testing SetScrew size {size} - {i+1} of {len(test_set)}")
-            min_length = SetScrew.metric_parameters[size]["Socket_Depth"] * 1.5
-            with self.subTest(size=size):
-                self.assertTrue(
-                    SetScrew(size=size, length=min_length).cq_object.isValid()
-                )
-        if FULLTEST:
-            test_set = SetScrew.imperial_sizes()
-        else:
-            test_set = []
-        for i, size in enumerate(test_set):
-            if size in ["#0-80", "3/8-16", "3/8-24", "7/16-14", "5/8-11"]:
-                continue
-            if VERBOSE:
-                print(f"Testing SetScrew size {size} - {i+1} of {len(test_set)}")
-            min_length = SetScrew.imperial_parameters[size]["Socket_Depth"] * 1.5
-            with self.subTest(size=size):
-                self.assertTrue(
-                    SetScrew(size=size, length=min_length).cq_object.isValid()
-                )
+
+# class TestSquareNut(BaseTest):
+#     """ Test SquareNut class functionality """
+
+#     def test_squarenut_validity(self):
+#         """ Simple validity check for all the stand sized square head nuts """
+
+#         if FULLTEST:
+#             test_set = SquareNut.sizes()
+#         else:
+#             test_set = SquareNut.sizes()[:1]
+#         for i, size in enumerate(test_set):
+#             # if size in ["M6-1", "1/4-20", "1/4-28", "5/16-18", "5/16-24"]:
+#             #     continue
+#             if VERBOSE:
+#                 print(f"Testing SquareNut size {size} - {i+1} of {len(test_set)}")
+#             with self.subTest(size=size):
+#                 self.assertTrue(SquareNut(size=size).cq_object.isValid())
+
+
+# class TestSetScrew(BaseTest):
+#     """ Test SetScrew class functionality """
+
+#     def test_setscrew_validity(self):
+#         """ Simple validity check for all the stand sized setscrews """
+
+#         for i, size in enumerate(test_set):
+#             if size in ["M20-2.5"]:
+#                 continue
+#             if VERBOSE:
+#                 print(f"Testing SetScrew size {size} - {i+1} of {len(test_set)}")
+#             min_length = SetScrew.metric_parameters[size]["Socket_Depth"] * 1.5
+#             with self.subTest(size=size):
+#                 self.assertTrue(
+#                     SetScrew(size=size, length=min_length).cq_object.isValid()
+#                 )
+#         if FULLTEST:
+#             test_set = SetScrew.imperial_sizes()
+#         else:
+#             test_set = []
+#         for i, size in enumerate(test_set):
+#             if size in ["#0-80", "3/8-16", "3/8-24", "7/16-14", "5/8-11"]:
+#                 continue
+#             if VERBOSE:
+#                 print(f"Testing SetScrew size {size} - {i+1} of {len(test_set)}")
+#             min_length = SetScrew.imperial_parameters[size]["Socket_Depth"] * 1.5
+#             with self.subTest(size=size):
+#                 self.assertTrue(
+#                     SetScrew(size=size, length=min_length).cq_object.isValid()
+#                 )
 
 
 if __name__ == "__main__":

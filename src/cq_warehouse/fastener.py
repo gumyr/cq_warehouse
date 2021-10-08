@@ -128,44 +128,26 @@ def metric_str_to_float(measure: str) -> float:
 
 
 def evaluate_parameter_dict_of_dict(
-    parameters: dict,
-    is_metric: Optional[bool] = True,
-    # units: Literal["metric", "imperial"] = "metric",
-    exclusions: Optional[List[str]] = None,
+    parameters: dict, is_metric: Optional[bool] = True,
 ) -> dict:
     """ Convert string values in a dict of dict structure to floats based on provided units """
 
     measurements = {}
     for key, value in parameters.items():
         measurements[key] = evaluate_parameter_dict(
-            parameters=value, is_metric=is_metric, exclusions=exclusions
+            parameters=value, is_metric=is_metric
         )
-
-        # parameters = {}
-        # for params, value in data.items():
-        #     if exclusions is not None and params in exclusions:
-        #         parameters[params] = value
-        #     # elif units == "metric":
-        #     elif is_metric:
-        #         parameters[params] = metric_str_to_float(value)
-        #     else:
-        #         parameters[params] = imperial_str_to_float(value)
-        # measurements[key] = parameters
 
     return measurements
 
 
 def evaluate_parameter_dict(
-    parameters: dict,
-    is_metric: Optional[bool] = True,
-    exclusions: Optional[List[str]] = None,
+    parameters: dict, is_metric: Optional[bool] = True,
 ) -> dict:
     """ Convert the strings in a parameter dictionary into dimensions """
     measurements = {}
     for params, value in parameters.items():
-        if exclusions is not None and params in exclusions:
-            measurements[params] = value
-        elif is_metric:
+        if is_metric:
             measurements[params] = metric_str_to_float(value)
         else:
             measurements[params] = imperial_str_to_float(value)
@@ -203,7 +185,7 @@ def lookup_drill_diameters(drill_hole_sizes: dict) -> dict:
         hole_data = {}
         for fit, drill in drill_data.items():
             try:
-                hole_data[fit] = drill_sizes[drill] * IN
+                hole_data[fit] = drill_sizes[drill]
             except KeyError:
                 if size[0] == "M":
                     hole_data[fit] = float(drill)
@@ -388,7 +370,7 @@ def square_recess(size: str) -> Tuple[cq.Workplane, float]:
 
 def select_by_size_fn(cls, size: str) -> dict:
     """ Given a fastener size, return a dictionary of {class:[type,...]} """
-    type_dict = dict()
+    type_dict = {}
     for fastener_class in cls.__subclasses__():
         for fastener_type in fastener_class.types():
             if size in fastener_class.sizes(fastener_type):
@@ -588,7 +570,7 @@ class ExternalThread(Thread):
 
     def thread_profile(self) -> cq.Workplane:
         """
-        Generae a 2D profile of a single external thread based on this diagram:
+        Generate a 2D profile of a single external thread based on this diagram:
         https://en.wikipedia.org/wiki/ISO_metric_screw_thread#/media/File:ISO_and_UTS_Thread_Dimensions.svg
         """
 
@@ -717,7 +699,7 @@ class Nut(ABC):
         try:
             return self.tap_hole_drill_sizes[self.size]
         except KeyError as e:
-            raise ValueError(f"No clearance hole data for size {self.size}") from e
+            raise ValueError(f"No tap hole data for size {self.size}") from e
 
     @property
     def tap_hole_diameters(self):
@@ -725,7 +707,7 @@ class Nut(ABC):
         try:
             return self.tap_hole_data[self.size]
         except KeyError as e:
-            raise ValueError(f"No clearance hole data for size {self.size}") from e
+            raise ValueError(f"No tap hole data for size {self.size}") from e
 
     @property
     def clearance_drill_sizes(self):
@@ -1155,7 +1137,7 @@ class Screw(ABC):
         try:
             return self.tap_hole_drill_sizes[self.size]
         except KeyError as e:
-            raise ValueError(f"No clearance hole data for size {self.size}") from e
+            raise ValueError(f"No tap hole data for size {self.size}") from e
 
     @property
     def tap_hole_diameters(self):
@@ -1163,7 +1145,7 @@ class Screw(ABC):
         try:
             return self.tap_hole_data[self.size]
         except KeyError as e:
-            raise ValueError(f"No clearance hole data for size {self.size}") from e
+            raise ValueError(f"No tap hole data for size {self.size}") from e
 
     @property
     def clearance_drill_sizes(self):
@@ -1264,7 +1246,7 @@ class Screw(ABC):
         if self.head is None:
             result = 0
         else:
-            result = self.head.vertices(">Z").val().Z
+            result = self.head.vertices(">Z").val().Z - self.head.vertices("<Z").val().Z
         return result
 
     @property
@@ -1342,9 +1324,14 @@ class Screw(ABC):
             ) from e
         self.socket_clearance = socket_clearance  # Only used for hex head screws
 
-        self.max_thread_length = length - self.length_offset()
+        length_offset = self.length_offset()
+        if length_offset >= self.length:
+            raise ValueError(
+                f"Screw length {self.length} is <= countersunk screw head {length_offset}"
+            )
+        self.max_thread_length = self.length - length_offset
         self.body_length = 0
-        self.thread_length = length - self.body_length - self.length_offset()
+        self.thread_length = length - self.body_length - length_offset
         # if self.thread_length > length:
         #     raise ValueError(
         #         f"thread length ({self.thread_length}) "
@@ -1465,30 +1452,13 @@ class Screw(ABC):
         try:
             recess = self.screw_data["recess"]
             recess = str(recess).upper()
-            if recess in ["PH0", "PH1", "PH2", "PH3", "PH4"]:
+            if recess.startswith("PH"):
                 (recess_plan, recess_depth) = cross_recess(recess)
                 recess_taper = 30
-            elif recess in [
-                "T6",
-                "T8",
-                "T10",
-                "T15",
-                "T20",
-                "T25",
-                "T30",
-                "T40",
-                "T45",
-                "T50",
-                "T55",
-                "T60",
-                "T70",
-                "T80",
-                "T90",
-                "T100",
-            ]:
+            elif recess.startswith("T"):
                 (recess_plan, recess_depth) = hexalobular_recess(recess)
                 recess_taper = 0
-            elif recess in ["R00", "R0", "R1", "R2", "R3"]:
+            elif recess.startswith("R"):
                 (recess_plan, recess_depth) = square_recess(recess)
                 recess_taper = 0
         except KeyError:
@@ -2225,34 +2195,28 @@ def _fastenerHole(
     self: T,
     hole_diameters: dict,
     fastener: Union[Nut, Screw],
+    depth: float,
     washers: List[Washer],
     fit: Optional[Literal["Close", "Normal", "Loose"]] = None,
     material: Optional[Literal["Soft", "Hard"]] = None,
-    depth: Optional[float] = None,
     counterSunk: Optional[bool] = True,
     baseAssembly: Optional[cq.Assembly] = None,
+    hand: Optional[Literal["right", "left"]] = None,
+    simple: Optional[bool] = False,
     clean: Optional[bool] = True,
 ) -> T:
     """
-    Makes a counterbore clearance or tap hole for the given screw for each item on the stack.
-    The surface of the hole is at the current workplane.
+    Makes a counterbore clearance, tap or threaded hole for the given screw for each item
+    on the stack. The surface of the hole is at the current workplane.
     """
-    key = fit if material is None else material
-    try:
-        hole_diameter = hole_diameters[key]
-    except KeyError as e:
-        raise ValueError(
-            f"{key} invalid, must be one of {list(hole_diameters.keys())}"
-        ) from e
 
-    if depth is None:
-        depth = self.largestDimension()
+    # If there is a thread direction, this is a threaded hole
+    threaded_hole = not hand is None
 
     bore_direction = cq.Vector(0, 0, -1)
     origin = cq.Vector(0, 0, 0)
-    shank_hole = cq.Solid.makeCylinder(
-        radius=hole_diameter / 2.0, height=depth, pnt=origin, dir=bore_direction,
-    )
+
+    # Setscrews' countersink_profile is None so check if it exists
     countersink_profile = fastener.countersink_profile(fit)
     if counterSunk and not countersink_profile is None:
         head_offset = countersink_profile.vertices(">Z").val().Z
@@ -2262,15 +2226,40 @@ def _fastenerHole(
             .translate((0, 0, -head_offset))
             .val()
         )
-        fastener_hole = countersink_cutter.fuse(shank_hole)
     else:
         head_offset = 0
+
+    if threaded_hole:
+        thread = InternalThread(
+            major_diameter=fastener.thread_diameter,
+            pitch=fastener.thread_pitch,
+            length=depth - head_offset,
+            hand=hand,
+            simple=simple,
+        )
+        hole_radius = thread.internal_thread_socket_radius
+    else:
+        key = fit if material is None else material
+        try:
+            hole_radius = hole_diameters[key] / 2
+        except KeyError as e:
+            raise ValueError(
+                f"{key} invalid, must be one of {list(hole_diameters.keys())}"
+            ) from e
+
+    shank_hole = cq.Solid.makeCylinder(
+        radius=hole_radius, height=depth, pnt=origin, dir=bore_direction,
+    )
+    if counterSunk and not countersink_profile is None:
+        fastener_hole = countersink_cutter.fuse(shank_hole)
+    else:
         fastener_hole = shank_hole
 
     cskAngle = 82  # Common tip angle
-    r = hole_diameter / 2.0
-    h = r / tan(radians(cskAngle / 2.0))
-    drill_tip = cq.Solid.makeCone(r, 0.0, h, bore_direction * depth, bore_direction)
+    h = hole_radius / tan(radians(cskAngle / 2.0))
+    drill_tip = cq.Solid.makeCone(
+        hole_radius, 0.0, h, bore_direction * depth, bore_direction
+    )
     fastener_hole = fastener_hole.fuse(drill_tip)
 
     # Record the location of each hole for use in the assembly
@@ -2308,7 +2297,18 @@ def _fastenerHole(
             )
 
     # Make holes in the stack solid object
-    return self.cutEach(lambda loc: fastener_hole.moved(loc), True, clean)
+    part = self.cutEach(lambda loc: fastener_hole.moved(loc), True, False)
+
+    # Add threaded inserts
+    if threaded_hole:
+        for hole_loc in hole_locations:
+            part = part.union(
+                thread.cq_object.moved(hole_loc * cq.Location(bore_direction * depth)),
+                glue=True,
+            )
+    if clean:
+        part = part.clean()
+    return part
 
 
 cq.Workplane.fastenerHole = _fastenerHole
@@ -2324,6 +2324,10 @@ def _clearanceHole(
     baseAssembly: Optional[cq.Assembly] = None,
     clean: Optional[bool] = True,
 ) -> T:
+    """ Clearance hole front end to fastener hole """
+    if depth is None:
+        depth = self.largestDimension()
+
     return self.fastenerHole(
         hole_diameters=fastener.clearance_hole_diameters,
         fastener=fastener,
@@ -2347,6 +2351,10 @@ def _tapHole(
     baseAssembly: Optional[cq.Assembly] = None,
     clean: Optional[bool] = True,
 ) -> T:
+    """ Tap hole front end to fastener hole """
+    if depth is None:
+        depth = self.largestDimension()
+
     return self.fastenerHole(
         hole_diameters=fastener.tap_hole_diameters,
         fastener=fastener,
@@ -2364,6 +2372,7 @@ def _threadedHole(
     self: T,
     fastener: Screw,
     depth: float,
+    washers: Optional[List[Washer]] = None,
     hand: Literal["right", "left"] = "right",
     simple: Optional[bool] = False,
     counterSunk: Optional[bool] = True,
@@ -2371,74 +2380,19 @@ def _threadedHole(
     baseAssembly: Optional[cq.Assembly] = None,
     clean: Optional[bool] = True,
 ) -> T:
-
-    """
-    Makes a threaded hole at the current point(s) on the current workplane
-    """
-
-    thread = InternalThread(
-        major_diameter=fastener.thread_diameter,
-        pitch=fastener.thread_pitch,
-        length=depth,
+    """ Threaded hole front end to fastener hole """
+    return self.fastenerHole(
+        hole_diameters=fastener.clearance_hole_diameters,
+        fastener=fastener,
+        washers=washers,
+        fit=fit,
+        depth=depth,
+        counterSunk=counterSunk,
+        baseAssembly=baseAssembly,
         hand=hand,
         simple=simple,
+        clean=clean,
     )
-
-    bore_direction = cq.Vector(0, 0, -1)
-    origin = cq.Vector(0, 0, 0)
-    if counterSunk:
-        countersink_profile = fastener.countersink_profile(fit)
-        head_offset = countersink_profile.vertices(">Z").val().Z
-        shank_hole = cq.Solid.makeCylinder(
-            radius=thread.internal_thread_socket_radius,
-            height=depth - head_offset,
-            pnt=origin,
-            dir=bore_direction,
-        )
-        countersink_cutter = (
-            countersink_profile.toPending()
-            .revolve()
-            .translate((0, 0, -head_offset))
-            .val()
-        )
-        screw_hole = countersink_cutter.fuse(shank_hole.translate((0, 0, -head_offset)))
-    else:
-        shank_hole = cq.Solid.makeCylinder(
-            radius=thread.internal_thread_socket_radius,
-            height=depth,
-            pnt=origin,
-            dir=bore_direction,
-        )
-        head_offset = 0
-        screw_hole = shank_hole
-
-    # Record the location of each hole for use in the assembly
-    null_object = cq.Solid.makeBox(1, 1, 1)
-    relocated_test_objects = self.eachpoint(lambda loc: null_object.moved(loc), True)
-    hole_locations = [loc.location() for loc in relocated_test_objects.vals()]
-
-    # Add screws to the base assembly if it was provided
-    if baseAssembly is not None:
-        for hole_loc in hole_locations:
-            baseAssembly.add(
-                fastener.cq_object,
-                loc=hole_loc
-                * cq.Location(
-                    bore_direction * (head_offset - fastener.length_offset())
-                ),
-            )
-
-    part = self.cutEach(lambda loc: screw_hole.moved(loc), True, clean)
-
-    # Add threaded inserts
-    for hole_loc in hole_locations:
-        part = part.union(
-            thread.cq_object.moved(hole_loc * cq.Location(bore_direction * depth)),
-            glue=True,
-        )
-    if clean:
-        part = part.clean()
-    return part
 
 
 cq.Workplane.clearanceHole = _clearanceHole

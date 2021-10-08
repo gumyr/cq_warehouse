@@ -389,6 +389,9 @@ callout returns a cadquery `Assembly` object.
 ## fastener sub-package
 Many mechanical designs will contain threaded fasteners of some kind, either in a threaded hole or threaded screws or bolts holding two or more parts together. The fastener sub-package provides a set of classes with which raw threads can be created such that they can be integrated into other parts as well as a set of classes that create many different types of nuts, screws or bolts - as follows:
 ![fastener_disc](doc/fastener_disc.png)
+
+The holes for the screws in this figure were created with an extension of the Workplane class, `clearanceHole`, the nuts, `tapHole` and the central hole, `threadedHole`. The washers were automatically placed and all components were add to an Assembly in their correct position and orientations - see [Clearance, Tap and Threaded Holes](#clearance-tap-and-threaded-holes) for details..
+
 Here is a list of the classes (and fastener types) provided:
 - [Nut](#nut) - the base nut class
   - `DomedCapNut`: din1587
@@ -426,7 +429,7 @@ from cq_warehouse.fastener import HexNut, SocketHeadCapScrew, SetScrew
 MM = 1
 IN = 25.4 * MM
 
-nut = HexNut(size="1/4-20")
+nut = HexNut(size="M3-0.5", fastener_type="iso4032")
 setscrew = SetScrew(size="M6-1", fastener_type="iso4026",length=10 * MM)
 capscrew = SocketHeadCapScrew(size="#6-32", fastener_type="asme_b18.3", length=(1/2) * IN)
 ```
@@ -434,7 +437,7 @@ Both metric and imperial sized standard fasteners are directly supported by the 
 
 Threaded parts are complex for CAD systems to create and significantly increase the storage requirements thus making the system slow and difficult to use. To minimize these requirements all of the fastener classes have a `simple` boolean parameter that when `True` doesn't create actual threads at all. Such simple parts have the same overall dimensions and such that they can be used to check for fitment without dramatically impacting performance.
 
-> **CQ-editor** :warning: Set the Preferences :arrow_right: 3D Viewer :arrow_right: Deviation parameter to 0.01 to avoid crashes due to memory over-consumption when working with threads
+> :warning: **CQ-editor** :warning: Set the Preferences :arrow_right: 3D Viewer :arrow_right: Deviation parameter to 0.01 to avoid crashes due to memory over-consumption when working with threads
 
 All of the fasteners default to right-handed thread but each of them provide a `hand` sting parameter which can either be `"right"` or `"left"`.
 
@@ -655,7 +658,7 @@ Note: In this example the `simple=False` parameter creates accurate threads on e
 #### API
 The APIs of these three methods are:
 
-clearanceHole: A hole that allows the screw to be inserted freely
+`clearanceHole`: A hole that allows the screw to be inserted freely
 - `fastener`: Union[Nut, Screw],
 - `washers`: Optional[List[Washer]] = None,
 - `fit`: Optional[Literal["Close", "Normal", "Loose"]] = "Normal",
@@ -664,7 +667,7 @@ clearanceHole: A hole that allows the screw to be inserted freely
 - `baseAssembly`: Optional[cq.Assembly] = None,
 - `clean`: Optional[bool] = True,
 
-tapHole: A hole ready for a tap to cut a thread
+`tapHole`: A hole ready for a tap to cut a thread
 - `fastener`: Union[Nut, Screw],
 - `washers`: Optional[List[Washer]] = None,
 - `material`: Optional[Literal["Soft", "Hard"]] = "Soft",
@@ -674,9 +677,10 @@ tapHole: A hole ready for a tap to cut a thread
 - `baseAssembly`: Optional[cq.Assembly] = None,
 - `clean`: Optional[bool] = True,
 
-threadedHole: A hole with a integral thread
+`threadedHole`: A hole with a integral thread
 - `fastener`: Screw,
 - `depth`: float,
+- `washers`: List[Washer],
 - `hand`: Literal["right", "left"] = "right",
 - `simple`: Optional[bool] = False,
 - `counterSunk`: Optional[bool] = True,
@@ -758,7 +762,7 @@ The fastener sub-package has been designed to be extended in the following two w
 | #1-72     |            |           |     | 0.118         | 0.073        | 1/16         |
 | #2-56     |            |           |     | 0.14          | 0.086        | 5/64         |
 
-The first row must contain a 'Size' and a set of 'fastener_type:parameter' values. The parameters are taken from the ISO standards where 'k' represents the head height of a screw head, 'dk' is represents the head diameter, etc. Refer to the appropriate document for a complete description. The fastener 'Size' field has the format 'M{thread major diameter}-{thread pitch}' for metric fasteners or either '#{guage}-{TPI}' or '{fractional major diameter}-{TPI}' for imperial fasteners (TPI refers to Threads Per Inch).
+The first row must contain a 'Size' and a set of '{fastener_type}:{parameter}' values. The parameters are taken from the ISO standards where 'k' represents the head height of a screw head, 'dk' is represents the head diameter, etc. Refer to the appropriate document for a complete description. The fastener 'Size' field has the format 'M{thread major diameter}-{thread pitch}' for metric fasteners or either '#{guage}-{TPI}' or '{fractional major diameter}-{TPI}' for imperial fasteners (TPI refers to Threads Per Inch). All the data for imperial fasteners must be entered as inch dimensions while metric data is in millimeters.
 
 There is also a 'nominal_screw_lengths.csv' file that contains a list of all the lengths supported by the standard, as follows:
 
@@ -769,7 +773,7 @@ There is also a 'nominal_screw_lengths.csv' file that contains a list of all the
 
 The 'short' and 'long' values from the first table (not shown) control the minimum and maximum values in the nominal length ranges for each screw.
 
-- **New Fastener Types** - The base/derived class structure was designed to allow the creation of new fastener types/classes. For new fastener classes a 2D drawing of one half of the fastener profile is required. If the fastener has a non circular plan (e.g. a hex or a square) a 2D drawing of the plan is required. If the fastener contains a flange and a plan, a 2D profile of the plan is required. If these profiles or plans are present, the base class will use them to build the fastener. The Abstract Base Class technology ensures derived classes can't be created with missing components.
+- **New Fastener Types** - The base/derived class structure was designed to allow the creation of new fastener types/classes. For new fastener classes a 2D drawing of one half of the fastener profile is required. If the fastener has a non circular plan (e.g. a hex or a square) a 2D drawing of the plan is required. If the fastener contains a flange and a plan, a 2D profile of the flange is required. If these profiles or plans are present, the base class will use them to build the fastener. The Abstract Base Class technology ensures derived classes can't be created with missing components.
 ## extensions sub-package
 This python module provides extensions to the native cadquery code base. Hopefully future generations of cadquery will incorporate this or similar functionality.
 ### Assembly class extensions
