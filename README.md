@@ -56,7 +56,7 @@ Install from github:
 ```
 python3 -m pip install git+https://github.com/gumyr/cq_warehouse.git#egg=cq_warehouse
 ```
-Note that cq_warehouse requires the development version of cadquery (see [Installing CadQuery](https://cadquerytest.readthedocs.io/en/readthedocs/installation.html)). Also note that cq_warehouse uses the pydantic package for input validation which requires keyword arguments (e.g. `num_teeth=16`).
+Note that cq_warehouse requires the development version of cadquery (see [Installing CadQuery](https://cadquery.readthedocs.io/en/latest/installation.html)). Also note that cq_warehouse uses the pydantic package for input validation which requires keyword arguments (e.g. `num_teeth=16`).
 # Package Structure
 The cq_warehouse package contains the following sub-packages:
 - **sprocket** : a parametric sprocket generator
@@ -612,7 +612,7 @@ When designing parts with CadQuery a common operation is to place holes appropri
 
 These methods use data provided by a fastener instance (either a `Nut` or a `Screw`) to both create the appropriate hole (possibly countersunk) in your part as well as add the fastener to a CadQuery Assembly in the location of the hole. In addition, a list of washers can be provided which will get placed under the head of the screw or nut in the provided Assembly.
 
-For example, let's re-build the parametric bearing pillow block found in the [CadQuery Quickstart](https://cadquerytest.readthedocs.io/en/readthedocs/quickstart.html):
+For example, let's re-build the parametric bearing pillow block found in the [CadQuery Quickstart](https://cadquery.readthedocs.io/en/latest/quickstart.html):
 ```python
 import cadquery as cq
 from cq_warehouse.fastener import SocketHeadCapScrew
