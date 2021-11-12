@@ -755,6 +755,11 @@ class Nut(ABC):
         return NotImplementedError
 
     @property
+    def info(self):
+        """ Return identifying information """
+        return f"{self.nut_class}({self.fastener_type}): {self.size}"
+
+    @property
     def nut_class(self):
         """ Which derived class created this nut """
         return type(self).__name__
@@ -1236,6 +1241,11 @@ class Screw(ABC):
         return result
 
     @property
+    def info(self):
+        """ Return identifying information """
+        return f"{self.screw_class}({self.fastener_type}): {self.size}x{self.length}{' left hand thread' if self.hand=='left' else ''}"
+
+    @property
     def screw_class(self):
         """ Which derived class created this screw """
         return type(self).__name__
@@ -1490,7 +1500,7 @@ class ButtonHeadScrew(Screw):
     fastener_type: str
         iso7380_1 - Hexagon socket button head screws
     hand: Optional[Literal["right", "left"]] = "right"
-    simple: Optional[bool] = False
+    simple: Optional[bool] = True
     """
 
     fastener_data = read_fastener_parameters_from_csv("button_head_parameters.csv")
@@ -1520,7 +1530,7 @@ class ButtonHeadWithCollarScrew(Screw):
     fastener_type: str
         iso7380_2 - Hexagon socket button head screws with collar
     hand: Optional[Literal["right", "left"]] = "right"
-    simple: Optional[bool] = False
+    simple: Optional[bool] = True
     """
 
     fastener_data = read_fastener_parameters_from_csv(
@@ -1570,7 +1580,7 @@ class CheeseHeadScrew(Screw):
         iso7048 - Cross-recessed cheese head screws
         iso14580 - Hexalobular socket cheese head screws
     hand: Optional[Literal["right", "left"]] = "right"
-    simple: Optional[bool] = False
+    simple: Optional[bool] = True
     """
 
     fastener_data = read_fastener_parameters_from_csv("cheese_head_parameters.csv")
@@ -1604,7 +1614,7 @@ class CounterSunkScrew(Screw):
         iso14581 - Hexalobular socket countersunk flat head screws
         iso14582 - Hexalobular socket countersunk flat head screws, high head
     hand: Optional[Literal["right", "left"]] = "right"
-    simple: Optional[bool] = False
+    simple: Optional[bool] = True
     """
 
     fastener_data = read_fastener_parameters_from_csv("countersunk_head_parameters.csv")
@@ -1653,7 +1663,7 @@ class HexHeadScrew(Screw):
         iso4014 - Hexagon head bolt
         iso4017 - Hexagon head screws
     hand: Optional[Literal["right", "left"]] = "right"
-    simple: Optional[bool] = False
+    simple: Optional[bool] = True
     socket_clearance: Optional[float] = 6 * MM
     """
 
@@ -1700,7 +1710,7 @@ class HexHeadWithFlangeScrew(Screw):
         en1662 - Hexagon bolts with flange small series
         en1665 - Hexagon head bolts with flange
     hand: Optional[Literal["right", "left"]] = "right"
-    simple: Optional[bool] = False
+    simple: Optional[bool] = True
     socket_clearance: Optional[float] = 6 * MM
     """
 
@@ -1755,8 +1765,9 @@ class PanHeadScrew(Screw):
     fastener_type: str
         iso1580 - Slotted pan head screws
         iso14583 - Hexalobular socket pan head screws
+        asme_b_18.6.3 - Type 1 Cross Recessed Pan Head Machine Screws
     hand: Optional[Literal["right", "left"]] = "right"
-    simple: Optional[bool] = False
+    simple: Optional[bool] = True
     """
 
     fastener_data = read_fastener_parameters_from_csv("pan_head_parameters.csv")
@@ -1788,7 +1799,7 @@ class PanHeadWithCollarScrew(Screw):
     fastener_type: str
         din967 - Cross recessed pan head screws with collar
     hand: Optional[Literal["right", "left"]] = "right"
-    simple: Optional[bool] = False
+    simple: Optional[bool] = True
     """
 
     fastener_data = read_fastener_parameters_from_csv(
@@ -1822,7 +1833,7 @@ class RaisedCheeseHeadScrew(Screw):
     fastener_type: str
         iso7045 - Cross recessed raised cheese head screws
     hand: Optional[Literal["right", "left"]] = "right"
-    simple: Optional[bool] = False
+    simple: Optional[bool] = True
     """
 
     fastener_data = read_fastener_parameters_from_csv(
@@ -1856,7 +1867,7 @@ class RaisedCounterSunkOvalHeadScrew(Screw):
         iso7047 - Cross recessed raised countersunk head screws
         iso14584 - Hexalobular socket raised countersunk head screws
     hand: Optional[Literal["right", "left"]] = "right"
-    simple: Optional[bool] = False
+    simple: Optional[bool] = True
     """
 
     fastener_data = read_fastener_parameters_from_csv(
@@ -1907,7 +1918,7 @@ class SetScrew(Screw):
     fastener_type: str
         iso4026 - Hexagon socket set screws with flat point
     hand: Optional[Literal["right", "left"]] = "right"
-    simple: Optional[bool] = False
+    simple: Optional[bool] = True
     """
 
     fastener_data = read_fastener_parameters_from_csv("setscrew_parameters.csv")
@@ -1972,7 +1983,7 @@ class SocketHeadCapScrew(Screw):
     fastener_type: str
         iso4762 - Hexagon socket head cap screws
     hand: Optional[Literal["right", "left"]] = "right"
-    simple: Optional[bool] = False
+    simple: Optional[bool] = True
     """
 
     fastener_data = read_fastener_parameters_from_csv("socket_head_cap_parameters.csv")
@@ -2018,6 +2029,11 @@ class Washer(ABC):
     def washer_profile(self) -> cq.Workplane:
         """ Each derived class must provide the profile of the washer """
         return NotImplementedError
+
+    @property
+    def info(self):
+        """ Return identifying information """
+        return f"{self.washer_class}({self.fastener_type}): {self.size}"
 
     @property
     def washer_class(self):
@@ -2286,6 +2302,10 @@ def _fastenerHole(
                         ),
                     )
                     washer_thicknesses += washer.washer_thickness
+                    if hasattr(baseAssembly, "metadata"):
+                        baseAssembly.metadata[baseAssembly.children[-1].name] = washer
+                    else:
+                        baseAssembly.metadata = {baseAssembly.children[-1].name: washer}
 
             baseAssembly.add(
                 fastener.cq_object,
@@ -2295,6 +2315,10 @@ def _fastenerHole(
                     * (head_offset - fastener.length_offset() - washer_thicknesses)
                 ),
             )
+            if hasattr(baseAssembly, "metadata"):
+                baseAssembly.metadata[baseAssembly.children[-1].name] = fastener
+            else:
+                baseAssembly.metadata = {baseAssembly.children[-1].name: fastener}
 
     # Make holes in the stack solid object
     part = self.cutEach(lambda loc: fastener_hole.moved(loc), True, False)
@@ -2398,3 +2422,25 @@ def _threadedHole(
 cq.Workplane.clearanceHole = _clearanceHole
 cq.Workplane.tapHole = _tapHole
 cq.Workplane.threadedHole = _threadedHole
+
+
+def _fastener_quantities(self, bom: bool = True) -> dict:
+    """ Generate a bill of materials of the fasteners in an assembly augmented by the hole methods """
+    if self.metadata is None:
+        return None
+
+    # Extract a list of only the fasteners from the metadata
+    fasteners = [
+        value
+        for value in self.metadata.values()
+        if isinstance(value, (Screw, Nut, Washer))
+    ]
+    unique_fasteners = set(fasteners)
+    if bom:
+        quantities = {f.info: fasteners.count(f) for f in unique_fasteners}
+    else:
+        quantities = {f: fasteners.count(f) for f in unique_fasteners}
+    return quantities
+
+
+cq.Assembly.fastener_quantities = _fastener_quantities
