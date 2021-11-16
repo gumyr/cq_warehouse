@@ -2,11 +2,11 @@
 
 Parametric Threads
 
-name: threads.py
+name: thread.py
 by:   Gumyr
 date: November 11th 2021
 
-desc: This python/cadquery code is a parameterized threads generator.
+desc: This python/cadquery code is a parameterized thread generator.
 
 license:
 
@@ -25,19 +25,18 @@ license:
     limitations under the License.
 
 """
+from abc import ABC, abstractmethod
 import timeit
-from typing import Literal, Optional
+from typing import Literal, Optional, Tuple, List
 from math import sin, cos, tan, radians, pi
 import cadquery as cq
 
 MM = 1
 IN = 25.4 * MM
 
-# TODO: Instead of fuse tips, add tip faces to thread faces then build solid
-
 
 def is_safe(value: str) -> bool:
-    """ Evaluate if the given string is a fractional number save for eval() """
+    """ Evaluate if the given string is a fractional number safe for eval() """
     return len(value) <= 10 and all(c in "0123456789./ " for c in set(value))
 
 
@@ -57,36 +56,40 @@ class Thread:
     Each end of the thread can finished as follows:
     - "raw"     unfinished which typically results in the thread extended below
                 z=0 or above z=length
-    - "square"  clipped by the z=0 or z=length plane
     - "fade"    the thread height drops to zero over 90° of arc (or 1/4 pitch)
+    - "square"  clipped by the z=0 or z=length plane
     - "chamfer" conical ends which facilitates alignment of a bolt into a nut
 
     Note that the performance of this Thread class varies significantly by end
     finish. Here are some sample measurements (both ends finished) to illustate
     how the time required to create the thread varies:
-    - "raw"     0.037s
-    - "square"  0.568s
-    - "fade"    0.675s
-    - "chamfer" 1.810s
+    - "raw"     0.018s
+    - "fade"    0.087s
+    - "square"  0.370s
+    - "chamfer" 1.641s
 
     """
 
     def fade_helix(
         self, t: float, apex: bool, vertical_displacement: float
-    ) -> tuple[float, float, float]:
+    ) -> Tuple[float, float, float]:
         """ A helical function used to create the faded tips of threads that spirals
             self.tooth_height in self.pitch/4 """
         # Note: the linear radius transition looks better than the sin transition
         #   self.apex_radius - sin(t * pi / 2) * self.tooth_height
         if self.external:
-            r = self.apex_radius - t * self.tooth_height if apex else self.root_radius
+            radius = (
+                self.apex_radius - t * self.tooth_height if apex else self.root_radius
+            )
         else:
-            r = self.apex_radius + t * self.tooth_height if apex else self.root_radius
+            radius = (
+                self.apex_radius + t * self.tooth_height if apex else self.root_radius
+            )
 
-        z = t * self.pitch / 4 + t * vertical_displacement
-        x = r * cos(t * pi / 2)
-        y = r * sin(t * pi / 2)
-        return (x, y, z)
+        z_pos = t * self.pitch / 4 + t * vertical_displacement
+        x_pos = radius * cos(t * pi / 2)
+        y_pos = radius * sin(t * pi / 2)
+        return (x_pos, y_pos, z_pos)
 
     @property
     def cq_object(self):
@@ -104,7 +107,7 @@ class Thread:
         hand: Literal["right", "left"] = "right",
         simple: bool = True,
         taper_angle: Optional[float] = None,
-        end_finishes: tuple[
+        end_finishes: Tuple[
             Literal["raw", "square", "fade", "chamfer"],
             Literal["raw", "square", "fade", "chamfer"],
         ] = ("raw", "raw"),
@@ -113,7 +116,7 @@ class Thread:
         for finish in end_finishes:
             if not finish in ["raw", "square", "fade", "chamfer"]:
                 raise ValueError(
-                    f'end_finishes invalid, must be tuple() of "raw, square, taper, or chamfer"'
+                    'end_finishes invalid, must be tuple() of "raw, square, taper, or chamfer"'
                 )
         self.apex_radius = apex_radius
         self.apex_width = apex_width
@@ -180,7 +183,7 @@ class Thread:
         cylindrical_thread_angle = (
             (360 if self.right_hand else -360) * cylindrical_thread_length / self.pitch
         )
-        (fade_faces, fade_ends) = self.make_thread_faces(
+        (fade_faces, _fade_ends) = self.make_thread_faces(
             self.pitch / 4, fade_helix=True
         )
         if not self.right_hand:
@@ -304,7 +307,7 @@ class Thread:
 
     def make_thread_faces(
         self, length: float, fade_helix: bool = False,
-    ) -> tuple[list[cq.Face]]:
+    ) -> Tuple[List[cq.Face]]:
         """ Create the thread object from basic CadQuery objects
 
         This method creates three types of thread objects:
@@ -419,10 +422,10 @@ class IsoThread:
         external: bool = True,
         hand: Literal["right", "left"] = "right",
         simple: bool = True,
-        end_finishes: tuple[
+        end_finishes: Tuple[
             Literal["raw", "square", "fade", "chamfer"],
             Literal["raw", "square", "fade", "chamfer"],
-        ] = ("square", "fade"),
+        ] = ("fade", "square"),
     ):
 
         self.major_diameter = major_diameter
@@ -437,7 +440,7 @@ class IsoThread:
         for finish in end_finishes:
             if not finish in ["raw", "square", "fade", "chamfer"]:
                 raise ValueError(
-                    f'end_finishes invalid, must be tuple() of "raw, square, taper, or chamfer"'
+                    'end_finishes invalid, must be tuple() of "raw, square, taper, or chamfer"'
                 )
         self.end_finishes = end_finishes
         self.apex_radius = self.major_diameter / 2 if external else self.min_radius
@@ -457,13 +460,85 @@ class IsoThread:
         ).cq_object
 
 
-class AcmeThread:
+class TrapezoidalThread(ABC):
+    """
+    Trapezoidal Thread base class for Metric and Acme derived classes
+
+    Trapezoidal thread forms are screw thread profiles with trapezoidal outlines. They are
+    the most common forms used for leadscrews (power screws). They offer high strength
+    and ease of manufacture. They are typically found where large loads are required, as
+    in a vise or the leadscrew of a lathe.
+    """
+
+    @property
+    def cq_object(self) -> cq.Solid:
+        """ A cadquery Solid thread as defined by class attributes """
+        return self._cq_object
+
+    @abstractmethod
+    def parse_size(self) -> Tuple[float, float]:
+        """ Convert the provided size into a tuple of diameter and pitch """
+        return NotImplementedError
+
+    @property
+    @abstractmethod
+    def thread_angle(self) -> float:
+        """ The thread angle in degrees """
+        return NotImplementedError
+
+    def __init__(
+        self,
+        size: str,
+        length: float,
+        external: bool = True,
+        hand: Literal["right", "left"] = "right",
+        simple: bool = True,
+        end_finishes: tuple[
+            Literal["raw", "square", "fade", "chamfer"],
+            Literal["raw", "square", "fade", "chamfer"],
+        ] = ("fade", "fade"),
+    ):
+        self.size = size
+        self.external = external
+        self.length = length
+        self.simple = simple
+        (self.diameter, self.pitch) = self.parse_size()
+        shoulder_width = (self.pitch / 2) * tan(radians(self.thread_angle / 2))
+        apex_width = (self.pitch / 2) - shoulder_width
+        root_width = (self.pitch / 2) + shoulder_width
+        if self.external:
+            self.apex_radius = self.diameter / 2
+            self.root_radius = self.apex_radius - self.pitch / 2
+        else:
+            self.apex_radius = self.diameter / 2
+            self.root_radius = self.apex_radius + self.pitch / 2
+
+        if hand not in ["right", "left"]:
+            raise ValueError(f'hand must be one of "right" or "left" not {hand}')
+        self.hand = hand
+        for finish in end_finishes:
+            if not finish in ["raw", "square", "fade", "chamfer"]:
+                raise ValueError(
+                    'end_finishes invalid, must be tuple() of "raw, square, taper, or chamfer"'
+                )
+        self.end_finishes = end_finishes
+        self._cq_object = Thread(
+            apex_radius=self.apex_radius,
+            apex_width=apex_width,
+            root_radius=self.root_radius,
+            root_width=root_width,
+            pitch=self.pitch,
+            length=self.length,
+            end_finishes=self.end_finishes,
+            hand=self.hand,
+            simple=self.simple,
+        ).cq_object
+
+
+class AcmeThread(TrapezoidalThread):
     """
     The original trapezoidal thread form, and still probably the one most commonly encountered
-    worldwide, with a 29° thread angle, is the Acme thread form. Trapezoidal thread forms are
-    screw thread profiles with trapezoidal outlines. They are the most common forms used for
-    leadscrews (power screws). They offer high strength and ease of manufacture. They are
-    typically found where large loads are required, as in a vise or the leadscrew of a lathe.
+    worldwide, with a 29° thread angle, is the Acme thread form.
     """
 
     acme_pitch = {
@@ -483,70 +558,25 @@ class AcmeThread:
         "3": (1 / 2) * IN,
     }
 
-    @property
-    def cq_object(self) -> cq.Solid:
-        """ A cadquery Solid thread as defined by class attributes """
-        return self._cq_object
-
-    def __init__(
-        self,
-        size: str,
-        length: float,
-        external: bool = True,
-        hand: Literal["right", "left"] = "right",
-        simple: bool = True,
-        end_finishes: tuple[
-            Literal["raw", "square", "fade", "chamfer"],
-            Literal["raw", "square", "fade", "chamfer"],
-        ] = ("fade", "fade"),
-    ):
-        if not size in AcmeThread.acme_pitch.keys():
+    def parse_size(self) -> Tuple[float, float]:
+        """ Convert the provided size into a tuple of diameter and pitch """
+        if not self.size in AcmeThread.acme_pitch.keys():
             raise ValueError(
                 f"size invalid, must be one of {AcmeThread.acme_pitch.keys()}"
             )
-        self.thread_angle = 29
-        self.size = size
-        self.diameter = imperial_str_to_float(self.size)
-        self.apex_radius = self.diameter / 2
-        self.pitch = AcmeThread.acme_pitch[size]
-        self.external = external
-        shoulder_width = (self.pitch / 2) * tan(radians(self.thread_angle / 2))
-        apex_width = (self.pitch / 2) - shoulder_width
-        root_width = (self.pitch / 2) + shoulder_width
-        if self.external:
-            self.apex_radius = self.diameter / 2
-            self.root_radius = self.apex_radius - self.pitch / 2
-        else:
-            self.apex_radius = self.diameter / 2
-            self.root_radius = self.apex_radius + self.pitch / 2
-        self.length = length
-        self.simple = simple
+        diameter = imperial_str_to_float(self.size)
+        pitch = AcmeThread.acme_pitch[self.size]
+        return (diameter, pitch)
 
-        if hand not in ["right", "left"]:
-            raise ValueError(f'hand must be one of "right" or "left" not {hand}')
-        self.hand = hand
-        for finish in end_finishes:
-            if not finish in ["raw", "square", "fade", "chamfer"]:
-                raise ValueError(
-                    f'end_finishes invalid, must be tuple() of "raw, square, taper, or chamfer"'
-                )
-        self.end_finishes = end_finishes
-        self._cq_object = Thread(
-            apex_radius=self.apex_radius,
-            apex_width=apex_width,
-            root_radius=self.root_radius,
-            root_width=root_width,
-            pitch=self.pitch,
-            length=self.length,
-            end_finishes=self.end_finishes,
-            hand=self.hand,
-            simple=self.simple,
-        ).cq_object
+    @property
+    def thread_angle(self) -> float:
+        """ The thread angle in degrees """
+        return 29
 
 
-class MetricTrapezoidalThread:
+class MetricTrapezoidalThread(TrapezoidalThread):
     """
-    The ISO 2904 standard (i.e. metric) trapezoidal thread has a thread angle of 30° as opposed to Acme's 29°.
+    The ISO 2904 standard (i.e. metric) trapezoidal thread with a thread angle of 30°
 
     The sizes are specified as diameter x pitch (in mm).
     """
@@ -584,62 +614,18 @@ class MetricTrapezoidalThread:
     ]
     # fmt: on
 
-    @property
-    def cq_object(self) -> cq.Solid:
-        """ A cadquery Solid thread as defined by class attributes """
-        return self._cq_object
-
-    def __init__(
-        self,
-        size: str,
-        length: float,
-        external: bool = True,
-        hand: Literal["right", "left"] = "right",
-        simple: bool = True,
-        end_finishes: tuple[
-            Literal["raw", "square", "fade", "chamfer"],
-            Literal["raw", "square", "fade", "chamfer"],
-        ] = ("fade", "fade"),
-    ):
-        if not size in MetricTrapezoidalThread.standard_sizes:
+    def parse_size(self) -> Tuple[float, float]:
+        """ Convert the provided size into a tuple of diameter and pitch """
+        if not self.size in MetricTrapezoidalThread.standard_sizes:
             raise ValueError(
                 f"size invalid, must be one of {MetricTrapezoidalThread.standard_sizes}"
             )
-        (self.diameter, self.pitch) = (float(part) for part in size.split("x"))
-        self.thread_angle = 30
-        self.external = external
-        shoulder_width = (self.pitch / 2) * tan(radians(self.thread_angle / 2))
-        apex_width = (self.pitch / 2) - shoulder_width
-        root_width = (self.pitch / 2) + shoulder_width
-        if self.external:
-            self.apex_radius = self.diameter / 2
-            self.root_radius = self.apex_radius - self.pitch / 2
-        else:
-            self.apex_radius = self.diameter / 2
-            self.root_radius = self.apex_radius + self.pitch / 2
-        self.length = length
-        self.simple = simple
+        return (float(part) for part in self.size.split("x"))
 
-        if hand not in ["right", "left"]:
-            raise ValueError(f'hand must be one of "right" or "left" not {hand}')
-        self.hand = hand
-        for finish in end_finishes:
-            if not finish in ["raw", "square", "fade", "chamfer"]:
-                raise ValueError(
-                    f'end_finishes invalid, must be tuple() of "raw, square, taper, or chamfer"'
-                )
-        self.end_finishes = end_finishes
-        self._cq_object = Thread(
-            apex_radius=self.apex_radius,
-            apex_width=apex_width,
-            root_radius=self.root_radius,
-            root_width=root_width,
-            pitch=self.pitch,
-            length=self.length,
-            end_finishes=self.end_finishes,
-            hand=self.hand,
-            simple=self.simple,
-        ).cq_object
+    @property
+    def thread_angle(self) -> float:
+        """ The thread angle in degrees """
+        return 30
 
 
 starttime = timeit.default_timer()
@@ -648,7 +634,7 @@ iso_thread = IsoThread(
     pitch=1,
     length=4.35,
     external=False,
-    end_finishes=("fade", "square"),
+    end_finishes=("chamfer", "chamfer"),
     hand="left",
     simple=False,
 )
@@ -682,4 +668,3 @@ if "show_object" in locals():
     show_object(iso, name="iso_thread")
     # show_object(acme, name="acme_thread")
     # show_object(trap, name="trap_thread")
-
