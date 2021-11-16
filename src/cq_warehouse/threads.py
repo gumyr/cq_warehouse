@@ -78,7 +78,11 @@ class Thread:
             self.tooth_height in self.pitch/4 """
         # Note: the linear radius transition looks better than the sin transition
         #   self.apex_radius - sin(t * pi / 2) * self.tooth_height
-        r = self.apex_radius - t * self.tooth_height if apex else self.root_radius
+        if self.external:
+            r = self.apex_radius - t * self.tooth_height if apex else self.root_radius
+        else:
+            r = self.apex_radius + t * self.tooth_height if apex else self.root_radius
+
         z = t * self.pitch / 4 + t * vertical_displacement
         x = r * cos(t * pi / 2)
         y = r * sin(t * pi / 2)
@@ -120,6 +124,7 @@ class Thread:
         self.right_hand = hand == "right"
         self.simple = simple
         self.end_finishes = end_finishes
+        self.external = self.apex_radius > self.root_radius
         self.tooth_height = abs(self.apex_radius - self.root_radius)
         self.taper = 360 if taper_angle is None else taper_angle
 
@@ -136,20 +141,80 @@ class Thread:
                 cylindrical_thread_displacement = self.pitch / 2
             else:
                 cylindrical_thread_displacement = -self.pitch / 2
-            self._cq_object = self.make_thread(cylindrical_thread_length).translate(
-                (0, 0, cylindrical_thread_displacement)
-            )
 
-            # Add faded tips if requested
-            self.add_fade_ends(
-                number_faded_ends,
-                cylindrical_thread_length,
-                cylindrical_thread_displacement,
-            )
+            # Either create a cylindrical thread for further processing
+            # or create a cylindrical thread segment with faded ends
+            if number_faded_ends == 0:
+                self._cq_object = self.make_thread(cylindrical_thread_length).translate(
+                    (0, 0, cylindrical_thread_displacement)
+                )
+            else:
+                self.make_thread_with_faded_ends(
+                    number_faded_ends,
+                    cylindrical_thread_length,
+                    cylindrical_thread_displacement,
+                )
+
             # Square off ends if requested
             self.square_off_ends()
             # Chamfer ends if requested
             self.chamfer_ends()
+
+    def make_thread_with_faded_ends(
+        self,
+        number_faded_ends,
+        cylindrical_thread_length,
+        cylindrical_thread_displacement,
+    ):
+        """ Build the thread object from cylindrical thread faces and
+            faded ends faces """
+        (thread_faces, end_faces) = self.make_thread_faces(cylindrical_thread_length)
+
+        # Need to operator on each face below
+        thread_faces = [
+            f.translate((0, 0, cylindrical_thread_displacement)) for f in thread_faces
+        ]
+        end_faces = [
+            f.translate((0, 0, cylindrical_thread_displacement)) for f in end_faces
+        ]
+        cylindrical_thread_angle = (
+            (360 if self.right_hand else -360) * cylindrical_thread_length / self.pitch
+        )
+        (fade_faces, fade_ends) = self.make_thread_faces(
+            self.pitch / 4, fade_helix=True
+        )
+        if not self.right_hand:
+            fade_faces = [f.mirror("XZ") for f in fade_faces]
+
+        if self.end_finishes[0] == "fade":
+            fade_faces_bottom = [
+                f.mirror("XZ").mirror("XY").translate(cq.Vector(0, 0, self.pitch / 2))
+                for f in fade_faces
+            ]
+        if self.end_finishes[1] == "fade":
+            fade_faces_top = [
+                f.translate(
+                    cq.Vector(
+                        0,
+                        0,
+                        cylindrical_thread_length + cylindrical_thread_displacement,
+                    )
+                ).rotate((0, 0, 0), (0, 0, 1), cylindrical_thread_angle)
+                for f in fade_faces
+            ]
+        if number_faded_ends == 2:
+            thread_shell = cq.Shell.makeShell(
+                thread_faces + fade_faces_bottom + fade_faces_top
+            )
+        elif self.end_finishes[0] == "fade":
+            thread_shell = cq.Shell.makeShell(
+                thread_faces + fade_faces_bottom + [end_faces[1]]
+            )
+        else:
+            thread_shell = cq.Shell.makeShell(
+                thread_faces + fade_faces_top + [end_faces[0]]
+            )
+        self._cq_object = cq.Solid.makeSolid(thread_shell)
 
     def make_simple_thread(self) -> cq.Wire:
         """ Create a simple helical wire - fastest option @ 15ms """
@@ -201,7 +266,8 @@ class Thread:
         """ Square off the ends of the thread """
 
         if self.end_finishes.count("square") != 0:
-            half_box_size = max(self.apex_radius, self.root_radius)
+            # Note: box_size must be > max(apex,root) radius or the core doesn't cut correctly
+            half_box_size = 2 * max(self.apex_radius, self.root_radius)
             box_size = 2 * half_box_size
             cutter = cq.Solid.makeBox(
                 length=box_size,
@@ -236,7 +302,9 @@ class Thread:
                     )
             self._cq_object = self._cq_object.intersect(cutter.val())
 
-    def make_thread(self, length: float, fade_helix: bool = False,) -> cq.Solid:
+    def make_thread_faces(
+        self, length: float, fade_helix: bool = False,
+    ) -> tuple[list[cq.Face]]:
         """ Create the thread object from basic CadQuery objects
 
         This method creates three types of thread objects:
@@ -251,7 +319,6 @@ class Thread:
         c. create a shell from the faces
         d. create a solid from the shell
         """
-
         apex_helix_wires = [
             cq.Workplane("XY")
             .parametricCurve(
@@ -312,6 +379,12 @@ class Thread:
             cq.Face.makeRuledSurface(root_helix_wires[0], apex_helix_wires[0]),
         ]
         end_faces = [cq.Face.makeFromWires(end_cap_wires[i]) for i in end_caps]
+        return (thread_faces, end_faces)
+
+    def make_thread(self, length: float, fade_helix: bool = False,) -> cq.Solid:
+        """ Create a solid object by first creating the faces """
+        (thread_faces, end_faces) = self.make_thread_faces(length, fade_helix)
+
         thread_shell = cq.Shell.makeShell(thread_faces + end_faces)
         thread_solid = cq.Solid.makeSolid(thread_shell)
         return thread_solid
@@ -425,23 +498,30 @@ class AcmeThread:
         end_finishes: tuple[
             Literal["raw", "square", "fade", "chamfer"],
             Literal["raw", "square", "fade", "chamfer"],
-        ] = ("square", "fade"),
+        ] = ("fade", "fade"),
     ):
         if not size in AcmeThread.acme_pitch.keys():
             raise ValueError(
                 f"size invalid, must be one of {AcmeThread.acme_pitch.keys()}"
             )
         self.thread_angle = 29
-        self.diameter = size
-        self.apex_radius = imperial_str_to_float(self.diameter) / 2
+        self.size = size
+        self.diameter = imperial_str_to_float(self.size)
+        self.apex_radius = self.diameter / 2
         self.pitch = AcmeThread.acme_pitch[size]
-        self.root_radius = self.apex_radius - self.pitch / 2
+        self.external = external
         shoulder_width = (self.pitch / 2) * tan(radians(self.thread_angle / 2))
         apex_width = (self.pitch / 2) - shoulder_width
         root_width = (self.pitch / 2) + shoulder_width
+        if self.external:
+            self.apex_radius = self.diameter / 2
+            self.root_radius = self.apex_radius - self.pitch / 2
+        else:
+            self.apex_radius = self.diameter / 2
+            self.root_radius = self.apex_radius + self.pitch / 2
         self.length = length
         self.simple = simple
-        self.external = external
+
         if hand not in ["right", "left"]:
             raise ValueError(f'hand must be one of "right" or "left" not {hand}')
         self.hand = hand
@@ -464,13 +544,14 @@ class AcmeThread:
         ).cq_object
 
 
-class TrapezoidalThread:
+class MetricTrapezoidalThread:
     """
-    The ISO standard (i.e. metric) trapezoidal thread has a thread angle of 30° instead of Acme's 29°.
+    The ISO 2904 standard (i.e. metric) trapezoidal thread has a thread angle of 30° as opposed to Acme's 29°.
 
     The sizes are specified as diameter x pitch (in mm).
     """
 
+    # Turn off black auto-format for this array as it will be spread over hundreds of lines
     # fmt: off
     standard_sizes = [
 		"8x1.5","9x1.5","9x2","10x1.5","10x2","11x2","11x3","12x2","12x3","14x2",
@@ -518,22 +599,27 @@ class TrapezoidalThread:
         end_finishes: tuple[
             Literal["raw", "square", "fade", "chamfer"],
             Literal["raw", "square", "fade", "chamfer"],
-        ] = ("square", "fade"),
+        ] = ("fade", "fade"),
     ):
-        if not size in TrapezoidalThread.standard_sizes:
+        if not size in MetricTrapezoidalThread.standard_sizes:
             raise ValueError(
-                f"size invalid, must be one of {TrapezoidalThread.standard_sizes}"
+                f"size invalid, must be one of {MetricTrapezoidalThread.standard_sizes}"
             )
         (self.diameter, self.pitch) = (float(part) for part in size.split("x"))
         self.thread_angle = 30
-        self.apex_radius = self.diameter / 2
-        self.root_radius = self.apex_radius - self.pitch / 2
+        self.external = external
         shoulder_width = (self.pitch / 2) * tan(radians(self.thread_angle / 2))
         apex_width = (self.pitch / 2) - shoulder_width
         root_width = (self.pitch / 2) + shoulder_width
+        if self.external:
+            self.apex_radius = self.diameter / 2
+            self.root_radius = self.apex_radius - self.pitch / 2
+        else:
+            self.apex_radius = self.diameter / 2
+            self.root_radius = self.apex_radius + self.pitch / 2
         self.length = length
         self.simple = simple
-        self.external = external
+
         if hand not in ["right", "left"]:
             raise ValueError(f'hand must be one of "right" or "left" not {hand}')
         self.hand = hand
@@ -557,35 +643,43 @@ class TrapezoidalThread:
 
 
 starttime = timeit.default_timer()
-# iso_thread = IsoThread(
-#     major_diameter=4,
-#     pitch=1,
-#     length=4.35,
-#     external=True,
-#     end_finishes=("square", "fade"),
-#     hand="left",
+iso_thread = IsoThread(
+    major_diameter=4,
+    pitch=1,
+    length=4.35,
+    external=False,
+    end_finishes=("fade", "square"),
+    hand="left",
+    simple=False,
+)
+print("The time difference is :", timeit.default_timer() - starttime)
+print(f"{iso_thread.__dict__=}")
+iso = iso_thread.cq_object
+core = cq.Workplane("XY").circle(iso_thread.min_radius).extrude(iso_thread.length)
+
+# acme_thread = AcmeThread(
+#     size="1",
+#     length=1 * IN,
+#     end_finishes=("fade", "fade"),
 #     simple=False,
+#     external=False,
 # )
 # print("The time difference is :", timeit.default_timer() - starttime)
-# print(f"{iso_thread.__dict__=}")
-# iso = iso_thread.cq_object
-# core = cq.Workplane("XY").circle(iso_thread.min_radius).extrude(iso_thread.length)
-# acme_thread = AcmeThread(size="1", length=2 * IN, simple=False)
-# print("The time difference is :", timeit.default_timer() - starttime)
+# print(f"{acme_thread.cq_object.isValid()=}")
 # print(f"{acme_thread.__dict__=}")
 # acme = acme_thread.cq_object
 # core = cq.Workplane("XY").circle(acme_thread.root_radius).extrude(acme_thread.length)
 
 
-trap_thread = TrapezoidalThread(size="8x1.5", length=10, simple=False)
-print("The time difference is :", timeit.default_timer() - starttime)
-print(f"{trap_thread.__dict__=}")
-trap = trap_thread.cq_object
-core = cq.Workplane("XY").circle(trap_thread.root_radius).extrude(trap_thread.length)
+# trap_thread = TrapezoidalThread(size="8x1.5", length=10, simple=False, external=False)
+# print("The time difference is :", timeit.default_timer() - starttime)
+# print(f"{trap_thread.__dict__=}")
+# trap = trap_thread.cq_object
+# core = cq.Workplane("XY").circle(trap_thread.root_radius).extrude(trap_thread.length)
 
 if "show_object" in locals():
     show_object(core, name="core")
-    # show_object(iso, name="iso_thread")
+    show_object(iso, name="iso_thread")
     # show_object(acme, name="acme_thread")
-    show_object(trap, name="trap_thread")
+    # show_object(trap, name="trap_thread")
 
