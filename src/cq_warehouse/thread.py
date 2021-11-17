@@ -26,7 +26,7 @@ license:
 
 """
 from abc import ABC, abstractmethod
-import timeit
+from functools import cache
 from typing import Literal, Optional, Tuple, List
 from math import sin, cos, tan, radians, pi
 import cadquery as cq
@@ -96,6 +96,7 @@ class Thread:
         """ A cadquery Solid thread as defined by class attributes """
         return self._cq_object
 
+    @cache
     def __init__(
         self,
         apex_radius: float,
@@ -229,41 +230,6 @@ class Thread:
             angle=self.taper,
             lefthand=not self.right_hand,
         )
-
-    def add_fade_ends(
-        self,
-        number_faded_ends: int,
-        cylindrical_thread_length: float,
-        cylindrical_thread_displacement: float,
-    ):
-        """ Added faded ends to either end of the thread """
-        if number_faded_ends != 0:
-            cylindrical_angle = (
-                (360 if self.right_hand else -360)
-                * cylindrical_thread_length
-                / self.pitch
-            )
-            fade_thread = self.make_thread(self.pitch / 4, fade_helix=True)
-            if not self.right_hand:
-                fade_thread = fade_thread.mirror("XZ")
-            if self.end_finishes[0] == "fade":
-                self._cq_object = self._cq_object.fuse(
-                    fade_thread.mirror("XZ")
-                    .mirror("XY")
-                    .translate(cq.Vector(0, 0, self.pitch / 2)),
-                    glue=True,
-                )
-            if self.end_finishes[1] == "fade":
-                self._cq_object = self._cq_object.fuse(
-                    fade_thread.translate(
-                        cq.Vector(
-                            0,
-                            0,
-                            cylindrical_thread_length + cylindrical_thread_displacement,
-                        )
-                    ).rotate(cq.Vector(0, 0, 0), cq.Vector(0, 0, 1), cylindrical_angle),
-                    glue=True,
-                )
 
     def square_off_ends(self):
         """ Square off the ends of the thread """
@@ -475,15 +441,16 @@ class TrapezoidalThread(ABC):
         """ A cadquery Solid thread as defined by class attributes """
         return self._cq_object
 
-    @abstractmethod
-    def parse_size(self) -> Tuple[float, float]:
-        """ Convert the provided size into a tuple of diameter and pitch """
-        return NotImplementedError
-
     @property
     @abstractmethod
     def thread_angle(self) -> float:
         """ The thread angle in degrees """
+        return NotImplementedError
+
+    @classmethod
+    @abstractmethod
+    def parse_size(cls, size: str) -> Tuple[float, float]:
+        """ Convert the provided size into a tuple of diameter and pitch """
         return NotImplementedError
 
     def __init__(
@@ -502,7 +469,7 @@ class TrapezoidalThread(ABC):
         self.external = external
         self.length = length
         self.simple = simple
-        (self.diameter, self.pitch) = self.parse_size()
+        (self.diameter, self.pitch) = self.parse_size(self.size)
         shoulder_width = (self.pitch / 2) * tan(radians(self.thread_angle / 2))
         apex_width = (self.pitch / 2) - shoulder_width
         root_width = (self.pitch / 2) + shoulder_width
@@ -539,6 +506,8 @@ class AcmeThread(TrapezoidalThread):
     """
     The original trapezoidal thread form, and still probably the one most commonly encountered
     worldwide, with a 29° thread angle, is the Acme thread form.
+
+    size is specified as a string (i.e. "3/4" or "1 1/4")
     """
 
     acme_pitch = {
@@ -558,27 +527,25 @@ class AcmeThread(TrapezoidalThread):
         "3": (1 / 2) * IN,
     }
 
-    def parse_size(self) -> Tuple[float, float]:
+    thread_angle = 29.0  # in degrees
+
+    @classmethod
+    def parse_size(cls, size: str) -> Tuple[float, float]:
         """ Convert the provided size into a tuple of diameter and pitch """
-        if not self.size in AcmeThread.acme_pitch.keys():
+        if not size in AcmeThread.acme_pitch.keys():
             raise ValueError(
                 f"size invalid, must be one of {AcmeThread.acme_pitch.keys()}"
             )
-        diameter = imperial_str_to_float(self.size)
-        pitch = AcmeThread.acme_pitch[self.size]
+        diameter = imperial_str_to_float(size)
+        pitch = AcmeThread.acme_pitch[size]
         return (diameter, pitch)
-
-    @property
-    def thread_angle(self) -> float:
-        """ The thread angle in degrees """
-        return 29
 
 
 class MetricTrapezoidalThread(TrapezoidalThread):
     """
-    The ISO 2904 standard (i.e. metric) trapezoidal thread with a thread angle of 30°
+    The ISO 2904 standard metric trapezoidal thread with a thread angle of 30°
 
-    The sizes are specified as diameter x pitch (in mm).
+    size is specified as a sting with diameter x pitch in mm (i.e. "8x1.5")
     """
 
     # Turn off black auto-format for this array as it will be spread over hundreds of lines
@@ -614,57 +581,14 @@ class MetricTrapezoidalThread(TrapezoidalThread):
     ]
     # fmt: on
 
-    def parse_size(self) -> Tuple[float, float]:
+    thread_angle = 30.0  # in degrees
+
+    @classmethod
+    def parse_size(cls, size: str) -> Tuple[float, float]:
         """ Convert the provided size into a tuple of diameter and pitch """
-        if not self.size in MetricTrapezoidalThread.standard_sizes:
+        if not size in MetricTrapezoidalThread.standard_sizes:
             raise ValueError(
                 f"size invalid, must be one of {MetricTrapezoidalThread.standard_sizes}"
             )
-        return (float(part) for part in self.size.split("x"))
-
-    @property
-    def thread_angle(self) -> float:
-        """ The thread angle in degrees """
-        return 30
-
-
-starttime = timeit.default_timer()
-iso_thread = IsoThread(
-    major_diameter=4,
-    pitch=1,
-    length=4.35,
-    external=False,
-    end_finishes=("chamfer", "chamfer"),
-    hand="left",
-    simple=False,
-)
-print("The time difference is :", timeit.default_timer() - starttime)
-print(f"{iso_thread.__dict__=}")
-iso = iso_thread.cq_object
-core = cq.Workplane("XY").circle(iso_thread.min_radius).extrude(iso_thread.length)
-
-# acme_thread = AcmeThread(
-#     size="1",
-#     length=1 * IN,
-#     end_finishes=("fade", "fade"),
-#     simple=False,
-#     external=False,
-# )
-# print("The time difference is :", timeit.default_timer() - starttime)
-# print(f"{acme_thread.cq_object.isValid()=}")
-# print(f"{acme_thread.__dict__=}")
-# acme = acme_thread.cq_object
-# core = cq.Workplane("XY").circle(acme_thread.root_radius).extrude(acme_thread.length)
-
-
-# trap_thread = TrapezoidalThread(size="8x1.5", length=10, simple=False, external=False)
-# print("The time difference is :", timeit.default_timer() - starttime)
-# print(f"{trap_thread.__dict__=}")
-# trap = trap_thread.cq_object
-# core = cq.Workplane("XY").circle(trap_thread.root_radius).extrude(trap_thread.length)
-
-if "show_object" in locals():
-    show_object(core, name="core")
-    show_object(iso, name="iso_thread")
-    # show_object(acme, name="acme_thread")
-    # show_object(trap, name="trap_thread")
+        (diameter, pitch) = (float(part) for part in size.split("x"))
+        return (diameter, pitch)
