@@ -55,13 +55,7 @@ iso_core = (
 
 """ AcmeThread Example """
 starttime = timeit.default_timer()
-acme_thread = AcmeThread(
-    size="1/4",
-    length=1 * IN,
-    end_finishes=("raw", "fade"),
-    simple=False,
-    external=True,
-)
+acme_thread = AcmeThread(size="1/4", length=1 * IN, simple=False,)
 elapsed_time = timeit.default_timer() - starttime
 print(f"AcmeThread elapsed time: {elapsed_time}")
 acme_core = (
@@ -69,14 +63,29 @@ acme_core = (
 )
 
 """ MetricTrapezoidalThread example """
-metric_thread = MetricTrapezoidalThread(
-    size="8x1.5", length=20 * MM, simple=False, external=True
-)
+metric_thread = MetricTrapezoidalThread(size="8x1.5", length=20 * MM, simple=False)
 elapsed_time = timeit.default_timer() - starttime
 print(f"MetricTrapezoidalThread elapsed time: {elapsed_time}")
 metric_core = (
     cq.Workplane("XY").circle(metric_thread.root_radius).extrude(metric_thread.length)
 )
+""" end_finishes example """
+end_finishes = [["raw", "fade"], ["square", "chamfer"]]
+end_examples = []
+for i in range(2):
+    for j in range(2):
+        iso_end_thread = IsoThread(
+            major_diameter=3,
+            pitch=1,
+            length=4,
+            end_finishes=("square", end_finishes[i][j]),
+            simple=False,
+        )
+        end_examples.append(
+            iso_end_thread.cq_object.translate(
+                cq.Vector((i - 0.5) * 5, (j - 0.5) * 5, 0)
+            )
+        )
 
 if "show_object" in locals():
     show_object(iso_thread.cq_object, name="iso_thread")
@@ -85,3 +94,4 @@ if "show_object" in locals():
     show_object(acme_core, name="acme_core")
     show_object(metric_thread.cq_object, name="metric_thread")
     show_object(metric_core, name="metric_core")
+    show_object(end_examples, name="end_examples")
