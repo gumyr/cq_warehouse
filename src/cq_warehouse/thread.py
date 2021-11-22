@@ -106,7 +106,6 @@ class Thread:
         pitch: float,
         length: float,
         hand: Literal["right", "left"] = "right",
-        simple: bool = True,
         taper_angle: Optional[float] = None,
         end_finishes: Tuple[
             Literal["raw", "square", "fade", "chamfer"],
@@ -119,50 +118,49 @@ class Thread:
                 raise ValueError(
                     'end_finishes invalid, must be tuple() of "raw, square, taper, or chamfer"'
                 )
+        self.external = apex_radius > root_radius
         self.apex_radius = apex_radius
         self.apex_width = apex_width
-        self.root_radius = root_radius
+        # Unfortunately, when creating "fade" ends inacuraries in parametric curve calculations
+        # can result in a gap which causes the OCCT core to fail when combining with other
+        # object (like the core of the thread). To avoid this, subtract a fudge factor
+        # to the root radius to make it small enough to intersect the given radii.
+        self.root_radius = root_radius - (0.001 if self.external else 0.000)
         self.root_width = root_width
         self.pitch = pitch
         self.length = length
         self.right_hand = hand == "right"
-        self.simple = simple
         self.end_finishes = end_finishes
-        self.external = self.apex_radius > self.root_radius
         self.tooth_height = abs(self.apex_radius - self.root_radius)
         self.taper = 360 if taper_angle is None else taper_angle
 
-        # Either return a helical wire if simple or a finished thread solid
-        if self.simple:
-            self._cq_object = self.make_simple_thread()
+        # Create base cylindrical thread
+        number_faded_ends = self.end_finishes.count("fade")
+        cylindrical_thread_length = self.length + self.pitch * (
+            1 - 1 * number_faded_ends
+        )
+        if self.end_finishes[0] == "fade":
+            cylindrical_thread_displacement = self.pitch / 2
         else:
-            # Create base cylindrical thread
-            number_faded_ends = self.end_finishes.count("fade")
-            cylindrical_thread_length = self.length + self.pitch * (
-                1 - 1 * number_faded_ends
+            cylindrical_thread_displacement = -self.pitch / 2
+
+        # Either create a cylindrical thread for further processing
+        # or create a cylindrical thread segment with faded ends
+        if number_faded_ends == 0:
+            self._cq_object = self.make_thread(cylindrical_thread_length).translate(
+                (0, 0, cylindrical_thread_displacement)
             )
-            if self.end_finishes[0] == "fade":
-                cylindrical_thread_displacement = self.pitch / 2
-            else:
-                cylindrical_thread_displacement = -self.pitch / 2
+        else:
+            self.make_thread_with_faded_ends(
+                number_faded_ends,
+                cylindrical_thread_length,
+                cylindrical_thread_displacement,
+            )
 
-            # Either create a cylindrical thread for further processing
-            # or create a cylindrical thread segment with faded ends
-            if number_faded_ends == 0:
-                self._cq_object = self.make_thread(cylindrical_thread_length).translate(
-                    (0, 0, cylindrical_thread_displacement)
-                )
-            else:
-                self.make_thread_with_faded_ends(
-                    number_faded_ends,
-                    cylindrical_thread_length,
-                    cylindrical_thread_displacement,
-                )
-
-            # Square off ends if requested
-            self.square_off_ends()
-            # Chamfer ends if requested
-            self.chamfer_ends()
+        # Square off ends if requested
+        self.square_off_ends()
+        # Chamfer ends if requested
+        self.chamfer_ends()
 
     def make_thread_with_faded_ends(
         self,
@@ -219,17 +217,6 @@ class Thread:
                 thread_faces + fade_faces_top + [end_faces[0]]
             )
         self._cq_object = cq.Solid.makeSolid(thread_shell)
-
-    def make_simple_thread(self) -> cq.Wire:
-        """ Create a simple helical wire - fastest option @ 15ms """
-
-        return cq.Wire.makeHelix(
-            pitch=self.pitch,
-            height=self.length,
-            radius=self.apex_radius,
-            angle=self.taper,
-            lefthand=not self.right_hand,
-        )
 
     def square_off_ends(self):
         """ Square off the ends of the thread """
@@ -387,7 +374,6 @@ class IsoThread:
         length: float,
         external: bool = True,
         hand: Literal["right", "left"] = "right",
-        simple: bool = True,
         end_finishes: Tuple[
             Literal["raw", "square", "fade", "chamfer"],
             Literal["raw", "square", "fade", "chamfer"],
@@ -397,7 +383,6 @@ class IsoThread:
         self.major_diameter = major_diameter
         self.pitch = pitch
         self.length = length
-        self.simple = simple
         self.external = external
         self.thread_angle = 60
         if hand not in ["right", "left"]:
@@ -422,7 +407,6 @@ class IsoThread:
             length=self.length,
             end_finishes=self.end_finishes,
             hand=self.hand,
-            simple=self.simple,
         ).cq_object
 
 
@@ -459,7 +443,6 @@ class TrapezoidalThread(ABC):
         length: float,
         external: bool = True,
         hand: Literal["right", "left"] = "right",
-        simple: bool = True,
         end_finishes: tuple[
             Literal["raw", "square", "fade", "chamfer"],
             Literal["raw", "square", "fade", "chamfer"],
@@ -468,7 +451,6 @@ class TrapezoidalThread(ABC):
         self.size = size
         self.external = external
         self.length = length
-        self.simple = simple
         (self.diameter, self.pitch) = self.parse_size(self.size)
         shoulder_width = (self.pitch / 2) * tan(radians(self.thread_angle / 2))
         apex_width = (self.pitch / 2) - shoulder_width
@@ -498,7 +480,6 @@ class TrapezoidalThread(ABC):
             length=self.length,
             end_finishes=self.end_finishes,
             hand=self.hand,
-            simple=self.simple,
         ).cq_object
 
 

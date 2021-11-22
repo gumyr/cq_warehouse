@@ -49,42 +49,9 @@ class TestSupportFunctions(BaseTest):
             (1.25 * IN, IN / 32), decode_imperial_size("1 1/4-32"), 5
         )
 
-    def test_is_safe(self):
-        self.assertTrue(is_safe("1 1/8"))
-        self.assertFalse(is_safe("rm -rf *.*"))
-
-    def test_imperial_str_to_float(self):
-        self.assertAlmostEqual(imperial_str_to_float("1 1/2"), 1.5 * IN)
-        self.assertEqual(imperial_str_to_float("rm -rf *.*"), "rm -rf *.*")
-
     def test_metric_str_to_float(self):
         self.assertEqual(metric_str_to_float(" 1000 "), 1000)
         self.assertEqual(metric_str_to_float("rm -rf *.*"), "rm -rf *.*")
-
-
-class TestExternalThread(BaseTest):
-    def test_exterior_thread(self):
-        """ Simple validity check for an exterior thread """
-
-        thread = ExternalThread(
-            major_diameter=0.1900 * IN, pitch=IN / 32, length=(1 / 4) * IN, simple=False
-        )
-        self.assertTrue(thread.cq_object.isValid())
-        self.assertIsNone(thread.external_thread_core_radius)
-        with self.assertRaises(ValueError):
-            ExternalThread(major_diameter=5, pitch=1, length=5, hand="righty")
-
-
-class TestInternalThread(BaseTest):
-    def test_interior_thread(self):
-        """ Simple validity check for an interior thread """
-
-        thread = InternalThread(
-            major_diameter=0.1900 * IN, pitch=IN / 32, length=(1 / 4) * IN, simple=False
-        )
-        self.assertTrue(thread.cq_object.isValid())
-        with self.assertRaises(ValueError):
-            InternalThread(major_diameter=5, pitch=1, length=5, hand="righty")
 
 
 class TestRecessExceptions(BaseTest):
