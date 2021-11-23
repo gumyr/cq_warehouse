@@ -25,21 +25,13 @@ license:
     limitations under the License.
 
 """
-# from os import setsid
-from typing import Set
 import unittest
-from cq_warehouse import fastener
-from pydantic.main import BaseModel
 from tests import BaseTest
 import cadquery as cq
 from cq_warehouse.fastener import *
 
-# import cadquery as cq
-
 MM = 1
 IN = 25.4 * MM
-VERBOSE = False
-FULLTEST = False
 
 
 class TestSupportFunctions(BaseTest):
@@ -85,6 +77,8 @@ class TestWashers(BaseTest):
                         )
                         self.assertGreater(washer.washer_diameter, 0)
                         self.assertGreater(washer.washer_thickness, 0)
+                        self.assertGreater(len(washer.info), 0)
+
                         # Check the hole data if available
                         try:
                             clearance_normal = washer.clearance_hole_diameters["Normal"]
@@ -128,16 +122,21 @@ class TestNuts(BaseTest):
         for nut_class in Nut.__subclasses__():
             for nut_type in nut_class.types():
                 for nut_size in nut_class.sizes(fastener_type=nut_type):
+                    simple_thread = not (
+                        nut_type == list(nut_class.types())[0]
+                        and nut_size == nut_class.sizes(fastener_type=nut_type)[0]
+                    )
                     with self.subTest(
                         nut_class=nut_class.__name__,
                         fastener_type=nut_type,
                         size=nut_size,
                     ):
                         nut = nut_class(
-                            size=nut_size, fastener_type=nut_type, simple=True
+                            size=nut_size, fastener_type=nut_type, simple=simple_thread
                         )
                         self.assertGreater(nut.nut_diameter, 0)
                         self.assertGreater(nut.nut_thickness, 0)
+                        self.assertGreater(len(nut.info), 0)
                         # Check the hole data if available
                         try:
                             clearance_normal = nut.clearance_hole_diameters["Normal"]
@@ -214,6 +213,10 @@ class TestScrews(BaseTest):
         for screw_class in Screw.__subclasses__():
             for screw_type in screw_class.types():
                 for screw_size in screw_class.sizes(fastener_type=screw_type):
+                    simple_thread = not (
+                        screw_type == list(screw_class.types())[0]
+                        and screw_size == screw_class.sizes(fastener_type=screw_type)[0]
+                    )
                     with self.subTest(
                         screw_class=screw_class.__name__,
                         fastener_type=screw_type,
@@ -223,7 +226,7 @@ class TestScrews(BaseTest):
                             size=screw_size,
                             fastener_type=screw_type,
                             length=15,
-                            simple=True,
+                            simple=simple_thread,
                         )
                         if screw.head is None:
                             self.assertEqual(screw.head_height, 0)
@@ -231,6 +234,7 @@ class TestScrews(BaseTest):
                         else:
                             self.assertGreater(screw.head_height, 0)
                             self.assertGreater(screw.head_diameter, 0)
+                        self.assertGreater(len(screw.info), 0)
                         # Check the hole data if available
                         try:
                             clearance_normal = screw.clearance_hole_diameters["Normal"]
@@ -319,6 +323,8 @@ class TestWorkplaneMethods(BaseTest):
         )
         self.assertLess(box.Volume(), 1000)
         self.assertEqual(len(pillow_block.children), 1)
+        self.assertEqual(pillow_block.fastener_quantities(bom=False)[screw], 1)
+        self.assertEqual(len(pillow_block.fastener_quantities(bom=True)), 1)
 
     def test_invalid_clearance_hole(self):
         for fastener_class in Screw.__subclasses__() + Nut.__subclasses__():
@@ -397,83 +403,16 @@ class TestWorkplaneMethods(BaseTest):
                 depth=20,
                 baseAssembly=pillow_block,
                 washers=[washer, washer],
-                simple=True,
+                simple=False,
                 counterSunk=False,
             )
+            .faces("<X")
+            .workplane()
+            .threadedHole(fastener=screw, depth=20, simple=True, counterSunk=False,)
             .val()
         )
         self.assertLess(box.Volume(), 8000)
         self.assertEqual(len(pillow_block.children), 3)
-
-
-# class TestHexNut(BaseTest):
-#     """ Test HexNut class functionality """
-
-#     def test_hexnut_validity(self):
-#         """ Simple validity check for all the stand sized hex head nuts """
-
-#         if FULLTEST:
-#             test_set = HexNut.metric_sizes() + HexNut.imperial_sizes()
-#         else:
-#             test_set = HexNut.metric_sizes()[:1]
-#         for i, size in enumerate(test_set):
-#             if size in ["M6-1", "1/4-20", "1/4-28", "5/16-18", "5/16-24"]:
-#                 continue
-#             if VERBOSE:
-#                 print(f"Testing HexNut size {size} - {i+1} of {len(test_set)}")
-#             with self.subTest(size=size):
-#                 self.assertTrue(HexNut(size=size).cq_object.isValid())
-
-
-# class TestSquareNut(BaseTest):
-#     """ Test SquareNut class functionality """
-
-#     def test_squarenut_validity(self):
-#         """ Simple validity check for all the stand sized square head nuts """
-
-#         if FULLTEST:
-#             test_set = SquareNut.sizes()
-#         else:
-#             test_set = SquareNut.sizes()[:1]
-#         for i, size in enumerate(test_set):
-#             # if size in ["M6-1", "1/4-20", "1/4-28", "5/16-18", "5/16-24"]:
-#             #     continue
-#             if VERBOSE:
-#                 print(f"Testing SquareNut size {size} - {i+1} of {len(test_set)}")
-#             with self.subTest(size=size):
-#                 self.assertTrue(SquareNut(size=size).cq_object.isValid())
-
-
-# class TestSetScrew(BaseTest):
-#     """ Test SetScrew class functionality """
-
-#     def test_setscrew_validity(self):
-#         """ Simple validity check for all the stand sized setscrews """
-
-#         for i, size in enumerate(test_set):
-#             if size in ["M20-2.5"]:
-#                 continue
-#             if VERBOSE:
-#                 print(f"Testing SetScrew size {size} - {i+1} of {len(test_set)}")
-#             min_length = SetScrew.metric_parameters[size]["Socket_Depth"] * 1.5
-#             with self.subTest(size=size):
-#                 self.assertTrue(
-#                     SetScrew(size=size, length=min_length).cq_object.isValid()
-#                 )
-#         if FULLTEST:
-#             test_set = SetScrew.imperial_sizes()
-#         else:
-#             test_set = []
-#         for i, size in enumerate(test_set):
-#             if size in ["#0-80", "3/8-16", "3/8-24", "7/16-14", "5/8-11"]:
-#                 continue
-#             if VERBOSE:
-#                 print(f"Testing SetScrew size {size} - {i+1} of {len(test_set)}")
-#             min_length = SetScrew.imperial_parameters[size]["Socket_Depth"] * 1.5
-#             with self.subTest(size=size):
-#                 self.assertTrue(
-#                     SetScrew(size=size, length=min_length).cq_object.isValid()
-#                 )
 
 
 if __name__ == "__main__":

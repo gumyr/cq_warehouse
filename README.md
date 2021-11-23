@@ -416,8 +416,6 @@ When choosing between these four options, consider the performance differences b
 
 The "raw" and "fade" end finishes do not use any boolean operations which is why they are so fast. "square" does a cut() operation with a box while "chamfer" does an intersection() with a chamfered cylinder.
 
-To further avoid the overhead of creating actual threads when a simple representation is sufficient - for example, on a threaded fastener which is a standard part of a large mechanical assembly - a `simple` optional parameter replaces the thread object with just an appropriate helical wire.
-
 The following sections describe the different thread classes.
 
 ### Thread
@@ -431,7 +429,6 @@ The parameters are:
 - `pitch` (float) : the length of 360° of thread rotation
 - `length` (float) : the end to end length of the thread
 - `hand` (Literal["right", "left"] = "right") : twist direction
-- `simple` (bool = True) : return a helix for the thread object
 - `taper_angle` (Optional[float] = None) : cone angle for tapered thread
 - `end_finishes` (Tuple[Literal["raw", "square", "fade", "chamfer"]] = ("raw", "raw"))
 
@@ -448,7 +445,6 @@ The parameters are:
 - `length` (float) : the end to end length of the thread
 - `external` (bool=True) : external or internal thread selector
 - `hand` (Literal["right", "left"] = "right") : twist direction
-- `simple` (bool = True) : return a helix for the thread object
 - `taper_angle` (Optional[float] = None) : cone angle for tapered thread
 - `end_finishes` (Tuple[Literal["raw", "square", "fade", "chamfer"]] = ("fade", "square"))
 
@@ -468,7 +464,6 @@ The parameters are:
 - `length` (float) : the end to end length of the thread
 - `external` (bool=True) : external or internal thread selector
 - `hand` (Literal["right", "left"] = "right") : twist direction
-- `simple` (bool = True) : return a helix for the thread object
 - `end_finishes` (Tuple[Literal["raw", "square", "fade", "chamfer"]] = ("fade", "fade"))
 
 This class exposes instance variables for the input parameters as well as:
@@ -488,7 +483,6 @@ The parameters are:
 - `length` (float) : the end to end length of the thread
 - `external` (bool=True) : external or internal thread selector
 - `hand` (Literal["right", "left"] = "right") : twist direction
-- `simple` (bool = True) : return a helix for the thread object
 - `end_finishes` (Tuple[Literal["raw", "square", "fade", "chamfer"]] = ("fade", "fade"))
 
 This class exposes instance variables for the input parameters as well as:
@@ -553,7 +547,7 @@ Many of the fastener standards provide ranges for some of the dimensions - for e
 
 Threaded parts are complex for CAD systems to create and significantly increase the storage requirements thus making the system slow and difficult to use. To minimize these requirements all of the fastener classes have a `simple` boolean parameter that when `True` doesn't create actual threads at all. Such simple parts have the same overall dimensions and such that they can be used to check for fitment without dramatically impacting performance.
 
-> :warning: **CQ-editor** :warning: Set the Preferences :arrow_right: 3D Viewer :arrow_right: Deviation parameter to 0.01 to avoid crashes due to memory over-consumption when working with threads
+> :hourglass: **CQ-editor** :hourglass: You can increase the Preferences :arrow_right: 3D Viewer :arrow_right: Deviation parameter to improve performance by slightly compromising accuracy.
 
 All of the fasteners default to right-handed thread but each of them provide a `hand` string parameter which can either be `"right"` or `"left"`.
 

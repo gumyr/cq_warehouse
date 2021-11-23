@@ -79,7 +79,6 @@ class TestIsoThread(BaseTest):
                         external=True,
                         end_finishes=(end0, end1),
                         hand="right",
-                        simple=False,
                     )
                     self.assertTrue(thread.cq_object.isValid())
 
@@ -96,16 +95,8 @@ class TestIsoThread(BaseTest):
                         external=False,
                         end_finishes=(end0, end1),
                         hand="left" if end0 == end1 else "right",
-                        simple=False,
                     )
                     self.assertTrue(thread.cq_object.isValid())
-
-    def test_simple_thread(self):
-        thread = IsoThread(
-            major_diameter=6 * MM, pitch=1 * MM, length=8 * MM, simple=True,
-        )
-        self.assertTrue(thread.cq_object.isValid())
-        self.assertTrue(isinstance(thread.cq_object, cq.Wire))
 
     def test_parsing(self):
 
@@ -121,25 +112,23 @@ class TestAcmeThread(BaseTest):
     def test_exterior_thread(self):
         """ Simple validity check for an exterior thread """
 
-        acme_thread = AcmeThread(
-            size="1 1/4", length=1 * IN, simple=False, external=True,
-        )
+        acme_thread = AcmeThread(size="1 1/4", length=1 * IN, external=True,)
         self.assertTrue(acme_thread.cq_object.isValid())
 
     def test_interior_thread(self):
         """ Simple validity check for an interior thread """
 
-        acme_thread = AcmeThread(
-            size="1 1/4", length=1 * IN, simple=False, external=False,
-        )
+        acme_thread = AcmeThread(size="1 1/4", length=1 * IN, external=False,)
         self.assertTrue(acme_thread.cq_object.isValid())
+
+    def test_sizes(self):
+        """ Validate sizes list if created """
+        self.assertGreater(len(AcmeThread.sizes()), 0)
 
     def test_parsing(self):
 
         with self.assertRaises(ValueError):
-            AcmeThread(
-                size="1 1/4", length=1 * IN, simple=False, external=False, hand="righty"
-            )
+            AcmeThread(size="1 1/4", length=1 * IN, external=False, hand="righty")
         with self.assertRaises(ValueError):
             AcmeThread(size="1.25", length=1 * IN)
         with self.assertRaises(ValueError):
@@ -151,7 +140,7 @@ class TestMetricTrapezoidalThread(BaseTest):
         """ Simple validity check for an exterior thread """
 
         trap_thread = MetricTrapezoidalThread(
-            size="8x1.5", length=10 * MM, simple=False, external=True,
+            size="8x1.5", length=10 * MM, external=True,
         )
         self.assertTrue(trap_thread.cq_object.isValid())
 
@@ -159,13 +148,17 @@ class TestMetricTrapezoidalThread(BaseTest):
         """ Simple validity check for an interior thread """
 
         trap_thread = MetricTrapezoidalThread(
-            size="95x18", length=100 * MM, simple=False, external=False,
+            size="95x18", length=100 * MM, external=False,
         )
         self.assertTrue(trap_thread.cq_object.isValid())
 
     def test_parsing(self):
         with self.assertRaises(ValueError):
             MetricTrapezoidalThread(size="8x1", length=50 * MM)
+
+    def test_sizes(self):
+        """ Validate sizes list if created """
+        self.assertGreater(len(MetricTrapezoidalThread.sizes()), 0)
 
 
 if __name__ == "__main__":

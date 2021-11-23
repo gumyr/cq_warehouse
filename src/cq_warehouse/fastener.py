@@ -205,36 +205,6 @@ def _fillet2D(self, radius: float, vertices: List[cq.Vertex]) -> cq.Wire:
 cq.Workplane.fillet2D = _fillet2D
 
 
-class _ThreadOuterEdgeSelector(cq.Selector):
-    """ A custom cadquery selector that filters the edges in a thread cross section
-        to just those on the periphery """
-
-    # pylint: disable=too-few-public-methods
-    def __init__(self):
-        pass
-
-    def filter(self, objectList: List[cq.Edge]) -> List[cq.Edge]:
-        """ Filter the edge list to those on the exterior of the thread section """
-
-        # Filter out edges that radiate from the origin
-        outside_edges = [
-            edge
-            for edge in objectList
-            if abs(degrees(edge.positionAt(0).getAngle(edge.tangentAt(0))) - 90) < 20
-        ]
-        min_radius = min([e.positionAt(0).Length for e in outside_edges])
-        # Filter out edges in the inner ring
-        outside_edges = [
-            edge
-            for edge in outside_edges
-            if edge.positionAt(0).Length > 1.2 * min_radius
-        ]
-        return outside_edges
-
-
-cq.selectors.ThreadOuterEdgeSelector = _ThreadOuterEdgeSelector
-
-
 def cross_recess(size: str) -> Tuple[cq.Workplane, float]:
     """ Type H Cross / Phillips recess for screws
 
@@ -539,15 +509,6 @@ class Nut(ABC):
                 getattr(self.__class__, method)
             )
 
-        # Create the thread
-        thread = IsoThread(
-            major_diameter=self.thread_diameter,
-            pitch=self.thread_pitch,
-            length=self.nut_data["m"],
-            external=False,
-            hand=self.hand,
-        )
-
         # pylint: disable=no-member
         profile = self.nut_profile()
         max_nut_height = profile.vertices(">Z").val().Z
@@ -563,7 +524,7 @@ class Nut(ABC):
             .toPending()
             .add(
                 cq.Wire.makeCircle(
-                    thread.major_diameter / 2, cq.Vector(0, 0, 0), cq.Vector(0, 0, 1),
+                    self.thread_diameter / 2, cq.Vector(0, 0, 0), cq.Vector(0, 0, 1),
                 )
             )
             .toPending()
@@ -581,15 +542,33 @@ class Nut(ABC):
 
         # Add a flange as it exists outside of the head plan
         if method_exists("flange_profile"):
-            nut = nut.union(
+            flange = (
                 cq.Workplane("XZ")
                 .add(self.flange_profile().val())
                 .toPending()
                 .revolve()
             )
+            flange = (
+                cq.Workplane("XY")
+                .add(flange)
+                .toPending()
+                .faces(">Z")
+                .hole(self.thread_diameter)
+            )
+            nut = nut.union(flange)
 
         # Add the thread to the nut body
-        nut = nut.union(thread.cq_object, glue=True)
+        if not self.simple:
+            # Create the thread
+            thread = IsoThread(
+                major_diameter=self.thread_diameter,
+                pitch=self.thread_pitch,
+                length=self.nut_data["m"],
+                external=False,
+                end_finishes=("fade", "fade"),
+                hand=self.hand,
+            )
+            nut = nut.union(thread.cq_object)
 
         return nut
 
@@ -693,7 +672,7 @@ class HexNutWithFlange(Nut):
     """
     size: str
     fastener_type: str
-        en1661 Hexagon nuts with flange
+        din1665 Hexagon nuts with flange
     hand: Literal["right", "left"] = "right"
     simple: bool = True
     """
@@ -963,39 +942,10 @@ class Screw(ABC):
         """ A cadquery Solid thread as defined by class attributes """
         return self._head
 
-    # @property
-    # def shank(self):
-    #     """ A cadquery Solid thread as defined by class attributes """
-    #     return self._shank
-
     @property
     def cq_object(self):
         """ A cadquery Compound screw as defined by class attributes """
         return self._cq_object
-
-    def make_shank(
-        self, body_length: float, body_diameter: Optional[float] = None
-    ) -> cq.Solid:
-        """ Create a bolt shank consisting of an optional non-threaded body & threaded section """
-        # if body_length > 0:
-        # if body_diameter is not None:
-        #     diameter = body_diameter
-        #     chamfer_size = (body_diameter - self.thread_diameter) / 2
-        # else:
-        #     diameter = self.thread_diameter
-        #     chamfer_size = None
-        # shank = cq.Workplane("XY").circle(diameter / 2).extrude(-body_length)
-        # if chamfer_size is not None and chamfer_size > 0:
-        #     shank = shank.faces("<Z").chamfer(chamfer_size)
-        # shank = shank.union(
-        #     self.cq_object.translate((0, 0, -body_length - self.length))
-        # )
-        # else:
-        #     shank = self.cq_object.translate((0, 0, -self.length))
-        shank = (
-            cq.Workplane("XY").circle(self.thread_diameter / 2).extrude(-self.length)
-        )
-        return shank
 
     @cache
     def __init__(
@@ -1659,6 +1609,7 @@ class SetScrew(Screw):
             pitch=self.thread_pitch,
             length=self.length,
             external=True,
+            end_finishes=("fade", "fade"),
             hand=self.hand,
         )
         core = (
@@ -1672,9 +1623,7 @@ class SetScrew(Screw):
             .extrude(self.length - t)
             .mirror()
         )
-        return core.union(
-            thread.cq_object.translate((0, 0, -thread.length)), glue=True
-        ).val()
+        return core.union(thread.cq_object.translate((0, 0, -thread.length))).val()
 
     def make_head(self):
         """ There is no head on a setscrew """
@@ -1823,8 +1772,11 @@ class Washer(ABC):
         (d1, d2, h) = (self.washer_data[p] for p in ["d1", "d2", "h"])
         profile = (
             cq.Workplane("XZ")
-            .rect((d2 - d1) / 2, h, centered=False)
-            .translate((d1 / 2, 0))
+            .moveTo(d1 / 2, 0)
+            .hLineTo(d2 / 2)
+            .vLineTo(h)
+            .hLineTo(d1 / 2)
+            .close()
         )
         return profile
 
@@ -1955,14 +1907,7 @@ def _fastenerHole(
         head_offset = 0
 
     if threaded_hole:
-        thread = IsoThread(
-            major_diameter=fastener.thread_diameter,
-            pitch=fastener.thread_pitch,
-            length=depth - head_offset,
-            external=False,
-            hand=hand,
-        )
-        hole_radius = thread.major_diameter / 2
+        hole_radius = fastener.thread_diameter / 2
     else:
         key = fit if material is None else material
         try:
@@ -2033,11 +1978,17 @@ def _fastenerHole(
     part = self.cutEach(lambda loc: fastener_hole.moved(loc), True, False)
 
     # Add threaded inserts
-    if threaded_hole:
+    if threaded_hole and not simple:
+        thread = IsoThread(
+            major_diameter=fastener.thread_diameter,
+            pitch=fastener.thread_pitch,
+            length=depth - head_offset,
+            external=False,
+            hand=hand,
+        )
         for hole_loc in hole_locations:
             part = part.union(
-                thread.cq_object.moved(hole_loc * cq.Location(bore_direction * depth)),
-                glue=True,
+                thread.cq_object.moved(hole_loc * cq.Location(bore_direction * depth))
             )
     if clean:
         part = part.clean()
@@ -2134,7 +2085,9 @@ cq.Workplane.threadedHole = _threadedHole
 
 
 def _fastener_quantities(self, bom: bool = True) -> dict:
-    """ Generate a bill of materials of the fasteners in an assembly augmented by the hole methods """
+    """ Generate a bill of materials of the fasteners in an assembly augmented by the hole methods
+        bom: returns fastener.info if True else fastener
+    """
     if self.metadata is None:
         return None
 
@@ -2153,10 +2106,3 @@ def _fastener_quantities(self, bom: bool = True) -> dict:
 
 
 cq.Assembly.fastener_quantities = _fastener_quantities
-
-test = PanHeadWithCollarScrew(
-    size="M6-1", length=10 * MM, fastener_type="din967", simple=False
-).cq_object
-
-if "show_object" in locals():
-    show_object(test, name="test")

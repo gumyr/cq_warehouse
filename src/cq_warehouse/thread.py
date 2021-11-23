@@ -75,15 +75,19 @@ class Thread:
     ) -> Tuple[float, float, float]:
         """ A helical function used to create the faded tips of threads that spirals
             self.tooth_height in self.pitch/4 """
-        # Note: the linear radius transition looks better than the sin transition
-        #   self.apex_radius - sin(t * pi / 2) * self.tooth_height
         if self.external:
             radius = (
-                self.apex_radius - t * self.tooth_height if apex else self.root_radius
+                # self.apex_radius - t * self.tooth_height if apex else self.root_radius
+                self.apex_radius - sin(t * pi / 2) * self.tooth_height
+                if apex
+                else self.root_radius
             )
         else:
             radius = (
-                self.apex_radius + t * self.tooth_height if apex else self.root_radius
+                # self.apex_radius + t * self.tooth_height if apex else self.root_radius
+                self.apex_radius + sin(t * pi / 2) * self.tooth_height
+                if apex
+                else self.root_radius
             )
 
         z_pos = t * self.pitch / 4 + t * vertical_displacement
@@ -123,9 +127,9 @@ class Thread:
         self.apex_width = apex_width
         # Unfortunately, when creating "fade" ends inacuraries in parametric curve calculations
         # can result in a gap which causes the OCCT core to fail when combining with other
-        # object (like the core of the thread). To avoid this, subtract a fudge factor
+        # object (like the core of the thread). To avoid this, subtract (or add) a fudge factor
         # to the root radius to make it small enough to intersect the given radii.
-        self.root_radius = root_radius - (0.001 if self.external else 0.000)
+        self.root_radius = root_radius - (0.001 if self.external else -0.001)
         self.root_width = root_width
         self.pitch = pitch
         self.length = length
@@ -511,6 +515,11 @@ class AcmeThread(TrapezoidalThread):
     thread_angle = 29.0  # in degrees
 
     @classmethod
+    def sizes(cls) -> List[str]:
+        """ Return a list of the thread sizes """
+        return list(AcmeThread.acme_pitch.keys())
+
+    @classmethod
     def parse_size(cls, size: str) -> Tuple[float, float]:
         """ Convert the provided size into a tuple of diameter and pitch """
         if not size in AcmeThread.acme_pitch.keys():
@@ -563,6 +572,11 @@ class MetricTrapezoidalThread(TrapezoidalThread):
     # fmt: on
 
     thread_angle = 30.0  # in degrees
+
+    @classmethod
+    def sizes(cls) -> List[str]:
+        """ Return a list of the thread sizes """
+        return MetricTrapezoidalThread.standard_sizes
 
     @classmethod
     def parse_size(cls, size: str) -> Tuple[float, float]:
