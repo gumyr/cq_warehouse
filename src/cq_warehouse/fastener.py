@@ -52,12 +52,12 @@ IN = 25.4 * MM
 
 
 def polygon_diagonal(width: float, num_sides: Optional[int] = 6) -> float:
-    """ Distance across polygon diagonals given width across flats """
+    """Distance across polygon diagonals given width across flats"""
     return width / cos(pi / num_sides)
 
 
 def read_fastener_parameters_from_csv(filename: str) -> dict:
-    """ Parse a csv parameter file into a dictionary of strings """
+    """Parse a csv parameter file into a dictionary of strings"""
 
     parameters = {}
     with pkg_resources.open_text(cq_warehouse, filename) as csvfile:
@@ -72,7 +72,7 @@ def read_fastener_parameters_from_csv(filename: str) -> dict:
 
 
 def decode_imperial_size(size: str) -> Tuple[float, float]:
-    """ Extract the major diameter and pitch from an imperial size """
+    """Extract the major diameter and pitch from an imperial size"""
 
     # Imperial # sizes to diameters
     imperial_numbered_sizes = {
@@ -101,7 +101,7 @@ def decode_imperial_size(size: str) -> Tuple[float, float]:
 
 
 def metric_str_to_float(measure: str) -> float:
-    """ Convert a metric measurement to a float value """
+    """Convert a metric measurement to a float value"""
 
     if is_safe(measure):
         # pylint: disable=eval-used
@@ -113,9 +113,10 @@ def metric_str_to_float(measure: str) -> float:
 
 
 def evaluate_parameter_dict_of_dict(
-    parameters: dict, is_metric: Optional[bool] = True,
+    parameters: dict,
+    is_metric: Optional[bool] = True,
 ) -> dict:
-    """ Convert string values in a dict of dict structure to floats based on provided units """
+    """Convert string values in a dict of dict structure to floats based on provided units"""
 
     measurements = {}
     for key, value in parameters.items():
@@ -127,9 +128,10 @@ def evaluate_parameter_dict_of_dict(
 
 
 def evaluate_parameter_dict(
-    parameters: dict, is_metric: Optional[bool] = True,
+    parameters: dict,
+    is_metric: Optional[bool] = True,
 ) -> dict:
-    """ Convert the strings in a parameter dictionary into dimensions """
+    """Convert the strings in a parameter dictionary into dimensions"""
     measurements = {}
     for params, value in parameters.items():
         if is_metric:
@@ -140,7 +142,7 @@ def evaluate_parameter_dict(
 
 
 def isolate_fastener_type(target_fastener: str, fastener_data: dict) -> dict:
-    """ Split the fastener data 'type:value' strings into dictionary elements """
+    """Split the fastener data 'type:value' strings into dictionary elements"""
     result = {}
     for size, parameters in fastener_data.items():
         dimension_dict = {}
@@ -154,7 +156,7 @@ def isolate_fastener_type(target_fastener: str, fastener_data: dict) -> dict:
 
 
 def lookup_drill_diameters(drill_hole_sizes: dict) -> dict:
-    """ Return a dict of dict of drill size to drill diameter """
+    """Return a dict of dict of drill size to drill diameter"""
 
     # Read the drill size csv file and build a drill_size dictionary (Ah, the imperial system)
     drill_sizes = {}
@@ -181,7 +183,7 @@ def lookup_drill_diameters(drill_hole_sizes: dict) -> dict:
 
 
 def lookup_nominal_screw_lengths() -> dict:
-    """ Return a dict of dict of drill size to drill diameter """
+    """Return a dict of dict of drill size to drill diameter"""
 
     # Read the nominal screw length csv file and build a dictionary
     nominal_screw_lengths = {}
@@ -206,7 +208,7 @@ cq.Workplane.fillet2D = _fillet2D
 
 
 def cross_recess(size: str) -> Tuple[cq.Workplane, float]:
-    """ Type H Cross / Phillips recess for screws
+    """Type H Cross / Phillips recess for screws
 
     size must be one of: PH0, PH1, PH2, PH3, or PH4
 
@@ -237,7 +239,7 @@ def cross_recess(size: str) -> Tuple[cq.Workplane, float]:
 
 
 def hex_recess(size: float) -> cq.Workplane:
-    """ Hexagon recess for screws
+    """Hexagon recess for screws
 
     size refers to the size across the flats
     """
@@ -245,7 +247,7 @@ def hex_recess(size: float) -> cq.Workplane:
 
 
 def hexalobular_recess(size: str) -> Tuple[cq.Workplane, float]:
-    """ Plan of Hexalobular recess for screws
+    """Plan of Hexalobular recess for screws
 
     size must be one of: T6, T8, T10, T15, T20, T25, T30, T40, T45, T50, T55, T60,
                          T70, T80, T90, T100
@@ -301,12 +303,12 @@ def hexalobular_recess(size: str) -> Tuple[cq.Workplane, float]:
 
 
 def slot_recess(width: float, length: float) -> cq.Workplane:
-    """ Slot recess for screws """
+    """Slot recess for screws"""
     return cq.Workplane("XY").rect(width, length)
 
 
 def square_recess(size: str) -> Tuple[cq.Workplane, float]:
-    """ Robertson Square recess for screws
+    """Robertson Square recess for screws
 
     size must be one of: R00, R0, R1, R2, and R3
 
@@ -324,7 +326,7 @@ def square_recess(size: str) -> Tuple[cq.Workplane, float]:
 
 
 def select_by_size_fn(cls, size: str) -> dict:
-    """ Given a fastener size, return a dictionary of {class:[type,...]} """
+    """Given a fastener size, return a dictionary of {class:[type,...]}"""
     type_dict = {}
     for fastener_class in cls.__subclasses__():
         for fastener_type in fastener_class.types():
@@ -338,7 +340,7 @@ def select_by_size_fn(cls, size: str) -> dict:
 
 
 class Nut(ABC):
-    """ Base Class used to create standard threaded nuts """
+    """Base Class used to create standard threaded nuts"""
 
     # Read clearance and tap hole dimesions tables
     # Close, Medium, Loose
@@ -353,7 +355,7 @@ class Nut(ABC):
 
     @property
     def tap_drill_sizes(self):
-        """ A dictionary of drill sizes for tapped holes """
+        """A dictionary of drill sizes for tapped holes"""
         try:
             return self.tap_hole_drill_sizes[self.size]
         except KeyError as e:
@@ -361,7 +363,7 @@ class Nut(ABC):
 
     @property
     def tap_hole_diameters(self):
-        """ A dictionary of drill diameters for tapped holes """
+        """A dictionary of drill diameters for tapped holes"""
         try:
             return self.tap_hole_data[self.size]
         except KeyError as e:
@@ -369,7 +371,7 @@ class Nut(ABC):
 
     @property
     def clearance_drill_sizes(self):
-        """ A dictionary of drill sizes for clearance holes """
+        """A dictionary of drill sizes for clearance holes"""
         try:
             return self.clearance_hole_drill_sizes[self.size.split("-")[0]]
         except KeyError as e:
@@ -377,7 +379,7 @@ class Nut(ABC):
 
     @property
     def clearance_hole_diameters(self):
-        """ A dictionary of drill diameters for clearance holes """
+        """A dictionary of drill diameters for clearance holes"""
         try:
             return self.clearance_hole_data[self.size.split("-")[0]]
         except KeyError as e:
@@ -385,74 +387,76 @@ class Nut(ABC):
 
     @classmethod
     def select_by_size(cls, size: str) -> dict:
-        """ Return a dictionary of list of fastener types of this size """
+        """Return a dictionary of list of fastener types of this size"""
         return select_by_size_fn(cls, size)
 
     @property
     @classmethod
     @abstractmethod
     def fastener_data(cls):
-        """ Each derived class must provide a fastener_data dictionary """
+        """Each derived class must provide a fastener_data dictionary"""
         return NotImplementedError
 
     @abstractmethod
     def nut_profile(self) -> cq.Workplane:
-        """ Each derived class must provide the profile of the nut """
+        """Each derived class must provide the profile of the nut"""
         return NotImplementedError
 
     @abstractmethod
     def nut_plan(self) -> cq.Workplane:
-        """ Each derived class must provide the plan of the nut """
+        """Each derived class must provide the plan of the nut"""
         return NotImplementedError
 
     @abstractmethod
     def countersink_profile(
         self, fit: Literal["Close", "Normal", "Loose"]
     ) -> cq.Workplane:
-        """ Each derived class must provide the profile of a countersink cutter """
+        """Each derived class must provide the profile of a countersink cutter"""
         return NotImplementedError
 
     @property
     def info(self):
-        """ Return identifying information """
+        """Return identifying information"""
         return f"{self.nut_class}({self.fastener_type}): {self.size}"
 
     @property
     def nut_class(self):
-        """ Which derived class created this nut """
+        """Which derived class created this nut"""
         return type(self).__name__
 
     @classmethod
     def types(cls) -> List[str]:
-        """ Return a set of the nut types """
+        """Return a set of the nut types"""
         return set(p.split(":")[0] for p in list(cls.fastener_data.values())[0].keys())
 
     @classmethod
     def sizes(cls, fastener_type: str) -> List[str]:
-        """ Return a list of the nut sizes for the given type """
+        """Return a list of the nut sizes for the given type"""
         return list(isolate_fastener_type(fastener_type, cls.fastener_data).keys())
 
     @property
     def nut_thickness(self):
-        """ Calculate the maximum thickness of the nut """
+        """Calculate the maximum thickness of the nut"""
         return cq.Workplane(self.cq_object).vertices(">Z").val().Z
 
     @property
     def nut_diameter(self):
-        """ Calculate the maximum diameter of the nut """
+        """Calculate the maximum diameter of the nut"""
         vertices = cq.Workplane(self.cq_object).vertices().vals()
         radii = [
             (cq.Vector(0, 0, v.Z) - cq.Vector(v.toTuple())).Length for v in vertices
         ]
+        if len(radii) == 0:
+            raise Exception(f"Invalid nut: {type(self).__name__},{self.__dict__}")
         return 2 * max(radii)
 
     @property
     def cq_object(self):
-        """ A cadquery Compound screw as defined by class attributes """
+        """A cadquery Compound screw as defined by class attributes"""
         return self._cq_object
 
     def length_offset(self):
-        """ Screw only parameter """
+        """Screw only parameter"""
         return 0
 
     @cache
@@ -463,7 +467,7 @@ class Nut(ABC):
         hand: Literal["right", "left"] = "right",
         simple: bool = True,
     ):
-        """ Parse Nut input parameters """
+        """Parse Nut input parameters"""
         size_parts = size.strip().split("-")
         if not len(size_parts) == 2:
             raise ValueError(
@@ -501,10 +505,10 @@ class Nut(ABC):
         self._cq_object = self.make_nut().val()
 
     def make_nut(self) -> cq.Workplane:
-        """ Create a screw head from the 2D shapes defined in the derived class """
+        """Create a screw head from the 2D shapes defined in the derived class"""
 
         def method_exists(method: str) -> bool:
-            """ Did the derived class create this method """
+            """Did the derived class create this method"""
             return hasattr(self.__class__, method) and callable(
                 getattr(self.__class__, method)
             )
@@ -518,26 +522,16 @@ class Nut(ABC):
         nut = profile.toPending().revolve()
 
         # Modify the head to conform to the shape of head_plan (e.g. hex)
+        # Note that some nuts (e.g. domed nuts) extend beyond the threaded section
         nut_blank = (
             cq.Workplane("XY")
             .add(self.nut_plan().val())
             .toPending()
-            .add(
-                cq.Wire.makeCircle(
-                    self.thread_diameter / 2, cq.Vector(0, 0, 0), cq.Vector(0, 0, 1),
-                )
-            )
-            .toPending()
-            .extrude(nut_thread_height)
+            .extrude(max_nut_height)
+            .faces("<Z")
+            .workplane()
+            .hole(self.thread_diameter, nut_thread_height)
         )
-        # Some nuts (e.g. domed nuts) extend beyond the threaded section
-        if max_nut_height > nut_thread_height:
-            nut_blank = (
-                nut_blank.toPending()
-                .add(self.nut_plan().val().translate((0, 0, nut_thread_height)))
-                .toPending()
-                .extrude(max_nut_height - nut_thread_height)
-            )
         nut = nut.intersect(nut_blank)
 
         # Add a flange as it exists outside of the head plan
@@ -573,15 +567,19 @@ class Nut(ABC):
         return nut
 
     def default_nut_profile(self):
-        """ Create 2D profile of hex nuts with double chamfers """
+        """Create 2D profile of hex nuts with double chamfers"""
         (m, s) = (self.nut_data[p] for p in ["m", "s"])
         e = polygon_diagonal(s, 6)
         # Chamfer angle must be between 15 and 30 degrees
         cs = (e - s) * tan(radians(15)) / 2
+
+        # Note that when intersecting a revolved shape with a extruded polygon the OCCT
+        # core may fail unless the polygon is slightly larger than the circle so
+        # all profiles must be reduced by a small fudge factor
         profile = (
             cq.Workplane("XZ")
             .hLineTo(s / 2)
-            .lineTo(e / 2, cs)
+            .lineTo(e / 2 - 0.001, cs)
             .vLineTo(m - cs)
             .lineTo(s / 2, m)
             .hLineTo(0)
@@ -591,13 +589,13 @@ class Nut(ABC):
         # return cq.Workplane("XZ").rect(e, m, centered=False)
 
     def default_nut_plan(self) -> cq.Workplane:
-        """ Create a hexagon solid """
+        """Create a hexagon solid"""
         return cq.Workplane("XY").polygon(6, polygon_diagonal(self.nut_data["s"]))
         # return cq.Workplane("XY").circle(self.nut_data["s"] / 2)
 
     def default_countersink_profile(self, fit) -> cq.Workplane:
-        """ A simple rectangle with gets revolved into a cylinder with an
-            extra socket_clearance (defaults to 6mm across the diameter) for a socket wrench """
+        """A simple rectangle with gets revolved into a cylinder with an
+        extra socket_clearance (defaults to 6mm across the diameter) for a socket wrench"""
         # Note that fit is only used for some flanged nuts but is here for uniformity
         del fit
         (m, s) = (self.nut_data[p] for p in ["m", "s"])
@@ -609,7 +607,7 @@ class DomedCapNut(Nut):
     """
     size: str
     fastener_type: str
-        din 1587 Hexagon domed cap nuts
+        din1587 Hexagon domed cap nuts
     hand: Literal["right", "left"] = "right"
     simple: bool = True
     """
@@ -617,7 +615,7 @@ class DomedCapNut(Nut):
     fastener_data = read_fastener_parameters_from_csv("domed_cap_nut_parameters.csv")
 
     def nut_profile(self):
-        """ Create 2D profile of hex nuts with double chamfers """
+        """Create 2D profile of hex nuts with double chamfers"""
         (dk, m, s) = (self.nut_data[p] for p in ["dk", "m", "s"])
         e = polygon_diagonal(s, 6)
         # Chamfer angle must be between 15 and 30 degrees
@@ -639,8 +637,8 @@ class DomedCapNut(Nut):
         return profile
 
     def countersink_profile(self, fit) -> cq.Workplane:
-        """ A simple rectangle with gets revolved into a cylinder with an
-            extra socket_clearance (defaults to 6mm across the diameter) for a socket wrench """
+        """A simple rectangle with gets revolved into a cylinder with an
+        extra socket_clearance (defaults to 6mm across the diameter) for a socket wrench"""
         # Note that fit is only used for some flanged nuts but is here for uniformity
         del fit
         (dk, m, s) = (self.nut_data[p] for p in ["dk", "m", "s"])
@@ -685,13 +683,16 @@ class HexNutWithFlange(Nut):
     nut_plan = Nut.default_nut_plan
 
     def flange_profile(self):
-        """ Flange for hexagon Bolts """
+        """Flange for hexagon Bolts"""
         (dc, c) = (self.nut_data[p] for p in ["dc", "c"])
         flange_angle = 25
-        tangent_point = cq.Vector(
-            (c / 2) * cos(radians(90 - flange_angle)),
-            (c / 2) * sin(radians(90 - flange_angle)),
-        ) + cq.Vector((dc - c) / 2, c / 2)
+        tangent_point = (
+            cq.Vector(
+                (c / 2) * cos(radians(90 - flange_angle)),
+                (c / 2) * sin(radians(90 - flange_angle)),
+            )
+            + cq.Vector((dc - c) / 2, c / 2)
+        )
         profile = (
             cq.Workplane("XZ")
             .hLineTo(dc / 2 - c / 2)
@@ -705,8 +706,8 @@ class HexNutWithFlange(Nut):
     def countersink_profile(
         self, fit: Literal["Close", "Normal", "Loose"]
     ) -> cq.Workplane:
-        """ A simple rectangle with gets revolved into a cylinder with
-            at least socket_clearance (default 6mm across the diameter) for a socket wrench """
+        """A simple rectangle with gets revolved into a cylinder with
+        at least socket_clearance (default 6mm across the diameter) for a socket wrench"""
         try:
             clearance_hole_diameter = self.clearance_hole_diameters[fit]
         except KeyError as e:
@@ -735,9 +736,11 @@ class UnchamferedHexagonNut(Nut):
     )
 
     def nut_profile(self):
-        """ Create 2D profile of hex nuts with double chamfers """
+        """Create 2D profile of hex nuts with double chamfers"""
         (m, s) = (self.nut_data[p] for p in ["m", "s"])
-        return cq.Workplane("XZ").rect(polygon_diagonal(s, 6) / 2, m, centered=False)
+        return cq.Workplane("XZ").rect(
+            polygon_diagonal(s, 6) / 2 - 0.001, m, centered=False
+        )
 
     nut_plan = Nut.default_nut_plan
     countersink_profile = Nut.default_countersink_profile
@@ -755,14 +758,14 @@ class SquareNut(Nut):
     fastener_data = read_fastener_parameters_from_csv("square_nut_parameters.csv")
 
     def nut_profile(self):
-        """ Create 2D profile of hex nuts with double chamfers """
+        """Create 2D profile of hex nuts with double chamfers"""
         (m, s) = (self.nut_data[p] for p in ["m", "s"])
         e = polygon_diagonal(s, 4)
         # Chamfer angle must be between 15 and 30 degrees
         cs = (e - s) * tan(radians(15)) / 2
         profile = (
             cq.Workplane("XZ")
-            .hLineTo(e / 2)
+            .hLineTo(e / 2 - 0.001)
             .vLineTo(m - cs)
             .lineTo(s / 2, m)
             .hLineTo(0)
@@ -771,12 +774,12 @@ class SquareNut(Nut):
         return profile
 
     def nut_plan(self) -> cq.Workplane:
-        """ Simple square for the plan """
+        """Simple square for the plan"""
         return cq.Workplane("XY").rect(self.nut_data["s"], self.nut_data["s"])
 
     def countersink_profile(self, fit) -> cq.Workplane:
-        """ A simple rectangle with gets revolved into a cylinder with an
-            extra socket_clearance (defaults to 6mm across the diameter) for a socket wrench """
+        """A simple rectangle with gets revolved into a cylinder with an
+        extra socket_clearance (defaults to 6mm across the diameter) for a socket wrench"""
         # Note that fit is only used for some flanged nuts but is here for uniformity
         del fit
         (m, s) = (self.nut_data[p] for p in ["m", "s"])
@@ -785,7 +788,7 @@ class SquareNut(Nut):
 
 
 class Screw(ABC):
-    """ Base class for a set of threaded screws or bolts """
+    """Base class for a set of threaded screws or bolts"""
 
     # Read clearance and tap hole dimesions tables
     # Close, Medium, Loose
@@ -803,7 +806,7 @@ class Screw(ABC):
 
     @property
     def tap_drill_sizes(self):
-        """ A dictionary of drill sizes for tapped holes """
+        """A dictionary of drill sizes for tapped holes"""
         try:
             return self.tap_hole_drill_sizes[self.size]
         except KeyError as e:
@@ -811,7 +814,7 @@ class Screw(ABC):
 
     @property
     def tap_hole_diameters(self):
-        """ A dictionary of drill diameters for tapped holes """
+        """A dictionary of drill diameters for tapped holes"""
         try:
             return self.tap_hole_data[self.size]
         except KeyError as e:
@@ -819,7 +822,7 @@ class Screw(ABC):
 
     @property
     def clearance_drill_sizes(self):
-        """ A dictionary of drill sizes for clearance holes """
+        """A dictionary of drill sizes for clearance holes"""
         try:
             return self.clearance_hole_drill_sizes[self.size.split("-")[0]]
         except KeyError as e:
@@ -827,7 +830,7 @@ class Screw(ABC):
 
     @property
     def clearance_hole_diameters(self):
-        """ A dictionary of drill diameters for clearance holes """
+        """A dictionary of drill diameters for clearance holes"""
         try:
             return self.clearance_hole_data[self.size.split("-")[0]]
         except KeyError as e:
@@ -837,29 +840,29 @@ class Screw(ABC):
     @classmethod
     @abstractmethod
     def fastener_data(cls):
-        """ Each derived class must provide a fastener_data dictionary """
+        """Each derived class must provide a fastener_data dictionary"""
         return NotImplementedError
 
     @abstractmethod
     def countersink_profile(
         self, fit: Literal["Close", "Normal", "Loose"]
     ) -> cq.Workplane:
-        """ Each derived class must provide the profile of a countersink cutter """
+        """Each derived class must provide the profile of a countersink cutter"""
         return NotImplementedError
 
     @classmethod
     def select_by_size(cls, size: str) -> dict:
-        """ Return a dictionary of list of fastener types of this size """
+        """Return a dictionary of list of fastener types of this size"""
         return select_by_size_fn(cls, size)
 
     @classmethod
     def types(cls) -> List[str]:
-        """ Return a set of the screw types """
+        """Return a set of the screw types"""
         return set(p.split(":")[0] for p in list(cls.fastener_data.values())[0].keys())
 
     @classmethod
     def sizes(cls, fastener_type: str) -> List[str]:
-        """ Return a list of the screw sizes for the given type """
+        """Return a list of the screw sizes for the given type"""
         return list(isolate_fastener_type(fastener_type, cls.fastener_data).keys())
 
     def length_offset(self):
@@ -871,7 +874,7 @@ class Screw(ABC):
         return 0
 
     def min_hole_depth(self, counter_sunk: bool = True) -> float:
-        """ Minimum depth of a hole able to accept the screw """
+        """Minimum depth of a hole able to accept the screw"""
         countersink_profile = self.countersink_profile("Loose")
         head_offset = countersink_profile.vertices(">Z").val().Z
         if counter_sunk:
@@ -882,7 +885,7 @@ class Screw(ABC):
 
     @property
     def nominal_lengths(self) -> List[float]:
-        """ A list of nominal screw lengths for this screw """
+        """A list of nominal screw lengths for this screw"""
         try:
             range_min = self.screw_data["short"]
         except KeyError:
@@ -907,17 +910,17 @@ class Screw(ABC):
 
     @property
     def info(self):
-        """ Return identifying information """
+        """Return identifying information"""
         return f"{self.screw_class}({self.fastener_type}): {self.size}x{self.length}{' left hand thread' if self.hand=='left' else ''}"
 
     @property
     def screw_class(self):
-        """ Which derived class created this screw """
+        """Which derived class created this screw"""
         return type(self).__name__
 
     @property
     def head_height(self):
-        """ Calculate the maximum height of the head """
+        """Calculate the maximum height of the head"""
         if self.head is None:
             result = 0
         else:
@@ -926,7 +929,7 @@ class Screw(ABC):
 
     @property
     def head_diameter(self):
-        """ Calculate the maximum diameter of the head """
+        """Calculate the maximum diameter of the head"""
         if self.head is None:
             result = 0
         else:
@@ -939,12 +942,12 @@ class Screw(ABC):
 
     @property
     def head(self):
-        """ A cadquery Solid thread as defined by class attributes """
+        """A cadquery Solid thread as defined by class attributes"""
         return self._head
 
     @property
     def cq_object(self):
-        """ A cadquery Compound screw as defined by class attributes """
+        """A cadquery Compound screw as defined by class attributes"""
         return self._cq_object
 
     @cache
@@ -957,7 +960,7 @@ class Screw(ABC):
         simple: Optional[bool] = True,
         socket_clearance: Optional[float] = 6 * MM,
     ):
-        """ Parse Screw input parameters """
+        """Parse Screw input parameters"""
         size_parts = size.strip().split("-")
         if not len(size_parts) == 2:
             raise ValueError(
@@ -1030,10 +1033,10 @@ class Screw(ABC):
             ).val()
 
     def make_head(self) -> cq.Workplane:
-        """ Create a screw head from the 2D shapes defined in the derived class """
+        """Create a screw head from the 2D shapes defined in the derived class"""
 
         def method_exists(method: str) -> bool:
-            """ Did the derived class create this method """
+            """Did the derived class create this method"""
             return hasattr(self.__class__, method) and callable(
                 getattr(self.__class__, method)
             )
@@ -1070,9 +1073,9 @@ class Screw(ABC):
             # pylint: disable=no-member
             (recess_plan, recess_depth, recess_taper) = self.head_recess()
             recess = cq.Solid.extrudeLinear(
-                outerWire=recess_plan.val(),
-                innerWires=[],
-                vecNormal=cq.Vector(0, 0, -recess_depth),
+                recess_plan.val(),
+                [],
+                cq.Vector(0, 0, -recess_depth),
                 taper=recess_taper,
             ).translate((0, 0, max_head_height))
             head_blank = head_plan.extrude(max_head_height).cut(recess)
@@ -1098,7 +1101,7 @@ class Screw(ABC):
         return head
 
     def default_head_recess(self) -> Tuple[cq.Workplane, float, float]:
-        """ Return the plan of the recess, its depth and taper """
+        """Return the plan of the recess, its depth and taper"""
 
         recess_plan = None
         # Slot Recess
@@ -1142,7 +1145,7 @@ class Screw(ABC):
     def default_countersink_profile(
         self, fit: Literal["Close", "Normal", "Loose"]
     ) -> cq.Workplane:
-        """ A simple rectangle with gets revolved into a cylinder """
+        """A simple rectangle with gets revolved into a cylinder"""
         try:
             clearance_hole_diameter = self.clearance_hole_diameters[fit]
         except KeyError as e:
@@ -1166,7 +1169,7 @@ class ButtonHeadScrew(Screw):
     fastener_data = read_fastener_parameters_from_csv("button_head_parameters.csv")
 
     def head_profile(self):
-        """ Create 2D profile of button head screws """
+        """Create 2D profile of button head screws"""
         (dk, dl, k, rf) = (self.screw_data[p] for p in ["dk", "dl", "k", "rf"])
         profile = (
             cq.Workplane("XZ")
@@ -1198,7 +1201,7 @@ class ButtonHeadWithCollarScrew(Screw):
     )
 
     def head_profile(self):
-        """ Create 2D profile of button head screws with collar """
+        """Create 2D profile of button head screws with collar"""
         (dk, dl, dc, k, rf, c) = (
             self.screw_data[p] for p in ["dk", "dl", "dc", "k", "rf", "c"]
         )
@@ -1220,7 +1223,7 @@ class ButtonHeadWithCollarScrew(Screw):
     def countersink_profile(
         self, fit: Literal["Close", "Normal", "Loose"]
     ) -> cq.Workplane:
-        """ A simple rectangle with gets revolved into a cylinder """
+        """A simple rectangle with gets revolved into a cylinder"""
         try:
             clearance_hole_diameter = self.clearance_hole_diameters[fit]
         except KeyError as e:
@@ -1246,7 +1249,7 @@ class CheeseHeadScrew(Screw):
     fastener_data = read_fastener_parameters_from_csv("cheese_head_parameters.csv")
 
     def head_profile(self):
-        """ cheese head screws """
+        """cheese head screws"""
         (k, dk) = (self.screw_data[p] for p in ["k", "dk"])
         profile = (
             cq.Workplane("XZ")
@@ -1280,11 +1283,11 @@ class CounterSunkScrew(Screw):
     fastener_data = read_fastener_parameters_from_csv("countersunk_head_parameters.csv")
 
     def length_offset(self):
-        """ Countersunk screws include the head in the total length """
+        """Countersunk screws include the head in the total length"""
         return self.screw_data["k"]
 
     def head_profile(self):
-        """ Create 2D profile of countersunk screw heads """
+        """Create 2D profile of countersunk screw heads"""
         (a, k, dk) = (self.screw_data[p] for p in ["a", "k", "dk"])
         side_length = k / cos(radians(a / 2))
         profile = (
@@ -1302,7 +1305,7 @@ class CounterSunkScrew(Screw):
     def countersink_profile(
         self, fit: Literal["Close", "Normal", "Loose"]
     ) -> cq.Workplane:
-        """ Create 2D profile of countersink profile """
+        """Create 2D profile of countersink profile"""
         (a, dk, k) = (self.screw_data[p] for p in ["a", "dk", "k"])
         side_length = k / cos(radians(a / 2))
 
@@ -1330,7 +1333,7 @@ class HexHeadScrew(Screw):
     fastener_data = read_fastener_parameters_from_csv("hex_head_parameters.csv")
 
     def head_profile(self):
-        """ Create 2D profile of hex head screws """
+        """Create 2D profile of hex head screws"""
         (k, s) = (self.screw_data[p] for p in ["k", "s"])
         e = polygon_diagonal(s, 6)
         # Chamfer angle must be between 15 and 30 degrees
@@ -1346,14 +1349,14 @@ class HexHeadScrew(Screw):
         return profile
 
     def head_plan(self) -> cq.Workplane:
-        """ Create a hexagon solid """
+        """Create a hexagon solid"""
         return cq.Workplane("XY").polygon(6, polygon_diagonal(self.screw_data["s"]))
 
     def countersink_profile(
         self, fit: Literal["Close", "Normal", "Loose"]
     ) -> cq.Workplane:
-        """ A simple rectangle with gets revolved into a cylinder with an
-            extra socket_clearance (defaults to 6mm across the diameter) for a socket wrench """
+        """A simple rectangle with gets revolved into a cylinder with an
+        extra socket_clearance (defaults to 6mm across the diameter) for a socket wrench"""
         # Note that fit isn't used but remains for uniformity in the workplane hole methods
         del fit
         (k, s) = (self.screw_data[p] for p in ["k", "s"])
@@ -1382,13 +1385,16 @@ class HexHeadWithFlangeScrew(Screw):
     head_plan = HexHeadScrew.head_plan
 
     def flange_profile(self):
-        """ Flange for hexagon Bolts """
+        """Flange for hexagon Bolts"""
         (dc, c) = (self.screw_data[p] for p in ["dc", "c"])
         flange_angle = 25
-        tangent_point = cq.Vector(
-            (c / 2) * cos(radians(90 - flange_angle)),
-            (c / 2) * sin(radians(90 - flange_angle)),
-        ) + cq.Vector((dc - c) / 2, c / 2)
+        tangent_point = (
+            cq.Vector(
+                (c / 2) * cos(radians(90 - flange_angle)),
+                (c / 2) * sin(radians(90 - flange_angle)),
+            )
+            + cq.Vector((dc - c) / 2, c / 2)
+        )
         profile = (
             cq.Workplane("XZ")
             .hLineTo(dc / 2 - c / 2)
@@ -1402,8 +1408,8 @@ class HexHeadWithFlangeScrew(Screw):
     def countersink_profile(
         self, fit: Literal["Close", "Normal", "Loose"]
     ) -> cq.Workplane:
-        """ A simple rectangle with gets revolved into a cylinder with
-            at least socket_clearance (default 6mm across the diameter) for a socket wrench """
+        """A simple rectangle with gets revolved into a cylinder with
+        at least socket_clearance (default 6mm across the diameter) for a socket wrench"""
         try:
             clearance_hole_diameter = self.clearance_hole_diameters[fit]
         except KeyError as e:
@@ -1433,7 +1439,7 @@ class PanHeadScrew(Screw):
     fastener_data = read_fastener_parameters_from_csv("pan_head_parameters.csv")
 
     def head_profile(self):
-        """ Slotted pan head screws """
+        """Slotted pan head screws"""
         (k, dk) = (self.screw_data[p] for p in ["k", "dk"])
         profile = (
             cq.Workplane("XZ")
@@ -1467,7 +1473,7 @@ class PanHeadWithCollarScrew(Screw):
     )
 
     def head_profile(self):
-        """ Cross recessed pan head screws with collar """
+        """Cross recessed pan head screws with collar"""
         (rf, k, dk, c) = (self.screw_data[p] for p in ["rf", "k", "dk", "c"])
 
         flat = sqrt(k - c) * sqrt(2 * rf - (k - c))
@@ -1501,7 +1507,7 @@ class RaisedCheeseHeadScrew(Screw):
     )
 
     def head_profile(self):
-        """ raised cheese head screws """
+        """raised cheese head screws"""
         (dk, k, rf) = (self.screw_data[p] for p in ["dk", "k", "rf"])
         oval_height = rf - sqrt(4 * rf ** 2 - dk ** 2) / 2
         profile = (
@@ -1535,12 +1541,12 @@ class RaisedCounterSunkOvalHeadScrew(Screw):
     )
 
     def length_offset(self):
-        """ Raised countersunk oval head screws include the head but not oval
-        in the total length """
+        """Raised countersunk oval head screws include the head but not oval
+        in the total length"""
         return self.screw_data["k"]
 
     def head_profile(self):
-        """ raised countersunk oval head screws """
+        """raised countersunk oval head screws"""
         (a, k, rf, dk) = (self.screw_data[p] for p in ["a", "k", "rf", "dk"])
         side_length = k / cos(radians(a / 2))
         oval_height = rf - sqrt(4 * rf ** 2 - dk ** 2) / 2
@@ -1559,7 +1565,7 @@ class RaisedCounterSunkOvalHeadScrew(Screw):
     def countersink_profile(
         self, fit: Literal["Close", "Normal", "Loose"]
     ) -> cq.Workplane:
-        """ A flat bottomed cone """
+        """A flat bottomed cone"""
         (a, k, dk) = (self.screw_data[p] for p in ["a", "k", "dk"])
         side_length = k / cos(radians(a / 2))
         return (
@@ -1585,21 +1591,21 @@ class SetScrew(Screw):
 
     @property
     def head(self):
-        """ Setscrews don't have heads """
+        """Setscrews don't have heads"""
         return None
 
     @property
     def shank(self):
-        """ Setscrews don't have shanks """
+        """Setscrews don't have shanks"""
         return None
 
     @property
     def cq_object(self):
-        """ Setscrews are custom builds """
+        """Setscrews are custom builds"""
         return self.make_setscrew()
 
     def make_setscrew(self) -> cq.Workplane:
-        """ Construct set screw shape """
+        """Construct set screw shape"""
 
         (s, t) = (self.screw_data[p] for p in ["s", "t"])
         e = polygon_diagonal(s, 6)
@@ -1626,11 +1632,11 @@ class SetScrew(Screw):
         return core.union(thread.cq_object.translate((0, 0, -thread.length))).val()
 
     def make_head(self):
-        """ There is no head on a setscrew """
+        """There is no head on a setscrew"""
         return None
 
     def countersink_profile(self, fit):
-        """ There is no head on a setscrew """
+        """There is no head on a setscrew"""
         return None
 
 
@@ -1647,7 +1653,7 @@ class SocketHeadCapScrew(Screw):
     fastener_data = read_fastener_parameters_from_csv("socket_head_cap_parameters.csv")
 
     def head_profile(self):
-        """ Socket Head Cap Screws """
+        """Socket Head Cap Screws"""
         (dk, k) = (self.screw_data[p] for p in ["dk", "k"])
         profile = cq.Workplane("XZ").rect(dk / 2, k, centered=False)
         vertices = profile.toPending().edges(">Z").vertices(">X").vals()
@@ -1659,7 +1665,7 @@ class SocketHeadCapScrew(Screw):
 
 
 class Washer(ABC):
-    """ Base Class used to create standard washers """
+    """Base Class used to create standard washers"""
 
     # Read clearance and tap hole dimesions tables
     # Close, Normal, Loose
@@ -1670,7 +1676,7 @@ class Washer(ABC):
 
     @property
     def clearance_hole_diameters(self):
-        """ A dictionary of drill diameters for clearance holes """
+        """A dictionary of drill diameters for clearance holes"""
         try:
             return self.clearance_hole_data[self.size.split("-")[0]]
         except KeyError as e:
@@ -1680,47 +1686,47 @@ class Washer(ABC):
     @classmethod
     @abstractmethod
     def fastener_data(cls):
-        """ Each derived class must provide a fastener_data dictionary """
+        """Each derived class must provide a fastener_data dictionary"""
         return NotImplementedError
 
     @abstractmethod
     def washer_profile(self) -> cq.Workplane:
-        """ Each derived class must provide the profile of the washer """
+        """Each derived class must provide the profile of the washer"""
         return NotImplementedError
 
     @property
     def info(self):
-        """ Return identifying information """
+        """Return identifying information"""
         return f"{self.washer_class}({self.fastener_type}): {self.size}"
 
     @property
     def washer_class(self):
-        """ Which derived class created this washer """
+        """Which derived class created this washer"""
         return type(self).__name__
 
     @classmethod
     def types(cls) -> List[str]:
-        """ Return a set of the washer types """
+        """Return a set of the washer types"""
         return set(p.split(":")[0] for p in list(cls.fastener_data.values())[0].keys())
 
     @classmethod
     def sizes(cls, fastener_type: str) -> List[str]:
-        """ Return a list of the washer sizes for the given type """
+        """Return a list of the washer sizes for the given type"""
         return list(isolate_fastener_type(fastener_type, cls.fastener_data).keys())
 
     @classmethod
     def select_by_size(cls, size: str) -> dict:
-        """ Return a dictionary of list of fastener types of this size """
+        """Return a dictionary of list of fastener types of this size"""
         return select_by_size_fn(cls, size)
 
     @property
     def washer_thickness(self):
-        """ Calculate the maximum thickness of the washer """
+        """Calculate the maximum thickness of the washer"""
         return cq.Workplane(self.cq_object).vertices(">Z").val().Z
 
     @property
     def washer_diameter(self):
-        """ Calculate the maximum diameter of the washer """
+        """Calculate the maximum diameter of the washer"""
         vertices = cq.Workplane(self.cq_object).vertices().vals()
         radii = [
             (cq.Vector(0, 0, v.Z) - cq.Vector(v.toTuple())).Length for v in vertices
@@ -1729,12 +1735,14 @@ class Washer(ABC):
 
     @property
     def cq_object(self):
-        """ A cadquery Compound screw as defined by class attributes """
+        """A cadquery Compound screw as defined by class attributes"""
         return self._cq_object
 
     @cache
     def __init__(
-        self, size: str, fastener_type: str,
+        self,
+        size: str,
+        fastener_type: str,
     ):
         self.size = size
         self.is_metric = self.size[0] == "M"
@@ -1761,14 +1769,14 @@ class Washer(ABC):
         self._cq_object = self.make_washer().val()
 
     def make_washer(self) -> cq.Workplane:
-        """ Create a screw head from the 2D shapes defined in the derived class """
+        """Create a screw head from the 2D shapes defined in the derived class"""
 
         # Create the basic washer shape
         # pylint: disable=no-member
         return self.washer_profile().toPending().revolve()
 
     def default_washer_profile(self):
-        """ Create 2D profile of hex washers with double chamfers """
+        """Create 2D profile of hex washers with double chamfers"""
         (d1, d2, h) = (self.washer_data[p] for p in ["d1", "d2", "h"])
         profile = (
             cq.Workplane("XZ")
@@ -1783,7 +1791,7 @@ class Washer(ABC):
     def default_countersink_profile(
         self, fit: Literal["Close", "Normal", "Loose"]
     ) -> cq.Workplane:
-        """ A simple rectangle with gets revolved into a cylinder """
+        """A simple rectangle with gets revolved into a cylinder"""
         try:
             clearance_hole_diameter = self.clearance_hole_diameters[fit]
         except KeyError as e:
@@ -1820,7 +1828,7 @@ class ChamferedWasher(Washer):
     fastener_data = read_fastener_parameters_from_csv("chamfered_washer_parameters.csv")
 
     def washer_profile(self):
-        """ Create 2D profile of hex washers with double chamfers """
+        """Create 2D profile of hex washers with double chamfers"""
         (d1, d2, h) = (self.washer_data[p] for p in ["d1", "d2", "h"])
         profile = (
             cq.Workplane("XZ")
@@ -1848,7 +1856,7 @@ class CheeseHeadWasher(Washer):
     )
 
     def washer_profile(self):
-        """ Create 2D profile of hex washers with double chamfers """
+        """Create 2D profile of hex washers with double chamfers"""
         (d1, d2, h) = (self.washer_data[p] for p in ["d1", "d2", "h"])
         profile = (
             cq.Workplane("XZ")
@@ -1918,7 +1926,10 @@ def _fastenerHole(
             ) from e
 
     shank_hole = cq.Solid.makeCylinder(
-        radius=hole_radius, height=depth, pnt=origin, dir=bore_direction,
+        radius=hole_radius,
+        height=depth,
+        pnt=origin,
+        dir=bore_direction,
     )
     if counterSunk and not countersink_profile is None:
         fastener_hole = countersink_cutter.fuse(shank_hole)
@@ -2008,7 +2019,7 @@ def _clearanceHole(
     baseAssembly: Optional[cq.Assembly] = None,
     clean: Optional[bool] = True,
 ) -> T:
-    """ Clearance hole front end to fastener hole """
+    """Clearance hole front end to fastener hole"""
     if depth is None:
         depth = self.largestDimension()
 
@@ -2035,7 +2046,7 @@ def _tapHole(
     baseAssembly: Optional[cq.Assembly] = None,
     clean: Optional[bool] = True,
 ) -> T:
-    """ Tap hole front end to fastener hole """
+    """Tap hole front end to fastener hole"""
     if depth is None:
         depth = self.largestDimension()
 
@@ -2064,7 +2075,7 @@ def _threadedHole(
     baseAssembly: Optional[cq.Assembly] = None,
     clean: Optional[bool] = True,
 ) -> T:
-    """ Threaded hole front end to fastener hole """
+    """Threaded hole front end to fastener hole"""
     return self.fastenerHole(
         hole_diameters=fastener.clearance_hole_diameters,
         fastener=fastener,
@@ -2085,8 +2096,8 @@ cq.Workplane.threadedHole = _threadedHole
 
 
 def _fastener_quantities(self, bom: bool = True) -> dict:
-    """ Generate a bill of materials of the fasteners in an assembly augmented by the hole methods
-        bom: returns fastener.info if True else fastener
+    """Generate a bill of materials of the fasteners in an assembly augmented by the hole methods
+    bom: returns fastener.info if True else fastener
     """
     if self.metadata is None:
         return None

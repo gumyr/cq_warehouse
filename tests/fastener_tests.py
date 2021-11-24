@@ -26,7 +26,6 @@ license:
 
 """
 import unittest
-from tests import BaseTest
 import cadquery as cq
 from cq_warehouse.fastener import *
 
@@ -34,7 +33,16 @@ MM = 1
 IN = 25.4 * MM
 
 
-class TestSupportFunctions(BaseTest):
+def _assertTupleAlmostEquals(self, expected, actual, places, msg=None):
+    """Check Tuples"""
+    for i, j in zip(actual, expected):
+        self.assertAlmostEqual(i, j, places, msg=msg)
+
+
+unittest.TestCase.assertTupleAlmostEquals = _assertTupleAlmostEquals
+
+
+class TestRecessExceptions(unittest.TestCase):
     def test_decode_imperial_size(self):
         self.assertTupleAlmostEquals((1.524, 0.3175), decode_imperial_size("#0-80"), 5)
         self.assertTupleAlmostEquals(
@@ -43,10 +51,10 @@ class TestSupportFunctions(BaseTest):
 
     def test_metric_str_to_float(self):
         self.assertEqual(metric_str_to_float(" 1000 "), 1000)
-        self.assertEqual(metric_str_to_float("rm -rf *.*"), "rm -rf *.*")
+        self.assertEqual(metric_str_to_float("rm -rf *"), "rm -rf *")
 
 
-class TestRecessExceptions(BaseTest):
+class TestRecessExceptions(unittest.TestCase):
     def test_bad_recess(self):
         with self.assertRaises(ValueError):
             cross_recess("PH5")
@@ -56,14 +64,14 @@ class TestRecessExceptions(BaseTest):
             square_recess("R8")
 
 
-class TestWashers(BaseTest):
-    """ Test creation of all washers """
+class TestWashers(unittest.TestCase):
+    """Test creation of all washers"""
 
     def test_select_by_size(self):
         self.assertGreater(len(Washer.select_by_size("M6")), 0)
 
     def test_size(self):
-        """ Validate diameter and thickness of washers """
+        """Validate diameter and thickness of washers"""
         for washer_class in Washer.__subclasses__():
             for washer_type in washer_class.types():
                 for washer_size in washer_class.sizes(fastener_type=washer_type):
@@ -88,17 +96,19 @@ class TestWashers(BaseTest):
                             pass
                         else:
                             self.assertGreater(
-                                clearance_normal, clearance_close,
+                                clearance_normal,
+                                clearance_close,
                             )
                             self.assertGreater(
-                                clearance_loose, clearance_normal,
+                                clearance_loose,
+                                clearance_normal,
                             )
 
                         self.assertEqual(washer.washer_class, washer_class.__name__)
 
 
-class TestNuts(BaseTest):
-    """ Test creation of all nuts """
+class TestNuts(unittest.TestCase):
+    """Test creation of all nuts"""
 
     def test_select_by_size(self):
         self.assertGreater(len(Nut.select_by_size("M6-1")), 0)
@@ -118,7 +128,7 @@ class TestNuts(BaseTest):
             DomedCapNut(size="M6-1", fastener_type="din1587", hand="lefty")
 
     def test_size(self):
-        """ Validate diameter and thickness of nuts """
+        """Validate diameter and thickness of nuts"""
         for nut_class in Nut.__subclasses__():
             for nut_type in nut_class.types():
                 for nut_size in nut_class.sizes(fastener_type=nut_type):
@@ -148,21 +158,25 @@ class TestNuts(BaseTest):
                             pass
                         else:
                             self.assertGreater(
-                                clearance_normal, clearance_close,
+                                clearance_normal,
+                                clearance_close,
                             )
                             self.assertGreater(
-                                clearance_loose, clearance_normal,
+                                clearance_loose,
+                                clearance_normal,
                             )
                             self.assertGreater(
-                                clearance_close, tap_hard,
+                                clearance_close,
+                                tap_hard,
                             )
                             self.assertGreater(
-                                tap_hard, tap_soft,
+                                tap_hard,
+                                tap_soft,
                             )
                         self.assertEqual(nut.nut_class, nut_class.__name__)
 
     def test_countersink(self):
-        """ Validate diameter and thickness of nuts """
+        """Validate diameter and thickness of nuts"""
         for nut_class in Nut.__subclasses__():
             nut_type = list(nut_class.types())[0]
             nut_size = nut_class.sizes(fastener_type=nut_type)[0]
@@ -179,8 +193,8 @@ class TestNuts(BaseTest):
             self.assertLess(box.Volume(), 1000)
 
 
-class TestScrews(BaseTest):
-    """ Test creation of all screws """
+class TestScrews(unittest.TestCase):
+    """Test creation of all screws"""
 
     def test_select_by_size(self):
         self.assertGreater(len(Screw.select_by_size("M6-1")), 0)
@@ -202,12 +216,12 @@ class TestScrews(BaseTest):
             )
 
     def test_screw_shorter_then_head(self):
-        """ Validate check for countersunk screws too short for their head """
+        """Validate check for countersunk screws too short for their head"""
         with self.assertRaises(ValueError):
             CounterSunkScrew(size="M20-2.5", fastener_type="iso2009", length=10)
 
     def test_size(self):
-        """ Validate head diameter and height of screws """
+        """Validate head diameter and height of screws"""
         # ValueError: No tap hole data for size 1-14
 
         for screw_class in Screw.__subclasses__():
@@ -246,21 +260,25 @@ class TestScrews(BaseTest):
                             pass
                         else:
                             self.assertGreater(
-                                clearance_normal, clearance_close,
+                                clearance_normal,
+                                clearance_close,
                             )
                             self.assertGreater(
-                                clearance_loose, clearance_normal,
+                                clearance_loose,
+                                clearance_normal,
                             )
                             self.assertGreater(
-                                clearance_close, tap_hard,
+                                clearance_close,
+                                tap_hard,
                             )
                             self.assertGreater(
-                                tap_hard, tap_soft,
+                                tap_hard,
+                                tap_soft,
                             )
                         self.assertEqual(screw.screw_class, screw_class.__name__)
 
     def test_countersink(self):
-        """ Validate diameter and thickness of screws """
+        """Validate diameter and thickness of screws"""
         for screw_class in Screw.__subclasses__():
             screw_type = list(screw_class.types())[0]
             screw_size = screw_class.sizes(fastener_type=screw_type)[0]
@@ -296,7 +314,7 @@ class TestScrews(BaseTest):
         self.assertGreater(len(screw.nominal_lengths), 0)
 
     def test_missing_hole_data(self):
-        """ Check for missing data handling - note test will failure if csv populated """
+        """Check for missing data handling - note test will failure if csv populated"""
         screw = SocketHeadCapScrew(
             size="1 1/2-12", fastener_type="asme_b18.3", length=30, simple=True
         )
@@ -308,7 +326,7 @@ class TestScrews(BaseTest):
         self.assertIsNone(screw.nominal_lengths)
 
 
-class TestWorkplaneMethods(BaseTest):
+class TestWorkplaneMethods(unittest.TestCase):
     def test_clearance_hole(self):
         screw = SocketHeadCapScrew(size="M6-1", fastener_type="iso4762", length=40)
         depth = screw.min_hole_depth()
@@ -408,7 +426,12 @@ class TestWorkplaneMethods(BaseTest):
             )
             .faces("<X")
             .workplane()
-            .threadedHole(fastener=screw, depth=20, simple=True, counterSunk=False,)
+            .threadedHole(
+                fastener=screw,
+                depth=20,
+                simple=True,
+                counterSunk=False,
+            )
             .val()
         )
         self.assertLess(box.Volume(), 8000)

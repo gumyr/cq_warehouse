@@ -98,6 +98,7 @@ print(f"{metric.isValid()=}")
 """ end_finishes example """
 end_finishes = [["raw", "fade"], ["square", "chamfer"]]
 end_examples = []
+end_examples_cores = []
 for i in range(2):
     for j in range(2):
         iso_end_thread = IsoThread(
@@ -111,6 +112,13 @@ for i in range(2):
                 cq.Vector((i - 0.5) * 5, (j - 0.5) * 5, 0)
             )
         )
+        end_examples_cores.append(
+            cq.Workplane("XY")
+            .cylinder(4 * MM, iso_end_thread.min_radius, centered=(True, True, False))
+            .translate(cq.Vector((i - 0.5) * 5, (j - 0.5) * 5, 0))
+        )
+
+
 if "show_object" in locals():
     show_object(iso_internal_thread.cq_object, name="iso_internal_thread")
     show_object(iso_internal_core, name="iso_internal_core")
@@ -125,3 +133,4 @@ if "show_object" in locals():
     show_object(metric_core, name="metric_core")
     show_object(metric, name="metric")
     show_object(end_examples, name="end_examples")
+    show_object(end_examples_cores, name="end_examples_cores")

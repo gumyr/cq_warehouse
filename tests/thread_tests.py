@@ -1,10 +1,10 @@
 """
 
-Fastener Unit Tests
+Thread Unit Tests
 
-name: fastener_tests.py
+name: thread_tests.py
 by:   Gumyr
-date: August 24th 2021
+date: November 11th 2021
 
 desc: Unit tests for the fastener sub-package of cq_warehouse
 
@@ -26,30 +26,24 @@ license:
 
 """
 import unittest
-from tests import BaseTest
 from cq_warehouse.thread import *
 
 
 MM = 1
 IN = 25.4 * MM
-VERBOSE = False
-FULLTEST = False
 
 
-class TestSupportFunctions(BaseTest):
+class TestSupportFunctions(unittest.TestCase):
     def test_is_safe(self):
         self.assertTrue(is_safe("1 1/8"))
-        self.assertFalse(is_safe("rm -rf *.*"))
+        self.assertFalse(is_safe("rm -rf *"))
 
     def test_imperial_str_to_float(self):
         self.assertAlmostEqual(imperial_str_to_float("1 1/2"), 1.5 * IN)
-        self.assertEqual(imperial_str_to_float("rm -rf *.*"), "rm -rf *.*")
+        self.assertEqual(imperial_str_to_float("rm -rf *"), "rm -rf *")
 
 
-cq.Solid.extrudeLinear
-
-
-class TestThread(BaseTest):
+class TestThread(unittest.TestCase):
     def test_parsing(self):
         with self.assertRaises(ValueError):
             Thread(
@@ -63,11 +57,11 @@ class TestThread(BaseTest):
             )
 
 
-class TestIsoThread(BaseTest):
+class TestIsoThread(unittest.TestCase):
     end_finishes = ["raw", "fade", "square", "chamfer"]
 
     def test_exterior_thread(self):
-        """ Simple validity check for an exterior thread """
+        """Simple validity check for an exterior thread"""
 
         for end0 in TestIsoThread.end_finishes:
             for end1 in TestIsoThread.end_finishes:
@@ -83,7 +77,7 @@ class TestIsoThread(BaseTest):
                     self.assertTrue(thread.cq_object.isValid())
 
     def test_interior_thread(self):
-        """ Simple validity check for an interior thread """
+        """Simple validity check for an interior thread"""
 
         for end0 in TestIsoThread.end_finishes:
             for end1 in TestIsoThread.end_finishes:
@@ -108,21 +102,29 @@ class TestIsoThread(BaseTest):
             )
 
 
-class TestAcmeThread(BaseTest):
+class TestAcmeThread(unittest.TestCase):
     def test_exterior_thread(self):
-        """ Simple validity check for an exterior thread """
+        """Simple validity check for an exterior thread"""
 
-        acme_thread = AcmeThread(size="1 1/4", length=1 * IN, external=True,)
+        acme_thread = AcmeThread(
+            size="1 1/4",
+            length=1 * IN,
+            external=True,
+        )
         self.assertTrue(acme_thread.cq_object.isValid())
 
     def test_interior_thread(self):
-        """ Simple validity check for an interior thread """
+        """Simple validity check for an interior thread"""
 
-        acme_thread = AcmeThread(size="1 1/4", length=1 * IN, external=False,)
+        acme_thread = AcmeThread(
+            size="1 1/4",
+            length=1 * IN,
+            external=False,
+        )
         self.assertTrue(acme_thread.cq_object.isValid())
 
     def test_sizes(self):
-        """ Validate sizes list if created """
+        """Validate sizes list if created"""
         self.assertGreater(len(AcmeThread.sizes()), 0)
 
     def test_parsing(self):
@@ -135,20 +137,24 @@ class TestAcmeThread(BaseTest):
             AcmeThread(size="1 1/4", length=1 * IN, end_finishes=("not", "supported"))
 
 
-class TestMetricTrapezoidalThread(BaseTest):
+class TestMetricTrapezoidalThread(unittest.TestCase):
     def test_exterior_thread(self):
-        """ Simple validity check for an exterior thread """
+        """Simple validity check for an exterior thread"""
 
         trap_thread = MetricTrapezoidalThread(
-            size="8x1.5", length=10 * MM, external=True,
+            size="8x1.5",
+            length=10 * MM,
+            external=True,
         )
         self.assertTrue(trap_thread.cq_object.isValid())
 
     def test_interior_thread(self):
-        """ Simple validity check for an interior thread """
+        """Simple validity check for an interior thread"""
 
         trap_thread = MetricTrapezoidalThread(
-            size="95x18", length=100 * MM, external=False,
+            size="95x18",
+            length=100 * MM,
+            external=False,
         )
         self.assertTrue(trap_thread.cq_object.isValid())
 
@@ -157,7 +163,7 @@ class TestMetricTrapezoidalThread(BaseTest):
             MetricTrapezoidalThread(size="8x1", length=50 * MM)
 
     def test_sizes(self):
-        """ Validate sizes list if created """
+        """Validate sizes list if created"""
         self.assertGreater(len(MetricTrapezoidalThread.sizes()), 0)
 
 

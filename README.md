@@ -41,6 +41,7 @@ or CAM systems.
       - [Derived Washer Classes](#derived-washer-classes)
     - [Clearance, Tap and Threaded Holes](#clearance-tap-and-threaded-holes)
       - [API](#api)
+    - [Bill of Materials](#bill-of-materials)
     - [Extending the fastener sub-package](#extending-the-fastener-sub-package)
   - [extensions sub-package](#extensions-sub-package)
     - [Assembly class extensions](#assembly-class-extensions)
@@ -524,9 +525,6 @@ Here is a list of the classes (and fastener types) provided:
   - `PlainWasher`: iso7094, iso7093, iso7089, iso7091
   - `ChamferedWasher`: iso7090
   - `CheeseHeadWasher`: iso7092
-- [Thread](#thread) - the base thread class
-  - [ExternalThread](#externalthread) - a derived class providing threads on screws
-  - [InternalThread](#internalthread) - a derived class providing threads on nuts
 
 See [Extending the fastener sub-package](#Extending-the-fastener-sub-package) for guidance on how to easily add new sizes or entirely new types of fasteners.
 
@@ -811,6 +809,20 @@ screw.tap_drill_sizes # {'Soft': '5', 'Hard': '5.4'}
 ```
 Note that with imperial sized holes (e.g. 7/16), the drill sizes could be a fractional size (e.g. 25/64) or a numbered or lettered size (e.g. U). This information can be added to your designs with the [drafting sub-package](#drafting-sub-package).
 
+### Bill of Materials
+As previously mentioned, when an assembly is passed into the three hole methods the fasteners referenced are added to the assembly. A new method has been added to the CadQuery Assembly class - `fastener_quantities()` - which scans the assembly and returns a dictionary of either:
+- {fastener: count}, or
+- {fastener.info: count}
+
+For example, the values for the previous pillow block example are:
+```python
+print(pillow_block.fastener_quantities())
+# {'SocketHeadCapScrew(iso4762): M2-0.4x16': 4}
+
+print(pillow_block.fastener_quantities(bom=False))
+# {<cq_warehouse.fastener.SocketHeadCapScrew object at 0x7f90560f3a90>: 4}
+```
+Note that this method only scans the given assembly and not any of its children. The `Assembly.traverse()` method can be used in conjunction with `fastener_quantities()` to extract the fastener data in depth.
 
 ### Extending the fastener sub-package
 The fastener sub-package has been designed to be extended in the following two ways:
