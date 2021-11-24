@@ -15,7 +15,6 @@ sprocket_and_chain_tests.py                       141      1    99%
 """
 import math
 import unittest
-from tests import BaseTest
 import pydantic
 import cadquery as cq
 from cq_warehouse.sprocket import Sprocket
@@ -25,18 +24,27 @@ MM = 1
 INCH = 25.4 * MM
 
 
-class TestParsing(BaseTest):
-    """ Validate input parsing of the Sprocket and Chain classes """
+def _assertTupleAlmostEquals(self, expected, actual, places, msg=None):
+    """Check Tuples"""
+    for i, j in zip(actual, expected):
+        self.assertAlmostEqual(i, j, places, msg=msg)
+
+
+unittest.TestCase.assertTupleAlmostEquals = _assertTupleAlmostEquals
+
+
+class TestParsing(unittest.TestCase):
+    """Validate input parsing of the Sprocket and Chain classes"""
 
     def test_sprocket_input_parsing(self):
-        """ Validate Sprocket input validation """
+        """Validate Sprocket input validation"""
         with self.assertRaises(ValueError):  # Insufficient tooth count
             Sprocket(num_teeth=2)
         with self.assertRaises(ValueError):  # Invalid chain
             Sprocket(num_teeth=32, chain_pitch=4, roller_diameter=5)
 
     def test_chain_input_parsing(self):
-        """ Validate Chain input validation """
+        """Validate Chain input validation"""
         with self.assertRaises(ValueError):  # Invalid chain
             Chain(
                 spkt_teeth=[10, 10],
@@ -89,11 +97,11 @@ class TestParsing(BaseTest):
             Chain(spkt_locations=[cq.Vector(0, 0, 0), cq.Vector(0, 0, 0)])
 
 
-class TestSprocketShape(BaseTest):
-    """ Validate the Sprocket object """
+class TestSprocketShape(unittest.TestCase):
+    """Validate the Sprocket object"""
 
     def test_flat_sprocket_shape(self):
-        """ Normal Sprockets """
+        """Normal Sprockets"""
         spkt = Sprocket(
             num_teeth=32,
             bolt_circle_diameter=104 * MM,
@@ -113,7 +121,7 @@ class TestSprocketShape(BaseTest):
         self.assertAlmostEqual(spkt.pitch_circumference, 407.0535680437272)
 
     def test_spiky_sprocket_shape(self):
-        """ Create sprockets with no flat/chamfered top """
+        """Create sprockets with no flat/chamfered top"""
         spkt = Sprocket(
             num_teeth=16, chain_pitch=0.5 * INCH, roller_diameter=0.49 * INCH
         )
@@ -128,11 +136,11 @@ class TestSprocketShape(BaseTest):
         self.assertAlmostEqual(spkt.pitch_circumference, 204.51156309687133)
 
 
-class TestChainShape(BaseTest):
-    """ Chain shape verification """
+class TestChainShape(unittest.TestCase):
+    """Chain shape verification"""
 
     def test_five_sprocket_chain(self):
-        """ Verify roller positions with a five sprocket configuration """
+        """Verify roller positions with a five sprocket configuration"""
         roller_pos = [
             (10.18715872390352, 222.87862587734543, 0.0),
             (-2.469786367915538, 223.63749243920552, 0.0),
@@ -238,7 +246,7 @@ class TestChainShape(BaseTest):
             self.assertTupleAlmostEquals(roller_loc.toTuple(), roller_pos[i], 7)
 
     def test_missing_link(self):
-        """ Validate the warning message generated when a gap in the chain is generated """
+        """Validate the warning message generated when a gap in the chain is generated"""
         with self.assertWarns(Warning):
             Chain(
                 spkt_teeth=[32, 32],
@@ -250,27 +258,27 @@ class TestChainShape(BaseTest):
             )
 
 
-class TestSprocketMethods(BaseTest):
-    """ Sprocket class methods """
+class TestSprocketMethods(unittest.TestCase):
+    """Sprocket class methods"""
 
     def test_sprocket_pitch_radius(self):
-        """ Pitch radius verification """
+        """Pitch radius verification"""
         self.assertAlmostEqual(
             Sprocket.sprocket_pitch_radius(32, 0.5 * INCH), 64.78458745735234
         )
 
     def test_sprocket_circumference(self):
-        """ Pitch circumference verification """
+        """Pitch circumference verification"""
         self.assertAlmostEqual(
             Sprocket.sprocket_circumference(32, 0.5 * INCH), 407.0535680437272
         )
 
 
-class TestChainMethods(BaseTest):
-    """ Chain class methods """
+class TestChainMethods(unittest.TestCase):
+    """Chain class methods"""
 
     def test_gen_mix_sum_list(self):
-        """ Validate custom list function """
+        """Validate custom list function"""
         with self.assertRaises(ValueError):
             Chain._gen_mix_sum_list([1, 2], [1, 2, 3])
         self.assertEqual(
@@ -279,7 +287,7 @@ class TestChainMethods(BaseTest):
         )
 
     def test_interleave_lists(self):
-        """ Validate custom list function """
+        """Validate custom list function"""
         with self.assertRaises(ValueError):
             Chain._interleave_lists([1, 2], [1, 2, 3])
         self.assertEqual(
@@ -288,12 +296,12 @@ class TestChainMethods(BaseTest):
         )
 
     def test_find_segment(self):
-        """ Validate custom list function """
+        """Validate custom list function"""
         self.assertEqual(Chain._find_segment(3.5, [1, 2, 3, 4]), 3)
         self.assertTrue(math.isnan(Chain._find_segment(13.5, [1, 2, 3, 4])))
 
     def test_make_link(self):
-        """ Validate the creation of inner and outer link objects """
+        """Validate the creation of inner and outer link objects"""
         inner_link = Chain.make_link(inner=True).val()
         self.assertTrue(inner_link.isValid())
         self.assertAlmostEqual(inner_link.Area(), 577.0049729508926)
@@ -306,7 +314,7 @@ class TestChainMethods(BaseTest):
         self.assertEqual(len(outer_link.Edges()), 36)
 
     def test_assemble_chain_transmission(self):
-        """ Validate input parsing """
+        """Validate input parsing"""
         spkt0 = Sprocket(num_teeth=16)
         spkt1 = Sprocket(num_teeth=16)
 
@@ -350,11 +358,11 @@ class TestChainMethods(BaseTest):
         # )
 
 
-class TestVectorMethods(BaseTest):
-    """ Extensions to the Vector class """
+class TestVectorMethods(unittest.TestCase):
+    """Extensions to the Vector class"""
 
     def test_vector_rotate(self):
-        """ Validate vector rotate methods """
+        """Validate vector rotate methods"""
         vector_x = cq.Vector(1, 0, 1).rotateX(45)
         vector_y = cq.Vector(1, 2, 1).rotateY(45)
         vector_z = cq.Vector(-1, -1, 3).rotateZ(45)
@@ -365,13 +373,13 @@ class TestVectorMethods(BaseTest):
         self.assertTupleAlmostEquals(vector_z.toTuple(), (0, -math.sqrt(2), 3), 7)
 
     def test_vector_flip_y(self):
-        """ Validate vector flip of the xz plane method """
+        """Validate vector flip of the xz plane method"""
         self.assertTupleAlmostEquals(
             cq.Vector(1, 2, 3).flipY().toTuple(), (1, -2, 3), 7
         )
 
     def test_point_to_vector(self):
-        """ Validate conversion of 2D points to 3D vectors """
+        """Validate conversion of 2D points to 3D vectors"""
         point = cq.Vector(1, 2)
         with self.assertRaises(ValueError):
             point.pointToVector((1, 0, 0))

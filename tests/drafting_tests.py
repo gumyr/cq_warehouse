@@ -27,7 +27,6 @@ license:
 """
 import math
 import unittest
-from tests import BaseTest
 import cadquery as cq
 from cq_warehouse.drafting import Draft
 
@@ -35,11 +34,21 @@ MM = 1
 INCH = 25.4 * MM
 
 
-class TestClassInstantiation(BaseTest):
-    """ Test Draft class instantiation """
+def _assertTupleAlmostEquals(self, expected, actual, places, msg=None):
+    """Check Tuples"""
+    for i, j in zip(actual, expected):
+        self.assertAlmostEqual(i, j, places, msg=msg)
+
+
+unittest.TestCase.assertTupleAlmostEquals = _assertTupleAlmostEquals
+
+
+class TestClassInstantiation(unittest.TestCase):
+
+    """Test Draft class instantiation"""
 
     def test_draft_instantiation(self):
-        """ Parameter parsing is mostly covered by pydantic, except these """
+        """Parameter parsing is mostly covered by pydantic, except these"""
         with self.assertRaises(ValueError):
             Draft(units="normal")
         with self.assertRaises(ValueError):
@@ -48,8 +57,8 @@ class TestClassInstantiation(BaseTest):
             Draft(units="imperial", number_display="fraction", fractional_precision=37)
 
 
-class TestFunctionality(BaseTest):
-    """ Test core drafting functionality """
+class TestFunctionality(unittest.TestCase):
+    """Test core drafting functionality"""
 
     def test_number_with_units(self):
         metric_drawing = Draft(decimal_precision=2)
@@ -87,11 +96,17 @@ class TestFunctionality(BaseTest):
         line = cq.Edge.makeLine(cq.Vector(0, 0, 0), cq.Vector(100, 0, 0))
         with self.assertRaises(ValueError):
             metric_drawing._label_to_str(
-                label=None, line_wire=line, label_angle=True, tolerance=0,
+                label=None,
+                line_wire=line,
+                label_angle=True,
+                tolerance=0,
             )
         arc1 = cq.Edge.makeCircle(100, angle1=0, angle2=30)
         angle_str = metric_drawing._label_to_str(
-            label=None, line_wire=arc1, label_angle=True, tolerance=0,
+            label=None,
+            line_wire=arc1,
+            label_angle=True,
+            tolerance=0,
         )
         self.assertEqual(angle_str, "30°")
 
@@ -207,8 +222,8 @@ class TestFunctionality(BaseTest):
             metric_drawing.callout(label="test", location=(0, 0, 0), justify="centre")
 
 
-class TestVertexExtensions(BaseTest):
-    """ Test the extensions to the cadquery Vertex class """
+class TestVertexExtensions(unittest.TestCase):
+    """Test the extensions to the cadquery Vertex class"""
 
     def test_vertex_add(self):
         test_vertex = cq.Vertex.makeVertex(0, 0, 0)

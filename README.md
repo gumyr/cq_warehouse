@@ -23,6 +23,12 @@ or CAM systems.
     - [dimension_line](#dimension_line)
     - [extension_line](#extension_line)
     - [callout](#callout)
+  - [thread sub-package](#thread-sub-package)
+    - [Thread](#thread)
+    - [IsoThread](#isothread)
+    - [AcmeThread](#acmethread)
+    - [MetricTrapezoidalThread](#metrictrapezoidalthread)
+    - [TrapezoidalThread](#trapezoidalthread)
   - [fastener sub-package](#fastener-sub-package)
     - [Nut](#nut)
       - [Nut Selection](#nut-selection)
@@ -35,9 +41,7 @@ or CAM systems.
       - [Derived Washer Classes](#derived-washer-classes)
     - [Clearance, Tap and Threaded Holes](#clearance-tap-and-threaded-holes)
       - [API](#api)
-    - [Thread](#thread)
-    - [ExternalThread](#externalthread)
-    - [InternalThread](#internalthread)
+    - [Bill of Materials](#bill-of-materials)
     - [Extending the fastener sub-package](#extending-the-fastener-sub-package)
   - [extensions sub-package](#extensions-sub-package)
     - [Assembly class extensions](#assembly-class-extensions)
@@ -56,12 +60,13 @@ Install from github:
 ```
 python3 -m pip install git+https://github.com/gumyr/cq_warehouse.git#egg=cq_warehouse
 ```
-Note that cq_warehouse requires the development version of cadquery (see [Installing CadQuery](https://cadquerytest.readthedocs.io/en/readthedocs/installation.html)). Also note that cq_warehouse uses the pydantic package for input validation which requires keyword arguments (e.g. `num_teeth=16`).
+Note that cq_warehouse requires the development version of cadquery (see [Installing CadQuery](https://cadquery.readthedocs.io/en/latest/installation.html)). Also note that cq_warehouse uses the pydantic package for input validation which requires keyword arguments (e.g. `num_teeth=16`).
 # Package Structure
 The cq_warehouse package contains the following sub-packages:
 - **sprocket** : a parametric sprocket generator
 - **chain**  : a parametric chain generator
 - **drafting** : a set of methods used for documenting cadquery objects
+- **thread** : a parametric thread fastener generator
 - **fastener** : a parametric threaded fastener generator
 - **extensions** : a set of enhancements to the core cadquery system
 
@@ -386,6 +391,110 @@ A text box with or without a tail pointing to another object used to provide ext
 
 callout returns a cadquery `Assembly` object.
 
+## thread sub-package
+Helical threads are very common in mechanical designs but can be tricky to create in a robust and efficient manner. This sub-package provides classes that create three common types of threads:
+- ISO Standard 60° threads found on most fasteners
+- Acme 29° threads found on imperial machine equipment
+- Metric Trapezoidal 30° thread found on metric machine equipment
+
+In addition, all threads support four different end finishes:
+- "raw" - where the thread extends beyond the desired length ready for integration into another part
+- "fade" - where the end of the thread spirals in - or out for internal threads
+- "square" - where the end of the thread is flat
+- "chamfer" - where the end of the thread is chamfered as commonly found on machine screws
+
+Here is what they look like (clockwise from the top: "fade", "chamfer", "square" and "raw"):
+![EndFinishes](doc/thread_end_finishes.png)
+
+When choosing between these four options, consider the performance differences between them. Here are some measurements that give a sense of the relative performance:
+
+| Finish    | Time   |
+| --------- | ------ |
+| "raw"     | 0.018s |
+| "fade"    | 0.087s |
+| "square"  | 0.370s |
+| "chamfer" | 1.641s |
+
+The "raw" and "fade" end finishes do not use any boolean operations which is why they are so fast. "square" does a cut() operation with a box while "chamfer" does an intersection() with a chamfered cylinder.
+
+The following sections describe the different thread classes.
+
+### Thread
+The most general thread class used to build all of the other threads.
+
+The parameters are:
+- `apex_radius`: (float) : the radius at the narrow tip of the thread
+- `apex_width` (float) : the narrow tip width
+- `root_radius` (float) : the radius at the wide base of the thread
+- `root_width` (float) : the thread base width
+- `pitch` (float) : the length of 360° of thread rotation
+- `length` (float) : the end to end length of the thread
+- `hand` (Literal["right", "left"] = "right") : twist direction
+- `taper_angle` (Optional[float] = None) : cone angle for tapered thread
+- `end_finishes` (Tuple[Literal["raw", "square", "fade", "chamfer"]] = ("raw", "raw"))
+
+This class exposes instance variables for the input parameters as well as:
+- `cq_object` (cq.Solid) : cadquery Solid object
+
+### IsoThread
+Both external and internal ISO standard 60° threads as shown in the following diagram (from https://en.wikipedia.org/wiki/ISO_metric_screw_thread):
+![ISO_and_UTS_Thread_Dimensions](https://upload.wikimedia.org/wikipedia/commons/4/4b/ISO_and_UTS_Thread_Dimensions.svg)
+
+The parameters are:
+- `major_diameter` (float) : the primary thread diameter
+- `pitch` (float) : the length of 360° of thread rotation
+- `length` (float) : the end to end length of the thread
+- `external` (bool=True) : external or internal thread selector
+- `hand` (Literal["right", "left"] = "right") : twist direction
+- `taper_angle` (Optional[float] = None) : cone angle for tapered thread
+- `end_finishes` (Tuple[Literal["raw", "square", "fade", "chamfer"]] = ("fade", "square"))
+
+This class exposes instance variables for the input parameters as well as:
+- `h_parameter` (float) : the value of `h` as shown in the thread diagram
+- `min_radius` (float) : inside radius of the thread diagram
+- `cq_object` (cq.Solid) : cadquery Solid object
+
+The following is an example of an internal thread with a chamfered end as might be found inside a nut:
+![InternalIsoThread](doc/internal_iso_thread.png)
+
+### AcmeThread
+The original trapezoidal thread form, and still probably the one most commonly encountered worldwide, with a 29° thread angle, is the Acme thread form.
+
+The parameters are:
+- `size` (str) : the imperial diameter of the thread (e.g. "1 1/4")
+- `length` (float) : the end to end length of the thread
+- `external` (bool=True) : external or internal thread selector
+- `hand` (Literal["right", "left"] = "right") : twist direction
+- `end_finishes` (Tuple[Literal["raw", "square", "fade", "chamfer"]] = ("fade", "fade"))
+
+This class exposes instance variables for the input parameters as well as:
+- `thread_angle` (float) : 29.0
+- `diameter` (float)
+- `pitch` (float)
+- `cq_object` (cq.Solid) : cadquery Solid object
+
+The following is the acme thread with faded ends:
+![AcmeThread](doc/acme_thread.png)
+
+### MetricTrapezoidalThread
+The ISO 2904 standard metric trapezoidal thread with a thread angle of 30°.
+
+The parameters are:
+- `size` (str) : the metric diameter x pitch of the thread (e.g. "8x1.5")
+- `length` (float) : the end to end length of the thread
+- `external` (bool=True) : external or internal thread selector
+- `hand` (Literal["right", "left"] = "right") : twist direction
+- `end_finishes` (Tuple[Literal["raw", "square", "fade", "chamfer"]] = ("fade", "fade"))
+
+This class exposes instance variables for the input parameters as well as:
+- `thread_angle` (float) : 29.0
+- `diameter` (float)
+- `pitch` (float)
+- `cq_object` (cq.Solid) : cadquery Solid object
+
+### TrapezoidalThread
+The base class of the AcmeThread and MetricTrapezoidalThread classes.
+
 ## fastener sub-package
 Many mechanical designs will contain threaded fasteners of some kind, either in a threaded hole or threaded screws or bolts holding two or more parts together. The fastener sub-package provides a set of classes with which raw threads can be created such that they can be integrated into other parts as well as a set of classes that create many different types of nuts, screws and washers - as follows:
 ![fastener_disc](doc/fastener_disc.png)
@@ -416,9 +525,6 @@ Here is a list of the classes (and fastener types) provided:
   - `PlainWasher`: iso7094, iso7093, iso7089, iso7091
   - `ChamferedWasher`: iso7090
   - `CheeseHeadWasher`: iso7092
-- [Thread](#thread) - the base thread class
-  - [ExternalThread](#externalthread) - a derived class providing threads on screws
-  - [InternalThread](#internalthread) - a derived class providing threads on nuts
 
 See [Extending the fastener sub-package](#Extending-the-fastener-sub-package) for guidance on how to easily add new sizes or entirely new types of fasteners.
 
@@ -439,7 +545,7 @@ Many of the fastener standards provide ranges for some of the dimensions - for e
 
 Threaded parts are complex for CAD systems to create and significantly increase the storage requirements thus making the system slow and difficult to use. To minimize these requirements all of the fastener classes have a `simple` boolean parameter that when `True` doesn't create actual threads at all. Such simple parts have the same overall dimensions and such that they can be used to check for fitment without dramatically impacting performance.
 
-> :warning: **CQ-editor** :warning: Set the Preferences :arrow_right: 3D Viewer :arrow_right: Deviation parameter to 0.01 to avoid crashes due to memory over-consumption when working with threads
+> :hourglass: **CQ-editor** :hourglass: You can increase the Preferences :arrow_right: 3D Viewer :arrow_right: Deviation parameter to improve performance by slightly compromising accuracy.
 
 All of the fasteners default to right-handed thread but each of them provide a `hand` string parameter which can either be `"right"` or `"left"`.
 
@@ -612,7 +718,7 @@ When designing parts with CadQuery a common operation is to place holes appropri
 
 These methods use data provided by a fastener instance (either a `Nut` or a `Screw`) to both create the appropriate hole (possibly countersunk) in your part as well as add the fastener to a CadQuery Assembly in the location of the hole. In addition, a list of washers can be provided which will get placed under the head of the screw or nut in the provided Assembly.
 
-For example, let's re-build the parametric bearing pillow block found in the [CadQuery Quickstart](https://cadquerytest.readthedocs.io/en/readthedocs/quickstart.html):
+For example, let's re-build the parametric bearing pillow block found in the [CadQuery Quickstart](https://cadquery.readthedocs.io/en/latest/quickstart.html):
 ```python
 import cadquery as cq
 from cq_warehouse.fastener import SocketHeadCapScrew
@@ -703,51 +809,21 @@ screw.tap_drill_sizes # {'Soft': '5', 'Hard': '5.4'}
 ```
 Note that with imperial sized holes (e.g. 7/16), the drill sizes could be a fractional size (e.g. 25/64) or a numbered or lettered size (e.g. U). This information can be added to your designs with the [drafting sub-package](#drafting-sub-package).
 
-### Thread
-As the base class of the other thread classes it isn't intended for end users. Both external and internal threads are ISO standard by default as shown in the following diagram (from https://en.wikipedia.org/wiki/ISO_metric_screw_thread):
-![ISO_and_UTS_Thread_Dimensions](https://upload.wikimedia.org/wikipedia/commons/4/4b/ISO_and_UTS_Thread_Dimensions.svg)
+### Bill of Materials
+As previously mentioned, when an assembly is passed into the three hole methods the fasteners referenced are added to the assembly. A new method has been added to the CadQuery Assembly class - `fastener_quantities()` - which scans the assembly and returns a dictionary of either:
+- {fastener: count}, or
+- {fastener.info: count}
 
-All thread objects are complex and therefore can be difficult for the OCCT core to work with. To aid in this both the internal and external thread objects are created such that they can be combined with the `glue` option of the `union()` method, as such:
+For example, the values for the previous pillow block example are:
 ```python
-    ...
-    return self.head.union(self.shank, glue=True).val()
+print(pillow_block.fastener_quantities())
+# {'SocketHeadCapScrew(iso4762): M2-0.4x16': 4}
+
+print(pillow_block.fastener_quantities(bom=False))
+# {<cq_warehouse.fastener.SocketHeadCapScrew object at 0x7f90560f3a90>: 4}
 ```
-Other build techniques, such as using the `cut()` method to remove an internal thread from an object, often fail or take an excessive amount of time.
-### ExternalThread
-![ExternalThread](doc/externalthread.png)
+Note that this method only scans the given assembly and not any of its children. The `Assembly.traverse()` method can be used in conjunction with `fastener_quantities()` to extract the fastener data in depth.
 
-This derived class of Thread creates an external thread object as found on screws and bolts. The parameters are:
-- `major_diameter` (float)
-- `pitch` (float)
-- `length` (float)
-- `hand` (Literal["right", "left"] = "right")
-- `hollow` (bool = False) : hollow out the center of the thread object to optimize inclusion of internal detail
-- `thread_angle` (Optional[float] = 60.0)
-- `simple` (bool = False) : simplify thread
-
-This class exposes instance variables for the input parameters as well as:
-- `h_parameter` (float) : the value of `h` as shown in the thread diagram
-- `min_radius` (float) : inside radius of the thread diagram
-- `thread_radius` (float) : thread radius of the thread diagram
-- `cq_object` (cq.Solid) : cadquery Solid object
-
-### InternalThread
-![InternalThread](doc/internalthread.png)
-
-This derived class of Thread creates an internal thread object as found on nuts. This object looks like a washer with the thread cut into the inside of the object such that it can be efficiently included into another object by placing it into an appropriately sized hole. The parameters are:
-- `major_diameter` (float)
-- `pitch` (float)
-- `length` (float)
-- `hand` (Literal["right", "left"] = "right")
-- `thread_angle` (Optional[float] = 60.0)
-- `simple` (bool = False) : simplify thread
-
-This class exposes instance variables for the input parameters as well as:
-- `h_parameter` (float) : the value of `h` as shown in the thread diagram
-- `min_radius` (float) : inside radius of the thread diagram
-- `thread_radius` (float) : thread radius of the thread diagram
-- `internal_thread_socket_radius` (float) : the outer radius of the thread object - (e.g. the size to make the hole for it to fit into)
-- `cq_object` (cq.Solid) : cadquery Solid object
 ### Extending the fastener sub-package
 The fastener sub-package has been designed to be extended in the following two ways:
 - **Alternate Sizes** - As mentioned previously, the data used to guide the creation of fastener objects is derived from `.csv` files found in the same place as the source code. One can add to the set of standard sized fasteners by inserting appropriate data into the tables. There is a table for each fastener class; an example of the 'socket_head_cap_parameters.csv' is below:
