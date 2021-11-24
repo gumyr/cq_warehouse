@@ -30,7 +30,7 @@ base = (
     .fillet(2.0)
 )
 pillow_block.add(base, name="base", color=cq.Color(162 / 255, 138 / 255, 255 / 255))
-print(pillow_block.fastener_quantities())
+print(pillow_block.fastener_quantities(bom=False))
 
 # Render the assembly
 if "show_object" in locals():
