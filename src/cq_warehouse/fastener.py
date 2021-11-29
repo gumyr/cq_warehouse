@@ -33,12 +33,13 @@ license:
 from abc import ABC, abstractmethod
 from typing import Literal, Tuple, Optional, List, TypeVar, Union
 from math import sin, cos, tan, radians, pi, degrees, sqrt
-from functools import cache
 import csv
 import importlib.resources as pkg_resources
 import cadquery as cq
 from cq_warehouse.thread import is_safe, imperial_str_to_float, IsoThread
 import cq_warehouse
+
+# from functools import cache
 
 MM = 1
 IN = 25.4 * MM
@@ -459,7 +460,7 @@ class Nut(ABC):
         """Screw only parameter"""
         return 0
 
-    @cache
+    # @cache
     def __init__(
         self,
         size: str,
@@ -950,7 +951,7 @@ class Screw(ABC):
         """A cadquery Compound screw as defined by class attributes"""
         return self._cq_object
 
-    @cache
+    # @cache
     def __init__(
         self,
         size: str,
@@ -1738,7 +1739,7 @@ class Washer(ABC):
         """A cadquery Compound screw as defined by class attributes"""
         return self._cq_object
 
-    @cache
+    # @cache
     def __init__(
         self,
         size: str,

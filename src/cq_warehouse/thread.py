@@ -26,10 +26,11 @@ license:
 
 """
 from abc import ABC, abstractmethod
-from functools import cache
 from typing import Literal, Optional, Tuple, List
 from math import sin, cos, tan, radians, pi
 import cadquery as cq
+
+# from functools import cached_property, cache
 
 MM = 1
 IN = 25.4 * MM
@@ -100,7 +101,6 @@ class Thread:
         """A cadquery Solid thread as defined by class attributes"""
         return self._cq_object
 
-    @cache
     def __init__(
         self,
         apex_radius: float,
@@ -151,9 +151,9 @@ class Thread:
         # Either create a cylindrical thread for further processing
         # or create a cylindrical thread segment with faded ends
         if number_faded_ends == 0:
-            self._cq_object = self.make_thread(cylindrical_thread_length).translate(
-                (0, 0, cylindrical_thread_displacement)
-            )
+            self._cq_object = self.make_thread_solid(
+                cylindrical_thread_length
+            ).translate((0, 0, cylindrical_thread_displacement))
         else:
             self.make_thread_with_faded_ends(
                 number_faded_ends,
@@ -343,7 +343,7 @@ class Thread:
         end_faces = [cq.Face.makeFromWires(end_cap_wires[i]) for i in end_caps]
         return (thread_faces, end_faces)
 
-    def make_thread(
+    def make_thread_solid(
         self,
         length: float,
         fade_helix: bool = False,
