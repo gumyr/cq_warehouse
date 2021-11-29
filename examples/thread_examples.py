@@ -43,7 +43,7 @@ iso_internal_thread = IsoThread(
     hand="left",
 )
 elapsed_time = timeit.default_timer() - starttime
-print(f"IsoThread internal elapsed time: {elapsed_time}")
+print(f"IsoThread internal elapsed time: {elapsed_time:.3f}s")
 iso_internal_core = (
     cq.Workplane("XY")
     .polygon(6, iso_internal_thread.major_diameter * 1.5)
@@ -64,7 +64,7 @@ iso_external_thread = IsoThread(
     hand="left",
 )
 elapsed_time = timeit.default_timer() - starttime
-print(f"IsoThread external elapsed time: {elapsed_time}")
+
 iso_external_core = (
     cq.Workplane("XY")
     .circle(iso_external_thread.min_radius)
@@ -77,7 +77,7 @@ print(f"{iso_external.isValid()=}")
 starttime = timeit.default_timer()
 acme_thread = AcmeThread(size="1/4", length=1 * IN)
 elapsed_time = timeit.default_timer() - starttime
-print(f"AcmeThread elapsed time: {elapsed_time}")
+print(f"AcmeThread elapsed time: {elapsed_time:.3f}s")
 acme_core = (
     cq.Workplane("XY").circle(acme_thread.root_radius).extrude(acme_thread.length)
 )
@@ -88,7 +88,7 @@ print(f"{acme.isValid()=}")
 starttime = timeit.default_timer()
 metric_thread = MetricTrapezoidalThread(size="8x1.5", length=20 * MM)
 elapsed_time = timeit.default_timer() - starttime
-print(f"MetricTrapezoidalThread elapsed time: {elapsed_time}")
+print(f"MetricTrapezoidalThread elapsed time: {elapsed_time:.3f}s")
 metric_core = (
     cq.Workplane("XY").circle(metric_thread.root_radius).extrude(metric_thread.length)
 )
