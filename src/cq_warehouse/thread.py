@@ -36,12 +36,12 @@ IN = 25.4 * MM
 
 
 def is_safe(value: str) -> bool:
-    """ Evaluate if the given string is a fractional number safe for eval() """
+    """Evaluate if the given string is a fractional number safe for eval()"""
     return len(value) <= 10 and all(c in "0123456789./ " for c in set(value))
 
 
 def imperial_str_to_float(measure: str) -> float:
-    """ Convert an imperial measurement (possibly a fraction) to a float value """
+    """Convert an imperial measurement (possibly a fraction) to a float value"""
     if is_safe(measure):
         # pylint: disable=eval-used
         # Before eval() is called the string extracted from the csv file is verified as safe
@@ -52,7 +52,7 @@ def imperial_str_to_float(measure: str) -> float:
 
 
 class Thread:
-    """ Create a helical thread
+    """Create a helical thread
     Each end of the thread can finished as follows:
     - "raw"     unfinished which typically results in the thread extended below
                 z=0 or above z=length
@@ -73,8 +73,8 @@ class Thread:
     def fade_helix(
         self, t: float, apex: bool, vertical_displacement: float
     ) -> Tuple[float, float, float]:
-        """ A helical function used to create the faded tips of threads that spirals
-            self.tooth_height in self.pitch/4 """
+        """A helical function used to create the faded tips of threads that spirals
+        self.tooth_height in self.pitch/4"""
         if self.external:
             radius = (
                 # self.apex_radius - t * self.tooth_height if apex else self.root_radius
@@ -97,7 +97,7 @@ class Thread:
 
     @property
     def cq_object(self):
-        """ A cadquery Solid thread as defined by class attributes """
+        """A cadquery Solid thread as defined by class attributes"""
         return self._cq_object
 
     @cache
@@ -116,7 +116,7 @@ class Thread:
             Literal["raw", "square", "fade", "chamfer"],
         ] = ("raw", "raw"),
     ):
-        """ Store the parameters and create the thread object """
+        """Store the parameters and create the thread object"""
         for finish in end_finishes:
             if not finish in ["raw", "square", "fade", "chamfer"]:
                 raise ValueError(
@@ -172,8 +172,8 @@ class Thread:
         cylindrical_thread_length,
         cylindrical_thread_displacement,
     ):
-        """ Build the thread object from cylindrical thread faces and
-            faded ends faces """
+        """Build the thread object from cylindrical thread faces and
+        faded ends faces"""
         (thread_faces, end_faces) = self.make_thread_faces(cylindrical_thread_length)
 
         # Need to operator on each face below
@@ -223,7 +223,7 @@ class Thread:
         self._cq_object = cq.Solid.makeSolid(thread_shell)
 
     def square_off_ends(self):
-        """ Square off the ends of the thread """
+        """Square off the ends of the thread"""
 
         if self.end_finishes.count("square") != 0:
             # Note: box_size must be > max(apex,root) radius or the core doesn't cut correctly
@@ -242,7 +242,7 @@ class Thread:
                     )
 
     def chamfer_ends(self):
-        """ Chamfer the ends of the thread """
+        """Chamfer the ends of the thread"""
 
         if self.end_finishes.count("chamfer") != 0:
             cutter = (
@@ -263,9 +263,11 @@ class Thread:
             self._cq_object = self._cq_object.intersect(cutter.val())
 
     def make_thread_faces(
-        self, length: float, fade_helix: bool = False,
+        self,
+        length: float,
+        fade_helix: bool = False,
     ) -> Tuple[List[cq.Face]]:
-        """ Create the thread object from basic CadQuery objects
+        """Create the thread object from basic CadQuery objects
 
         This method creates three types of thread objects:
         1. cylindrical - i.e. following a simple helix
@@ -341,8 +343,12 @@ class Thread:
         end_faces = [cq.Face.makeFromWires(end_cap_wires[i]) for i in end_caps]
         return (thread_faces, end_faces)
 
-    def make_thread(self, length: float, fade_helix: bool = False,) -> cq.Solid:
-        """ Create a solid object by first creating the faces """
+    def make_thread(
+        self,
+        length: float,
+        fade_helix: bool = False,
+    ) -> cq.Solid:
+        """Create a solid object by first creating the faces"""
         (thread_faces, end_faces) = self.make_thread_faces(length, fade_helix)
 
         thread_shell = cq.Shell.makeShell(thread_faces + end_faces)
@@ -358,17 +364,17 @@ class IsoThread:
 
     @property
     def h_parameter(self) -> float:
-        """ Calculate the h parameter """
+        """Calculate the h parameter"""
         return (self.pitch / 2) / tan(radians(self.thread_angle / 2))
 
     @property
     def min_radius(self) -> float:
-        """ The radius of the root of the thread """
+        """The radius of the root of the thread"""
         return (self.major_diameter - 2 * (5 / 8) * self.h_parameter) / 2
 
     @property
     def cq_object(self) -> cq.Solid:
-        """ A cadquery Solid thread as defined by class attributes """
+        """A cadquery Solid thread as defined by class attributes"""
         return self._cq_object
 
     def __init__(
@@ -426,19 +432,19 @@ class TrapezoidalThread(ABC):
 
     @property
     def cq_object(self) -> cq.Solid:
-        """ A cadquery Solid thread as defined by class attributes """
+        """A cadquery Solid thread as defined by class attributes"""
         return self._cq_object
 
     @property
     @abstractmethod
     def thread_angle(self) -> float:
-        """ The thread angle in degrees """
+        """The thread angle in degrees"""
         return NotImplementedError
 
     @classmethod
     @abstractmethod
     def parse_size(cls, size: str) -> Tuple[float, float]:
-        """ Convert the provided size into a tuple of diameter and pitch """
+        """Convert the provided size into a tuple of diameter and pitch"""
         return NotImplementedError
 
     def __init__(
@@ -461,10 +467,10 @@ class TrapezoidalThread(ABC):
         root_width = (self.pitch / 2) + shoulder_width
         if self.external:
             self.apex_radius = self.diameter / 2
-            self.root_radius = self.apex_radius - self.pitch / 2
+            self.root_radius = self.diameter / 2 - self.pitch / 2
         else:
-            self.apex_radius = self.diameter / 2
-            self.root_radius = self.apex_radius + self.pitch / 2
+            self.apex_radius = self.diameter / 2 - self.pitch / 2
+            self.root_radius = self.diameter / 2
 
         if hand not in ["right", "left"]:
             raise ValueError(f'hand must be one of "right" or "left" not {hand}')
@@ -516,12 +522,12 @@ class AcmeThread(TrapezoidalThread):
 
     @classmethod
     def sizes(cls) -> List[str]:
-        """ Return a list of the thread sizes """
+        """Return a list of the thread sizes"""
         return list(AcmeThread.acme_pitch.keys())
 
     @classmethod
     def parse_size(cls, size: str) -> Tuple[float, float]:
-        """ Convert the provided size into a tuple of diameter and pitch """
+        """Convert the provided size into a tuple of diameter and pitch"""
         if not size in AcmeThread.acme_pitch.keys():
             raise ValueError(
                 f"size invalid, must be one of {AcmeThread.acme_pitch.keys()}"
@@ -575,12 +581,12 @@ class MetricTrapezoidalThread(TrapezoidalThread):
 
     @classmethod
     def sizes(cls) -> List[str]:
-        """ Return a list of the thread sizes """
+        """Return a list of the thread sizes"""
         return MetricTrapezoidalThread.standard_sizes
 
     @classmethod
     def parse_size(cls, size: str) -> Tuple[float, float]:
-        """ Convert the provided size into a tuple of diameter and pitch """
+        """Convert the provided size into a tuple of diameter and pitch"""
         if not size in MetricTrapezoidalThread.standard_sizes:
             raise ValueError(
                 f"size invalid, must be one of {MetricTrapezoidalThread.standard_sizes}"
