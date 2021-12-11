@@ -30,6 +30,7 @@ license:
     limitations under the License.
 
 """
+from functools import reduce
 from abc import ABC, abstractmethod
 from typing import Literal, Tuple, Optional, List, TypeVar, Union
 from math import sin, cos, tan, radians, pi, degrees, sqrt
@@ -1968,10 +1969,8 @@ def _fastenerHole(
                         ),
                     )
                     washer_thicknesses += washer.washer_thickness
-                    if hasattr(baseAssembly, "metadata"):
-                        baseAssembly.metadata[baseAssembly.children[-1].name] = washer
-                    else:
-                        baseAssembly.metadata = {baseAssembly.children[-1].name: washer}
+                    # Create a metadata entry associating the auto-generated name & fastener
+                    baseAssembly.metadata[baseAssembly.children[-1].name] = washer
 
             baseAssembly.add(
                 fastener.cq_object,
@@ -1981,10 +1980,8 @@ def _fastenerHole(
                     * (head_offset - fastener.length_offset() - washer_thicknesses)
                 ),
             )
-            if hasattr(baseAssembly, "metadata"):
-                baseAssembly.metadata[baseAssembly.children[-1].name] = fastener
-            else:
-                baseAssembly.metadata = {baseAssembly.children[-1].name: fastener}
+            # Create a metadata entry associating the auto-generated name & fastener
+            baseAssembly.metadata[baseAssembly.children[-1].name] = fastener
 
     # Make holes in the stack solid object
     part = self.cutEach(lambda loc: fastener_hole.moved(loc), True, False)
@@ -2100,8 +2097,8 @@ def _fastener_quantities(self, bom: bool = True) -> dict:
     """Generate a bill of materials of the fasteners in an assembly augmented by the hole methods
     bom: returns fastener.info if True else fastener
     """
-    if self.metadata is None:
-        return None
+    if not self.metadata:
+        return {}
 
     # Extract a list of only the fasteners from the metadata
     fasteners = [
@@ -2117,4 +2114,62 @@ def _fastener_quantities(self, bom: bool = True) -> dict:
     return quantities
 
 
-cq.Assembly.fastener_quantities = _fastener_quantities
+cq.Assembly.fastenerQuantities = _fastener_quantities
+
+
+def _location_str(self):
+    loc_tuple = self.toTuple()
+    return f"({str(loc_tuple[0])}, {str(loc_tuple[1])})"
+
+
+cq.Location.__str__ = _location_str
+
+
+def _fastener_locations(self, fastener: Union[Nut, Screw]) -> list[cq.Location]:
+    """Generate a list of cadquery Locations for the given fastener relative to the Assembly"""
+
+    name_to_fastener = {}
+    base_assembly_structure = {}
+    # Extract a list of only the fasteners from the metadata
+    for (name, a) in self.traverse():
+        base_assembly_structure[name] = a
+        if a.metadata is None:
+            continue
+
+        for key, value in a.metadata.items():
+            if value == fastener:
+                name_to_fastener[key] = value
+
+    fastener_path_locations = {}
+    base_assembly_path = self._flatten()
+    for assembly_name, assembly_pointer in base_assembly_path.items():
+        for fastener_name in name_to_fastener.keys():
+            if fastener_name in assembly_name:
+                parents = assembly_name.split("/")
+                fastener_path_locations[fastener_name] = [
+                    base_assembly_structure[name].loc for name in parents
+                ]
+
+    fastener_locations = [
+        reduce(lambda l1, l2: l1 * l2, locs)
+        for locs in fastener_path_locations.values()
+    ]
+
+    return fastener_locations
+
+
+cq.Assembly.fastenerLocations = _fastener_locations
+
+
+def _push_fastener_locations(
+    self: T,
+    fastener: Union[Nut, Screw],
+    baseAssembly: cq.Assembly,
+):
+    """Push the Location(s) of the given fastener relative to the given Assembly onto the stack"""
+
+    return self.pushPoints(baseAssembly.fastenerLocations(fastener))
+    # return T
+
+
+cq.Workplane.pushFastenerLocations = _push_fastener_locations
