@@ -41,6 +41,8 @@ or CAM systems.
       - [Derived Washer Classes](#derived-washer-classes)
     - [Clearance, Tap and Threaded Holes](#clearance-tap-and-threaded-holes)
       - [API](#api)
+    - [Fastener Locations](#fastener-locations)
+      - [API](#api-1)
     - [Bill of Materials](#bill-of-materials)
     - [Extending the fastener sub-package](#extending-the-fastener-sub-package)
   - [extensions sub-package](#extensions-sub-package)
@@ -809,20 +811,34 @@ screw.tap_drill_sizes # {'Soft': '5', 'Hard': '5.4'}
 ```
 Note that with imperial sized holes (e.g. 7/16), the drill sizes could be a fractional size (e.g. 25/64) or a numbered or lettered size (e.g. U). This information can be added to your designs with the [drafting sub-package](#drafting-sub-package).
 
+### Fastener Locations
+There are two methods that assist with the location of fastener holes relative to other parts: `cq.Assembly.fastenerLocations()` and `cq.Workplane.pushFastenerLocations()`.
+
+#### API
+The APIs of these three methods are:
+`fastenerLocations`: returns a list of `cq.Location` objects representing the position and orientation of a given fastener in this Assembly
+- `fastener`: Union[Nut, Screw]
+
+`pushFastenerLocations`: places the location(s) of fasteners on the stack ready for further CadQuery operations
+- `fastener`: Union[Nut, Screw], the fastener to locate
+- `baseAssembly`: cq.Assembly, the assembly that the fasteners are relative to
+
+The [align_fastener_holes.py](examples/align_fastener_holes.py)   example shows how these methods can be used to align holes between parts in an assembly.
+
 ### Bill of Materials
-As previously mentioned, when an assembly is passed into the three hole methods the fasteners referenced are added to the assembly. A new method has been added to the CadQuery Assembly class - `fastener_quantities()` - which scans the assembly and returns a dictionary of either:
+As previously mentioned, when an assembly is passed into the three hole methods the fasteners referenced are added to the assembly. A new method has been added to the CadQuery Assembly class - `fastenerQuantities()` - which scans the assembly and returns a dictionary of either:
 - {fastener: count}, or
 - {fastener.info: count}
 
 For example, the values for the previous pillow block example are:
 ```python
-print(pillow_block.fastener_quantities())
+print(pillow_block.fastenerQuantities())
 # {'SocketHeadCapScrew(iso4762): M2-0.4x16': 4}
 
-print(pillow_block.fastener_quantities(bom=False))
+print(pillow_block.fastenerQuantities(bom=False))
 # {<cq_warehouse.fastener.SocketHeadCapScrew object at 0x7f90560f3a90>: 4}
 ```
-Note that this method only scans the given assembly and not any of its children. The `Assembly.traverse()` method can be used in conjunction with `fastener_quantities()` to extract the fastener data in depth.
+Note that this method scans the given assembly and all its children for fasteners. To limit the scan to just the current Assembly, set the `deep=False` optional parameter).
 
 ### Extending the fastener sub-package
 The fastener sub-package has been designed to be extended in the following two ways:
