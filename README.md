@@ -816,6 +816,7 @@ There are two methods that assist with the location of fastener holes relative t
 
 #### API
 The APIs of these three methods are:
+
 `fastenerLocations`: returns a list of `cq.Location` objects representing the position and orientation of a given fastener in this Assembly
 - `fastener`: Union[Nut, Screw]
 
