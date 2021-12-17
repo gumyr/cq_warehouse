@@ -31,49 +31,63 @@ from cq_warehouse.fastener import SocketHeadCapScrew
 
 # Create the screws that will fasten the plates together
 cap_screw = SocketHeadCapScrew(
-    size="M2-0.4", length=5, fastener_type="iso4762", simple=False
+    size="M2-0.4", length=6, fastener_type="iso4762", simple=False
 )
 
 # Two assemblies are required - the top will contain the screws
-top_plate_assembly = cq.Assembly(None, name="top_plate_assembly")
-base_plate_assembly = cq.Assembly(None, name="base_plate_assembly")
+bracket_assembly = cq.Assembly(None, name="top_plate_assembly")
+square_tube_assembly = cq.Assembly(None, name="base_plate_assembly")
 
-# --- Top Plate ---
+# --- Angle Bracket ---
 
-# Create the top plate and add clearance holes for the screws
-top_plate = (
-    cq.Workplane()
-    .box(10, 10, 1, centered=(True, True, False))
+# Create an angle bracket and add clearance holes for the screws
+angle_bracket = (
+    cq.Workplane("YZ")
+    .moveTo(-9, 1)
+    .hLine(10)
+    .vLine(-10)
+    .offset2D(1)
+    .extrude(10, both=True)
     .faces(">Z")
     .workplane()
-    .pushPoints([(3, 3), (-3, -3)])
-    .clearanceHole(
-        fastener=cap_screw, counterSunk=False, baseAssembly=top_plate_assembly
-    )
+    .pushPoints([(5, -5), (-5, -5)])
+    .clearanceHole(fastener=cap_screw, counterSunk=False, baseAssembly=bracket_assembly)
+    .faces(">Y")
+    .workplane()
+    .pushPoints([(0, -7)])
+    .clearanceHole(fastener=cap_screw, counterSunk=False, baseAssembly=bracket_assembly)
 )
 # Add the top plate to the top assembly so it can be placed with the screws
-top_plate_assembly.add(top_plate, name="top_plate")
+bracket_assembly.add(angle_bracket, name="angle_bracket")
 # Add the top plate and screws to the base assembly
-base_plate_assembly.add(
-    top_plate_assembly, name="top_plate_assembly", loc=cq.Location(cq.Vector(25, 0, 1))
+square_tube_assembly.add(
+    bracket_assembly,
+    name="top_plate_assembly",
+    loc=cq.Location(cq.Vector(20, 10, 10)),
 )
 
-# --- Base Plate ---
+# --- Square Tube ---
 
-# Create the base plate
-base_plate = cq.Workplane().box(65, 100, 1, centered=(True, True, False))
-# Complete the base plate assembly by adding the base plate
-base_plate_assembly.add(base_plate, name="base_plate")
-# Add tap holes to the base plate that align with the top plate
-base_plate = base_plate.pushFastenerLocations(cap_screw, base_plate_assembly).tapHole(
-    fastener=cap_screw, counterSunk=False
+# Create the square tube
+square_tube = (
+    cq.Workplane("YZ").rect(18, 18).rect(14, 14).offset2D(1).extrude(30, both=True)
 )
-# Where are the cap screw holes in the base plate?
-for loc in base_plate_assembly.fastenerLocations(cap_screw):
+# Complete the square tube assembly by adding the square tube
+square_tube_assembly.add(square_tube, name="square_tube")
+# Add tap holes to the square tube that align with the angle bracket
+square_tube = square_tube.pushFastenerLocations(
+    cap_screw, square_tube_assembly
+).tapHole(fastener=cap_screw, counterSunk=False, depth=10)
+
+
+# Where are the cap screw holes in the square tube?
+for loc in square_tube_assembly.fastenerLocations(cap_screw):
     print(loc)
 
-cq.Workplane("XY").pushPoints
+# How many fasteners are used in the square_tube_assembly and all sub-assemblies
+print(square_tube_assembly.fastenerQuantities())
+
 if "show_object" in locals():
-    show_object(top_plate, name="top_plate")
-    show_object(base_plate, name="base_plate")
-    show_object(base_plate_assembly, name="plate_assembly")
+    show_object(angle_bracket, name="angle_bracket")
+    show_object(square_tube, name="square_tube")
+    show_object(square_tube_assembly, name="square_tube_assembly")

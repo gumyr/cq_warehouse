@@ -2093,19 +2093,23 @@ cq.Workplane.tapHole = _tapHole
 cq.Workplane.threadedHole = _threadedHole
 
 
-def _fastener_quantities(self, bom: bool = True) -> dict:
+def _fastener_quantities(self, bom: bool = True, deep: bool = True) -> dict:
     """Generate a bill of materials of the fasteners in an assembly augmented by the hole methods
     bom: returns fastener.info if True else fastener
     """
-    if not self.metadata:
-        return {}
+    assembly_list = []
+    if deep:
+        for _name, sub_assembly in self.traverse():
+            assembly_list.append(sub_assembly)
+    else:
+        assembly_list.append(self)
 
-    # Extract a list of only the fasteners from the metadata
-    fasteners = [
-        value
-        for value in self.metadata.values()
-        if isinstance(value, (Screw, Nut, Washer))
-    ]
+    fasteners = []
+    for sub_assembly in assembly_list:
+        for value in sub_assembly.metadata.values():
+            if isinstance(value, (Screw, Nut, Washer)):
+                fasteners.append(value)
+
     unique_fasteners = set(fasteners)
     if bom:
         quantities = {f.info: fasteners.count(f) for f in unique_fasteners}
@@ -2118,6 +2122,7 @@ cq.Assembly.fastenerQuantities = _fastener_quantities
 
 
 def _location_str(self):
+    """A __str__ method to the Location class"""
     loc_tuple = self.toTuple()
     return f"({str(loc_tuple[0])}, {str(loc_tuple[1])})"
 
@@ -2142,7 +2147,7 @@ def _fastener_locations(self, fastener: Union[Nut, Screw]) -> list[cq.Location]:
 
     fastener_path_locations = {}
     base_assembly_path = self._flatten()
-    for assembly_name, assembly_pointer in base_assembly_path.items():
+    for assembly_name, _assembly_pointer in base_assembly_path.items():
         for fastener_name in name_to_fastener.keys():
             if fastener_name in assembly_name:
                 parents = assembly_name.split("/")
@@ -2168,8 +2173,13 @@ def _push_fastener_locations(
 ):
     """Push the Location(s) of the given fastener relative to the given Assembly onto the stack"""
 
-    return self.pushPoints(baseAssembly.fastenerLocations(fastener))
-    # return T
+    # The locations need to be pushed as global not local object locations
+    ns = self.__class__()
+    ns.plane = cq.Plane(origin=(0, 0, 0), xDir=(1, 0, 0), normal=(0, 0, 1))
+    ns.parent = self
+    ns.objects = baseAssembly.fastenerLocations(fastener)
+    ns.ctx = self.ctx
+    return ns
 
 
 cq.Workplane.pushFastenerLocations = _push_fastener_locations
