@@ -339,7 +339,7 @@ class TestWorkplaneMethods(unittest.TestCase):
             .clearanceHole(fastener=screw, baseAssembly=pillow_block, depth=depth)
             .val()
         )
-        self.assertLess(box.Volume(), 1000)
+        self.assertLess(box.Volume(), 999.99)
         self.assertEqual(len(pillow_block.children), 1)
         self.assertEqual(pillow_block.fastenerQuantities(bom=False)[screw], 1)
         self.assertEqual(len(pillow_block.fastenerQuantities(bom=True)), 1)

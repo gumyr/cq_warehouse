@@ -32,7 +32,7 @@ license:
 """
 from functools import reduce
 from abc import ABC, abstractmethod
-from typing import Literal, Tuple, Optional, List, TypeVar, Union
+from typing import Literal, Tuple, Optional, List, TypeVar, Union, cast
 from math import sin, cos, tan, radians, pi, degrees, sqrt
 import csv
 import importlib.resources as pkg_resources
@@ -1908,10 +1908,7 @@ def _fastenerHole(
     if counterSunk and not countersink_profile is None:
         head_offset = countersink_profile.vertices(">Z").val().Z
         countersink_cutter = (
-            countersink_profile.toPending()
-            .revolve()
-            .translate((0, 0, -head_offset))
-            .val()
+            countersink_profile.revolve().translate((0, 0, -head_offset)).val()
         )
     else:
         head_offset = 0
