@@ -190,7 +190,7 @@ class TestNuts(unittest.TestCase):
                 .clearanceHole(fastener=nut, counterSunk=True)
                 .val()
             )
-            self.assertLess(box.Volume(), 1000)
+            self.assertLess(box.Volume(), 999.99)
 
 
 class TestScrews(unittest.TestCase):
@@ -294,7 +294,7 @@ class TestScrews(unittest.TestCase):
                 .clearanceHole(fastener=screw, counterSunk=True)
                 .val()
             )
-            self.assertLess(box.Volume(), 1000)
+            self.assertLess(box.Volume(), 999.99)
 
     def test_min_hole_depth(self):
         screw = SocketHeadCapScrew(
@@ -380,7 +380,7 @@ class TestWorkplaneMethods(unittest.TestCase):
             .tapHole(fastener=nut, baseAssembly=pillow_block, washers=[washer])
             .val()
         )
-        self.assertLess(box.Volume(), 1000)
+        self.assertLess(box.Volume(), 999.99)
         self.assertEqual(len(pillow_block.children), 2)
 
     def test_invalid_tap_hole(self):
