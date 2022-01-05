@@ -32,6 +32,9 @@ from OCP.GeomAbs import (
 )
 from OCP.BRepOffsetAPI import BRepOffsetAPI_MakeFilling
 
+FRONT = 0  # Projection results in wires on the front and back of the object
+BACK = 1
+
 
 def _hexArray(
     self,
@@ -258,7 +261,7 @@ def _flipNormal(self) -> int:
 cq.Face.flipNormal = _flipNormal
 
 
-def _projectWireOnSolid(
+def _projectToSolid(
     self: cq.Wire,
     solidObject: cq.Solid,
     direction: cq.Vector = None,
@@ -319,7 +322,53 @@ def _projectWireOnSolid(
     return (front_wires, back_wires)
 
 
-cq.Wire.projectWireOnSolid = _projectWireOnSolid
+cq.Wire.projectToSolid = _projectToSolid
+
+
+def _projectToSolid(
+    self: cq.Face,
+    solidObject: cq.Solid,
+    direction: cq.Vector = None,
+    center: cq.Vector = None,
+) -> tuple[cq.Face]:
+    """
+    Project a Face onto a Solid generating new Face on the front and back of the object
+    one and only one of `direction` or `center` must be provided
+    """
+    if not (direction is None) ^ (center is None):
+        raise ValueError("Either direction or center must be provided")
+
+    planar_outer_wire = self.outerWire()
+    (
+        projected_front_outer_wires,
+        projected_back_outer_wires,
+    ) = planar_outer_wire.projectToSolid(solidObject, direction, center)
+    planar_inner_wires = self.innerWires()
+    projected_front_inner_wires = []
+    projected_back_inner_wires = []
+    for planar_inner_wire in planar_inner_wires:
+        projected_inner_wires = planar_inner_wire.projectToSolid(
+            solidObject, direction, center
+        )
+        projected_front_inner_wires.extend(projected_inner_wires[FRONT])
+        projected_back_inner_wires.extend(projected_inner_wires[BACK])
+
+    if len(projected_front_outer_wires) > 1 or len(projected_back_outer_wires) > 1:
+        raise Exception("The projection of this face has broken into fragments")
+
+    front_face = projected_front_outer_wires[0].makeNonPlanarFace(
+        interiorWires=projected_front_inner_wires
+    )
+    if projected_back_outer_wires:
+        back_face = projected_back_outer_wires[0].makeNonPlanarFace(
+            interiorWires=projected_back_inner_wires
+        )
+    else:
+        back_face = None
+    return (front_face, back_face)
+
+
+cq.Face.projectToSolid = _projectToSolid
 
 
 def __makeNonPlanarFace(
@@ -398,8 +447,6 @@ def projectTextOnSolid(
     if not (direction is None) ^ (center is None):
         raise ValueError("Either direction or center must be provided")
 
-    FRONT = 0  # Projection results in wires on the front and back of the object - just need the front
-
     # Create a list of the character wire dictionary structure - one for each letter in the text
     character_wire_dicts = makeTextWires(
         text=text,
@@ -418,11 +465,11 @@ def projectTextOnSolid(
     for c, wire_relationships in enumerate(character_wire_dicts):
         for exterior_wire, interior_wires in wire_relationships.items():
             if not direction is None:
-                projected_exterior_wire_list = exterior_wire.projectWireOnSolid(
+                projected_exterior_wire_list = exterior_wire.projectToSolid(
                     solidObject, direction=direction
                 )[FRONT]
             else:
-                projected_exterior_wire_list = exterior_wire.projectWireOnSolid(
+                projected_exterior_wire_list = exterior_wire.projectToSolid(
                     solidObject, center=center
                 )[FRONT]
             if len(projected_exterior_wire_list) > 1:
@@ -435,15 +482,15 @@ def projectTextOnSolid(
                 for interior_wire in interior_wires:
                     if not direction is None:
                         projected_interior_wires.extend(
-                            interior_wire.projectWireOnSolid(
+                            interior_wire.projectToSolid(
                                 solidObject, direction=direction
                             )[FRONT]
                         )
                     else:
                         projected_interior_wires.extend(
-                            interior_wire.projectWireOnSolid(
-                                solidObject, center=center
-                            )[FRONT]
+                            interior_wire.projectToSolid(solidObject, center=center)[
+                                FRONT
+                            ]
                         )
 
             exterior_face = projected_exterior_wire_list[0].makeNonPlanarFace(
@@ -458,31 +505,32 @@ def projectTextOnSolid(
 sphere_solid = cq.Solid.makeSphere(50, angleDegrees1=-90)
 
 projection_center = cq.Vector(0, 0, 25)
-starttime = timeit.default_timer()
-text_conical_projection = projectTextOnSolid(
-    "Beingφθ⌀",
-    size=10,
-    depth=1,
-    solidObject=sphere_solid,
-    center=projection_center,
-    font="Serif",
-    fontPath="/usr/share/fonts/truetype/freefont",
-    halign="center",
-)
-print(f"The conical time difference is: {timeit.default_timer() - starttime:0.2f}s")
+projection_direction = cq.Vector(0, 1, 0)
+# starttime = timeit.default_timer()
+# text_conical_projection = projectTextOnSolid(
+#     "Beingφθ⌀",
+#     size=10,
+#     depth=1,
+#     solidObject=sphere_solid,
+#     center=projection_center,
+#     font="Serif",
+#     fontPath="/usr/share/fonts/truetype/freefont",
+#     halign="center",
+# )
+# print(f"The conical time difference is: {timeit.default_timer() - starttime:0.2f}s")
 
-starttime = timeit.default_timer()
-text_cylindrical_projection = projectTextOnSolid(
-    "Beingφθ⌀",
-    size=10,
-    depth=-2,
-    solidObject=sphere_solid,
-    direction=cq.Vector(0, 0, 1),
-    font="Serif",
-    fontPath="/usr/share/fonts/truetype/freefont",
-    halign="center",
-)
-print(f"The cylindrical time difference is: {timeit.default_timer() - starttime:0.2f}s")
+# starttime = timeit.default_timer()
+# text_cylindrical_projection = projectTextOnSolid(
+#     "Beingφθ⌀",
+#     size=10,
+#     depth=-2,
+#     solidObject=sphere_solid,
+#     direction=cq.Vector(0, 0, 1),
+#     font="Serif",
+#     fontPath="/usr/share/fonts/truetype/freefont",
+#     halign="center",
+# )
+# print(f"The cylindrical time difference is: {timeit.default_timer() - starttime:0.2f}s")
 
 arrow = (
     cq.Workplane("XY")
@@ -496,19 +544,39 @@ arrow = (
     .loft()
 )
 
+text_faces = (
+    cq.Workplane("XZ")
+    .text(
+        "Beingφθ⌀",
+        fontsize=10,
+        distance=1,
+        font="Serif",
+        fontPath="/usr/share/fonts/truetype/freefont",
+        halign="center",
+    )
+    .faces(">Y")
+    .vals()
+)
+projected_text_faces = [
+    f.projectToSolid(sphere_solid, cq.Vector(0, 1, 0))[FRONT] for f in text_faces
+]
+projected_text_solids = [f.thicken(5) for f in projected_text_faces]
+
+square = cq.Workplane("YZ").rect(10, 10).extrude(1).faces(">X").val()
+square_projected = square.projectToSolid(sphere_solid, cq.Vector(1, 0, 0))
 
 # letter_wire_dictionary = makeTextWires("e", 10)[0]
 # print(len(letter_wire_dictionary))
 # outer_e = list(letter_wire_dictionary.keys())[0]
 # inner_e = letter_wire_dictionary[outer_e][0]
-# projected_outer_e = outer_e.projectWireOnSolid(sphere_solid, cq.Vector(0, 0, 1))[0][0]
-# projected_inner_e = inner_e.projectWireOnSolid(sphere_solid, cq.Vector(0, 0, 1))[0][0]
+# projected_outer_e = outer_e.projectToSolid(sphere_solid, cq.Vector(0, 0, 1))[0][0]
+# projected_inner_e = inner_e.projectToSolid(sphere_solid, cq.Vector(0, 0, 1))[0][0]
 # e_face = projected_outer_e.makeNonPlanarFace(interiorWires=[projected_inner_e])
 # e_solid = e_face.thicken(1)
 
 if "show_object" in locals():
-    show_object(text_conical_projection, name="text_conical_projection")
-    show_object(text_cylindrical_projection, name="text_cylindrical_projection")
+    # show_object(text_conical_projection, name="text_conical_projection")
+    # show_object(text_cylindrical_projection, name="text_cylindrical_projection")
     show_object(sphere_solid, name="sphere_solid")
     # show_object(projected_outer_e, name="projected_outer_e")
     # show_object(projected_inner_e, name="projected_inner_e")
@@ -516,7 +584,13 @@ if "show_object" in locals():
     # show_object(inner_e, name="inner_e")
     # show_object(e_face, name="e_face")
     # show_object(e_solid, name="e_solid")
-    show_object(arrow, name="projection direction")
+    # show_object(arrow, name="projection direction")
     show_object(
         cq.Vertex.makeVertex(*projection_center.toTuple()), name="projection center"
     )
+    show_object(square, name="square")
+    show_object(square_projected[FRONT], name="square_projected front")
+    show_object(square_projected[BACK], name="square_projected back")
+    show_object(text_faces, name="text_faces")
+    show_object(projected_text_faces, name="projected_text_faces")
+    show_object(projected_text_solids, name="projected_text_solids")
