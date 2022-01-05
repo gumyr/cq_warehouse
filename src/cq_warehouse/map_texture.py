@@ -13,6 +13,8 @@ from OCP.Font import (
     Font_FA_Bold,
     Font_SystemFont,
 )
+
+cq.Workplane.splineApprox
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace
 from OCP.TCollection import TCollection_AsciiString
 from OCP.StdPrs import StdPrs_BRepFont, StdPrs_BRepTextBuilder as Font_BRepTextBuilder
@@ -247,7 +249,7 @@ cq.Face.thicken = _thicken
 
 
 def _flipNormal(self) -> int:
-    """Checks the direction of the normal of a cylindrical face"""
+    """Calculate a factor to flip the direction of thickening based on normal of the projected face"""
     position = self.wrapped.outerWire().positionAt(0)
     normal = self.normalAt()
     return 1 if normal.dot(position) > 0 else -1
@@ -291,26 +293,29 @@ def _projectWireOnSolid(
 
     # BRepProj_Projection is inconsistent in the order that it returns projected
     # wires, sometimes front first and sometimes back - so sort this out
-    output_wires_centers = [w.Center() for w in output_wires]
-    projection_center = reduce(
-        lambda v0, v1: v0 + v1, output_wires_centers, cq.Vector(0, 0, 0)
-    ) * (1.0 / len(output_wires_centers))
-    output_wires_directions = [
-        (w - projection_center).normalized() for w in output_wires_centers
-    ]
-    if not direction is None:
-        direction_normalized = direction.normalized()
-    else:
-        direction_normalized = (projection_center - center).normalized()
     front_wires = []
     back_wires = []
-    for i, d in enumerate(output_wires_directions):
-        # If wire direction from center of projection aligns with direction
-        # (within tolerance) it's considered a "front" wire
-        if (d - direction_normalized).Length < 0.00001:
-            front_wires.append(output_wires[i])
+    if len(output_wires) > 1:
+        output_wires_centers = [w.Center() for w in output_wires]
+        projection_center = reduce(
+            lambda v0, v1: v0 + v1, output_wires_centers, cq.Vector(0, 0, 0)
+        ) * (1.0 / len(output_wires_centers))
+        output_wires_directions = [
+            (w - projection_center).normalized() for w in output_wires_centers
+        ]
+        if not direction is None:
+            direction_normalized = direction.normalized()
         else:
-            back_wires.append(output_wires[i])
+            direction_normalized = (projection_center - center).normalized()
+        for i, d in enumerate(output_wires_directions):
+            # If wire direction from center of projection aligns with direction
+            # (within tolerance) it's considered a "front" wire
+            if (d - direction_normalized).Length < 0.00001:
+                front_wires.append(output_wires[i])
+            else:
+                back_wires.append(output_wires[i])
+    else:
+        front_wires = output_wires
     return (front_wires, back_wires)
 
 
@@ -453,19 +458,30 @@ def projectTextOnSolid(
 sphere_solid = cq.Solid.makeSphere(50, angleDegrees1=-90)
 
 starttime = timeit.default_timer()
-test_text = projectTextOnSolid(
+text_conical_projection = projectTextOnSolid(
     "Beingφθ⌀",
-    # "i",
     size=10,
     depth=1,
     solidObject=sphere_solid,
-    direction=cq.Vector(0, 0, 1),
-    # center=cq.Vector(0, 0, 0),
+    center=cq.Vector(0, 0, 25),
     font="Serif",
     fontPath="/usr/share/fonts/truetype/freefont",
     halign="center",
 )
-print(f"The time difference is: {timeit.default_timer() - starttime:0.2f}s")
+print(f"The conial time difference is: {timeit.default_timer() - starttime:0.2f}s")
+starttime = timeit.default_timer()
+text_cylindrical_projection = projectTextOnSolid(
+    "Beingφθ⌀",
+    size=10,
+    depth=1,
+    solidObject=sphere_solid,
+    direction=cq.Vector(0, 0, 1),
+    font="Serif",
+    fontPath="/usr/share/fonts/truetype/freefont",
+    halign="center",
+)
+print(f"The cylindrical time difference is: {timeit.default_timer() - starttime:0.2f}s")
+
 
 # letter_wire_dictionary = makeTextWires("e", 10)[0]
 # print(len(letter_wire_dictionary))
@@ -477,7 +493,8 @@ print(f"The time difference is: {timeit.default_timer() - starttime:0.2f}s")
 # e_solid = e_face.thicken(1)
 
 if "show_object" in locals():
-    show_object(test_text, name="test_text")
+    show_object(text_conical_projection, name="text_conical_projection")
+    show_object(text_cylindrical_projection, name="text_cylindrical_projection")
     # show_object(sphere_solid, name="sphere_solid")
     # show_object(projected_outer_e, name="projected_outer_e")
     # show_object(projected_inner_e, name="projected_inner_e")
