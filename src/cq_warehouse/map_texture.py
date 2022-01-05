@@ -5,6 +5,7 @@ from typing import Optional, Literal, Union
 from cadquery.occ_impl.shapes import edgesToWires
 import timeit
 from functools import reduce
+import cProfile
 
 from OCP.Font import (
     Font_FontMgr,
@@ -14,7 +15,6 @@ from OCP.Font import (
     Font_SystemFont,
 )
 
-cq.Workplane.splineApprox
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace
 from OCP.TCollection import TCollection_AsciiString
 from OCP.StdPrs import StdPrs_BRepFont, StdPrs_BRepTextBuilder as Font_BRepTextBuilder
@@ -457,23 +457,25 @@ def projectTextOnSolid(
 
 sphere_solid = cq.Solid.makeSphere(50, angleDegrees1=-90)
 
+projection_center = cq.Vector(0, 0, 25)
 starttime = timeit.default_timer()
 text_conical_projection = projectTextOnSolid(
     "Beingφθ⌀",
     size=10,
     depth=1,
     solidObject=sphere_solid,
-    center=cq.Vector(0, 0, 25),
+    center=projection_center,
     font="Serif",
     fontPath="/usr/share/fonts/truetype/freefont",
     halign="center",
 )
-print(f"The conial time difference is: {timeit.default_timer() - starttime:0.2f}s")
+print(f"The conical time difference is: {timeit.default_timer() - starttime:0.2f}s")
+
 starttime = timeit.default_timer()
 text_cylindrical_projection = projectTextOnSolid(
     "Beingφθ⌀",
     size=10,
-    depth=1,
+    depth=-2,
     solidObject=sphere_solid,
     direction=cq.Vector(0, 0, 1),
     font="Serif",
@@ -481,6 +483,18 @@ text_cylindrical_projection = projectTextOnSolid(
     halign="center",
 )
 print(f"The cylindrical time difference is: {timeit.default_timer() - starttime:0.2f}s")
+
+arrow = (
+    cq.Workplane("XY")
+    .circle(1)
+    .extrude(25)
+    .faces(">Z")
+    .workplane()
+    .circle(5)
+    .workplane(offset=5)
+    .circle(0.1)
+    .loft()
+)
 
 
 # letter_wire_dictionary = makeTextWires("e", 10)[0]
@@ -495,10 +509,14 @@ print(f"The cylindrical time difference is: {timeit.default_timer() - starttime:
 if "show_object" in locals():
     show_object(text_conical_projection, name="text_conical_projection")
     show_object(text_cylindrical_projection, name="text_cylindrical_projection")
-    # show_object(sphere_solid, name="sphere_solid")
+    show_object(sphere_solid, name="sphere_solid")
     # show_object(projected_outer_e, name="projected_outer_e")
     # show_object(projected_inner_e, name="projected_inner_e")
     # show_object(outer_e, name="outer_e")
     # show_object(inner_e, name="inner_e")
     # show_object(e_face, name="e_face")
     # show_object(e_solid, name="e_solid")
+    show_object(arrow, name="projection direction")
+    show_object(
+        cq.Vertex.makeVertex(*projection_center.toTuple()), name="projection center"
+    )
