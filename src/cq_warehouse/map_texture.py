@@ -31,6 +31,7 @@ from OCP.GeomAbs import (
     GeomAbs_JoinType,
 )
 from OCP.BRepOffsetAPI import BRepOffsetAPI_MakeFilling
+from OCP.TopAbs import TopAbs_ShapeEnum, TopAbs_Orientation
 
 FRONT = 0  # Projection results in wires on the front and back of the object
 BACK = 1
@@ -86,151 +87,6 @@ def _hexArray(
 cq.Workplane.hexArray = _hexArray
 
 
-def createWireRelationships(
-    wires: list[cq.Wire],
-) -> tuple[list[cq.Wire], list[cq.Wire]]:
-    """
-    Create a dictionary of exterior/interior wire relationships
-        {exterior wire: [wires interior to exterior wire,]}
-    such that faces (potentially projected onto a surface) can be reconstructed:
-    """
-    faces_from_wires = [cq.Face.makeFromWires(w, []) for w in wires]
-    area_of_wires = [f.Area() for f in faces_from_wires]
-    inside_wire_indices = []
-    used_wires = []
-    wire_relationships = {}
-    for o, f_outer in enumerate(faces_from_wires):
-        if o in inside_wire_indices:
-            continue
-        for i, f_inner in enumerate(faces_from_wires):
-            if o == i or i in inside_wire_indices:
-                continue
-            if f_outer.cut(f_inner).Area() < area_of_wires[o]:
-                inside_wire_indices.append(i)
-                used_wires.append(wires[o])
-                used_wires.append(wires[i])
-                if wires[o] in wire_relationships:
-                    wire_relationships[wires[o]].append(wires[i])
-                else:
-                    wire_relationships[wires[o]] = [wires[i]]
-
-    # Find all the missing wires and add them as external only
-    for w in wires:
-        if w not in used_wires:
-            wire_relationships[w] = []
-
-    return wire_relationships
-
-
-def _mapToCylinder(self, radius: float) -> cq.Wire:
-    """Map a closed planar wire to a cylindrical surface"""
-
-    text_flat_edges = self.Edges()
-    circumference = 2 * pi * radius
-
-    edges_in = TopTools_HSequenceOfShape()
-    wires_out = TopTools_HSequenceOfShape()
-
-    text_cylindrical_edges = []
-    for t in text_flat_edges:
-        # x,y,z
-        t_flat_pts = [t.positionAt(i / 40) for i in range(41)]
-        # r,φ,h
-        t_polar_pts = [(radius, 2 * pi * p.x / circumference, p.y) for p in t_flat_pts]
-        t_cartesian_pts = [
-            cq.Vector(p[0] * cos(p[1]), p[0] * sin(p[1]), p[2]) for p in t_polar_pts
-        ]
-        cylindrical_edge = cq.Edge.makeSplineApprox(t_cartesian_pts)
-        text_cylindrical_edges.append(cylindrical_edge)
-        edges_in.Append(cylindrical_edge.wrapped)
-
-    ShapeAnalysis_FreeBounds.ConnectEdgesToWires_s(edges_in, 0.0001, False, wires_out)
-    wires = [cq.Wire(w) for w in wires_out]
-    return wires[0]
-
-
-cq.Wire.mapToCylinder = _mapToCylinder
-
-
-def makeTextWires(
-    text: str,
-    size: float,
-    font: str = "Arial",
-    fontPath: Optional[str] = None,
-    kind: Literal["regular", "bold", "italic"] = "regular",
-    halign: Literal["center", "left", "right"] = "center",
-    valign: Literal["center", "top", "bottom"] = "center",
-) -> list[dict[cq.Wire : list[cq.Wire]]]:
-    """
-    Create a list of dictionaries with exterior/interior wire relationships such that faces
-    (potentially projected onto a surface) can be reconstructed:
-    - list of characters in the text string (one or more)
-        {exterior wire: [wires interior to exterior wire,]}
-    """
-
-    # Setup to build the flat text
-    font_kind = {
-        "regular": Font_FA_Regular,
-        "bold": Font_FA_Bold,
-        "italic": Font_FA_Italic,
-    }[kind]
-
-    mgr = Font_FontMgr.GetInstance_s()
-
-    if fontPath and mgr.CheckFont(TCollection_AsciiString(fontPath).ToCString()):
-        font_t = Font_SystemFont(TCollection_AsciiString(fontPath))
-        font_t.SetFontPath(font_kind, TCollection_AsciiString(fontPath))
-        mgr.RegisterFont(font_t, True)
-
-    else:
-        font_t = mgr.FindFont(TCollection_AsciiString(font), font_kind)
-
-    builder = Font_BRepTextBuilder()
-    font_i = StdPrs_BRepFont(
-        NCollection_Utf8String(font_t.FontName().ToCString()),
-        font_kind,
-        float(size),
-    )
-
-    # To determine the position of a character, create a Compound shape for both
-    # the substring up to that character and the characer, calculate bounding boxes
-    # and store the difference in the x value
-    char_face_position = list()
-    text_center_offset = Vector()
-    for i in range(1, len(text) + 1):
-        sub_text = text[:i]
-        last_char = sub_text[-1:]
-        sub_text_flat = Shape(builder.Perform(font_i, NCollection_Utf8String(sub_text)))
-        sub_text_bb = sub_text_flat.BoundingBox()
-        last_char_flat = Shape(
-            builder.Perform(font_i, NCollection_Utf8String(last_char))
-        )
-        last_char_bb = last_char_flat.BoundingBox()
-        char_face_position.append(
-            (last_char_flat, cq.Vector(sub_text_bb.xlen - last_char_bb.xlen, 0, 0))
-        )
-        if i == len(text) + 1:
-            if halign == "center":
-                text_center_offset.x = -sub_text_bb.xlen / 2
-            elif halign == "right":
-                text_center_offset.x = -sub_text_bb.xlen
-
-            if valign == "center":
-                text_center_offset.y = -sub_text_bb.ylen / 2
-            elif valign == "top":
-                text_center_offset.y = -sub_text_bb.ylen
-
-    result = []
-    for face, location in char_face_position:
-        face_centered = face.translate(text_center_offset + location)
-        wire_relationships = createWireRelationships(
-            edgesToWires(face_centered.Edges())
-        )
-        result.append(wire_relationships)
-
-    return result
-
-
 def _thicken(self, depth: float) -> cq.Solid:
     """Create a solid from a potentially non planar face by thickening along the normals"""
     solid = BRepOffset_MakeOffset()
@@ -259,116 +115,6 @@ def _flipNormal(self) -> int:
 
 
 cq.Face.flipNormal = _flipNormal
-
-
-def _projectToSolid(
-    self: cq.Wire,
-    solidObject: cq.Solid,
-    direction: cq.Vector = None,
-    center: cq.Vector = None,
-) -> tuple[list[cq.Wire]]:
-    """
-    Project a Wire onto a Solid generating new Wires on the front and back of the object
-    one and only one of `direction` or `center` must be provided
-
-    Generates two lists of wires, one for the front and one for the back
-    """
-    if not (direction is None) ^ (center is None):
-        raise ValueError("Either direction or center must be provided")
-
-    if not direction is None:
-        projection_object = BRepProj_Projection(
-            self.wrapped,
-            cq.Shape.cast(solidObject.wrapped).wrapped,
-            gp_Dir(*direction.toTuple()),
-        )
-    else:
-        projection_object = BRepProj_Projection(
-            self.wrapped,
-            cq.Shape.cast(solidObject.wrapped).wrapped,
-            gp_Pnt(*center.toTuple()),
-        )
-    # Generate a list of the projected wires
-    output_wires = []
-    while projection_object.More():
-        output_wires.append(cq.Wire(projection_object.Current()))
-        projection_object.Next()
-
-    # BRepProj_Projection is inconsistent in the order that it returns projected
-    # wires, sometimes front first and sometimes back - so sort this out
-    front_wires = []
-    back_wires = []
-    if len(output_wires) > 1:
-        output_wires_centers = [w.Center() for w in output_wires]
-        projection_center = reduce(
-            lambda v0, v1: v0 + v1, output_wires_centers, cq.Vector(0, 0, 0)
-        ) * (1.0 / len(output_wires_centers))
-        output_wires_directions = [
-            (w - projection_center).normalized() for w in output_wires_centers
-        ]
-        if not direction is None:
-            direction_normalized = direction.normalized()
-        else:
-            direction_normalized = (projection_center - center).normalized()
-        for i, d in enumerate(output_wires_directions):
-            # If wire direction from center of projection aligns with direction
-            # (within tolerance) it's considered a "front" wire
-            if (d - direction_normalized).Length < 0.00001:
-                front_wires.append(output_wires[i])
-            else:
-                back_wires.append(output_wires[i])
-    else:
-        front_wires = output_wires
-    return (front_wires, back_wires)
-
-
-cq.Wire.projectToSolid = _projectToSolid
-
-
-def _projectToSolid(
-    self: cq.Face,
-    solidObject: cq.Solid,
-    direction: cq.Vector = None,
-    center: cq.Vector = None,
-) -> tuple[cq.Face]:
-    """
-    Project a Face onto a Solid generating new Face on the front and back of the object
-    one and only one of `direction` or `center` must be provided
-    """
-    if not (direction is None) ^ (center is None):
-        raise ValueError("Either direction or center must be provided")
-
-    planar_outer_wire = self.outerWire()
-    (
-        projected_front_outer_wires,
-        projected_back_outer_wires,
-    ) = planar_outer_wire.projectToSolid(solidObject, direction, center)
-    planar_inner_wires = self.innerWires()
-    projected_front_inner_wires = []
-    projected_back_inner_wires = []
-    for planar_inner_wire in planar_inner_wires:
-        projected_inner_wires = planar_inner_wire.projectToSolid(
-            solidObject, direction, center
-        )
-        projected_front_inner_wires.extend(projected_inner_wires[FRONT])
-        projected_back_inner_wires.extend(projected_inner_wires[BACK])
-
-    if len(projected_front_outer_wires) > 1 or len(projected_back_outer_wires) > 1:
-        raise Exception("The projection of this face has broken into fragments")
-
-    front_face = projected_front_outer_wires[0].makeNonPlanarFace(
-        interiorWires=projected_front_inner_wires
-    )
-    if projected_back_outer_wires:
-        back_face = projected_back_outer_wires[0].makeNonPlanarFace(
-            interiorWires=projected_back_inner_wires
-        )
-    else:
-        back_face = None
-    return (front_face, back_face)
-
-
-cq.Face.projectToSolid = _projectToSolid
 
 
 def __makeNonPlanarFace(
@@ -429,108 +175,182 @@ def _makeNonPlanarFace(
 cq.Wire.makeNonPlanarFace = _makeNonPlanarFace
 
 
-def projectTextOnSolid(
-    text: str,
-    size: float,
-    depth: float,
+def _projectWireToSolid(
+    self: cq.Wire,
     solidObject: cq.Solid,
     direction: cq.Vector = None,
     center: cq.Vector = None,
-    font: str = "Arial",
-    fontPath: Optional[str] = None,
-    kind: Literal["regular", "bold", "italic"] = "regular",
-    halign: Literal["center", "left", "right"] = "center",
-    valign: Literal["center", "top", "bottom"] = "center",
-) -> cq.Compound:
-    """Create text projected onto the given Solid object"""
+) -> tuple[list[cq.Wire]]:
+    """
+    Project a Wire onto a Solid generating new Wires on the front and back of the object
+    one and only one of `direction` or `center` must be provided
 
+    Generates two lists of wires, one for the front and one for the back
+    """
     if not (direction is None) ^ (center is None):
         raise ValueError("Either direction or center must be provided")
 
-    # Create a list of the character wire dictionary structure - one for each letter in the text
-    character_wire_dicts = makeTextWires(
-        text=text,
-        size=size,
-        font=font,
-        fontPath=fontPath,
-        kind=kind,
-        halign=halign,
-        valign=valign,
+    if not direction is None:
+        projection_object = BRepProj_Projection(
+            self.wrapped,
+            cq.Shape.cast(solidObject.wrapped).wrapped,
+            gp_Dir(*direction.toTuple()),
+        )
+    else:
+        projection_object = BRepProj_Projection(
+            self.wrapped,
+            cq.Shape.cast(solidObject.wrapped).wrapped,
+            gp_Pnt(*center.toTuple()),
+        )
+    # Generate a list of the projected wires
+    output_wires = []
+    while projection_object.More():
+        output_wires.append(cq.Wire(projection_object.Current()))
+        projection_object.Next()
+
+    # BRepProj_Projection is inconsistent in the order that it returns projected
+    # wires, sometimes front first and sometimes back - so sort this out
+    front_wires = []
+    back_wires = []
+    if len(output_wires) > 1:
+        output_wires_centers = [w.Center() for w in output_wires]
+        projection_center = reduce(
+            lambda v0, v1: v0 + v1, output_wires_centers, cq.Vector(0, 0, 0)
+        ) * (1.0 / len(output_wires_centers))
+        output_wires_directions = [
+            (w - projection_center).normalized() for w in output_wires_centers
+        ]
+        if not direction is None:
+            direction_normalized = direction.normalized()
+        else:
+            direction_normalized = (projection_center - center).normalized()
+        for i, d in enumerate(output_wires_directions):
+            # If wire direction from center of projection aligns with direction
+            # (within tolerance) it's considered a "front" wire
+            if (d - direction_normalized).Length < 0.00001:
+                front_wires.append(output_wires[i])
+            else:
+                back_wires.append(output_wires[i])
+    else:
+        front_wires = output_wires
+    return (front_wires, back_wires)
+
+
+cq.Wire.projectToSolid = _projectWireToSolid
+
+
+def _projectFaceToSolid(
+    self: cq.Face,
+    solidObject: cq.Solid,
+    direction: cq.Vector = None,
+    center: cq.Vector = None,
+) -> tuple[cq.Face]:
+    """
+    Project a Face onto a Solid generating new Face on the front and back of the object
+    one and only one of `direction` or `center` must be provided
+    """
+    if not (direction is None) ^ (center is None):
+        raise ValueError("Either direction or center must be provided")
+
+    reversed_face = self.wrapped.Orientation() == TopAbs_Orientation.TopAbs_REVERSED
+
+    planar_outer_wire = self.outerWire()
+    if reversed_face:
+        planar_outer_wire = cq.Wire(planar_outer_wire.wrapped.Complemented())
+
+    (
+        projected_front_outer_wires,
+        projected_back_outer_wires,
+    ) = planar_outer_wire.projectToSolid(solidObject, direction, center)
+    planar_inner_wires = self.innerWires()
+    projected_front_inner_wires = []
+    projected_back_inner_wires = []
+    for planar_inner_wire in planar_inner_wires:
+        if reversed_face:
+            w = cq.Wire(planar_inner_wire.wrapped.Complemented())
+
+        projected_inner_wires = w.projectToSolid(solidObject, direction, center)
+        projected_front_inner_wires.extend(projected_inner_wires[FRONT])
+        projected_back_inner_wires.extend(projected_inner_wires[BACK])
+
+    if len(projected_front_outer_wires) > 1 or len(projected_back_outer_wires) > 1:
+        raise Exception("The projection of this face has broken into fragments")
+
+    print(f"{self.wrapped.Orientation()=}")
+
+    front_face = projected_front_outer_wires[0].makeNonPlanarFace(
+        interiorWires=projected_front_inner_wires
     )
 
-    character_solids = []
-    # For each character in the text project the wires in the dictionary
-    # and create non-planar faces from them - possibly with holes
-    # for the interiors of the characters
-    for c, wire_relationships in enumerate(character_wire_dicts):
-        for exterior_wire, interior_wires in wire_relationships.items():
-            if not direction is None:
-                projected_exterior_wire_list = exterior_wire.projectToSolid(
-                    solidObject, direction=direction
-                )[FRONT]
-            else:
-                projected_exterior_wire_list = exterior_wire.projectToSolid(
-                    solidObject, center=center
-                )[FRONT]
-            if len(projected_exterior_wire_list) > 1:
-                raise Exception(
-                    f"The projection of character '{text[c]}' has broken into fragments"
-                )
-            projected_interior_wires = []
-            if interior_wires:
-                projected_interior_wires = []
-                for interior_wire in interior_wires:
-                    if not direction is None:
-                        projected_interior_wires.extend(
-                            interior_wire.projectToSolid(
-                                solidObject, direction=direction
-                            )[FRONT]
-                        )
-                    else:
-                        projected_interior_wires.extend(
-                            interior_wire.projectToSolid(solidObject, center=center)[
-                                FRONT
-                            ]
-                        )
+    if reversed_face:
+        print("Reversing face...")
+        front_face = cq.Face(front_face.wrapped.Complemented())
 
-            exterior_face = projected_exterior_wire_list[0].makeNonPlanarFace(
-                interiorWires=projected_interior_wires
-            )
-            exterior_solid = exterior_face.thicken(depth)
-            character_solids.append(exterior_solid)
+    if projected_back_outer_wires:
+        back_face = projected_back_outer_wires[0].makeNonPlanarFace(
+            interiorWires=projected_back_inner_wires
+        )
+        if reversed_face:
+            back_face = cq.Face(back_face.wrapped.Complemented())
+    else:
+        back_face = None
+    return (front_face, back_face)
 
-    return cq.Compound.makeCompound(character_solids)
 
+cq.Face.projectToSolid = _projectFaceToSolid
+
+
+def _projectWireToCylinder(self, radius: float) -> cq.Wire:
+    """Map a closed planar wire to a cylindrical surface"""
+
+    text_flat_edges = self.Edges()
+    circumference = 2 * pi * radius
+
+    edges_in = TopTools_HSequenceOfShape()
+    wires_out = TopTools_HSequenceOfShape()
+
+    text_cylindrical_edges = []
+    for t in text_flat_edges:
+        # x,y,z
+        t_flat_pts = [t.positionAt(i / 40) for i in range(41)]
+        # r,φ,h
+        t_polar_pts = [(radius, 2 * pi * p.x / circumference, p.y) for p in t_flat_pts]
+        t_cartesian_pts = [
+            cq.Vector(p[0] * cos(p[1]), p[0] * sin(p[1]), p[2]) for p in t_polar_pts
+        ]
+        cylindrical_edge = cq.Edge.makeSplineApprox(t_cartesian_pts)
+        text_cylindrical_edges.append(cylindrical_edge)
+        edges_in.Append(cylindrical_edge.wrapped)
+
+    ShapeAnalysis_FreeBounds.ConnectEdgesToWires_s(edges_in, 0.0001, False, wires_out)
+    wires = [cq.Wire(w) for w in wires_out]
+    return wires[0]
+
+
+cq.Wire.projectToCylinder = _projectWireToCylinder
+
+
+def _projectFaceToCylinder(self, radius: float) -> cq.Face:
+    """Project the face to a cylinder of the given radius"""
+
+    planar_outer_wire = self.outerWire()
+    projected_outer_wire = planar_outer_wire.projectToCylinder(radius)
+    planar_inner_wires = self.innerWires()
+    projected_inner_wires = [w.projectToCylinder(radius) for w in planar_inner_wires]
+    face = projected_outer_wire.makeNonPlanarFace(interiorWires=projected_inner_wires)
+
+    if self.wrapped.Orientation() == TopAbs_Orientation.TopAbs_REVERSED:
+        face = cq.Face(face.wrapped.Complemented())
+
+    return face
+
+
+cq.Face.projectToCylinder = _projectFaceToCylinder
 
 sphere_solid = cq.Solid.makeSphere(50, angleDegrees1=-90)
 
 projection_center = cq.Vector(0, 0, 25)
 projection_direction = cq.Vector(0, 1, 0)
-# starttime = timeit.default_timer()
-# text_conical_projection = projectTextOnSolid(
-#     "Beingφθ⌀",
-#     size=10,
-#     depth=1,
-#     solidObject=sphere_solid,
-#     center=projection_center,
-#     font="Serif",
-#     fontPath="/usr/share/fonts/truetype/freefont",
-#     halign="center",
-# )
-# print(f"The conical time difference is: {timeit.default_timer() - starttime:0.2f}s")
-
-# starttime = timeit.default_timer()
-# text_cylindrical_projection = projectTextOnSolid(
-#     "Beingφθ⌀",
-#     size=10,
-#     depth=-2,
-#     solidObject=sphere_solid,
-#     direction=cq.Vector(0, 0, 1),
-#     font="Serif",
-#     fontPath="/usr/share/fonts/truetype/freefont",
-#     halign="center",
-# )
-# print(f"The cylindrical time difference is: {timeit.default_timer() - starttime:0.2f}s")
 
 arrow = (
     cq.Workplane("XY")
@@ -543,12 +363,13 @@ arrow = (
     .circle(0.1)
     .loft()
 )
+# starttime = timeit.default_timer()
 
-text_faces = (
+xz_text_faces = (
     cq.Workplane("XZ")
     .text(
         "Beingφθ⌀",
-        fontsize=10,
+        fontsize=20,
         distance=1,
         font="Serif",
         fontPath="/usr/share/fonts/truetype/freefont",
@@ -557,40 +378,55 @@ text_faces = (
     .faces(">Y")
     .vals()
 )
-projected_text_faces = [
-    f.projectToSolid(sphere_solid, cq.Vector(0, 1, 0))[FRONT] for f in text_faces
+projected_sphere_text_faces = [
+    f.projectToSolid(sphere_solid, cq.Vector(0, 1, 0))[FRONT] for f in xz_text_faces
 ]
-projected_text_solids = [f.thicken(5) for f in projected_text_faces]
+projected_sphere_text_solid = cq.Compound.makeCompound(
+    [f.thicken(5) for f in projected_sphere_text_faces]
+)
+# print(f"The cylindrical time difference is: {timeit.default_timer() - starttime:0.2f}s")
 
-square = cq.Workplane("YZ").rect(10, 10).extrude(1).faces(">X").val()
-square_projected = square.projectToSolid(sphere_solid, cq.Vector(1, 0, 0))
+xy_text_faces = (
+    cq.Workplane("XY")
+    .text(
+        "Beingφθ⌀",
+        fontsize=20,
+        distance=1,
+        font="Serif",
+        fontPath="/usr/share/fonts/truetype/freefont",
+        halign="center",
+    )
+    .faces("<Z")
+    .vals()
+)
 
-# letter_wire_dictionary = makeTextWires("e", 10)[0]
-# print(len(letter_wire_dictionary))
-# outer_e = list(letter_wire_dictionary.keys())[0]
-# inner_e = letter_wire_dictionary[outer_e][0]
-# projected_outer_e = outer_e.projectToSolid(sphere_solid, cq.Vector(0, 0, 1))[0][0]
-# projected_inner_e = inner_e.projectToSolid(sphere_solid, cq.Vector(0, 0, 1))[0][0]
-# e_face = projected_outer_e.makeNonPlanarFace(interiorWires=[projected_inner_e])
-# e_solid = e_face.thicken(1)
 
+projected_cylinder_text_faces = [f.projectToCylinder(radius=50) for f in xy_text_faces]
+projected_cylinder_text_solid = cq.Compound.makeCompound(
+    [f.thicken(5) for f in projected_cylinder_text_faces]
+)
+
+square = cq.Workplane("XY").rect(20, 20).extrude(1).faces("<Z").val()
+square_projected = square.projectToSolid(sphere_solid, cq.Vector(0, 0, 1))
+square_solids = cq.Compound.makeCompound([f.thicken(2) for f in square_projected])
 if "show_object" in locals():
-    # show_object(text_conical_projection, name="text_conical_projection")
-    # show_object(text_cylindrical_projection, name="text_cylindrical_projection")
     show_object(sphere_solid, name="sphere_solid")
-    # show_object(projected_outer_e, name="projected_outer_e")
-    # show_object(projected_inner_e, name="projected_inner_e")
-    # show_object(outer_e, name="outer_e")
-    # show_object(inner_e, name="inner_e")
-    # show_object(e_face, name="e_face")
-    # show_object(e_solid, name="e_solid")
-    # show_object(arrow, name="projection direction")
+    show_object(square, name="square")
+    # show_object(square_projected[FRONT], name="square_projected front")
+    # show_object(square_projected[BACK], name="square_projected back")
+    show_object(square_solids, name="square_solids")
+    show_object(xz_text_faces, name="text_faces")
+    # show_object(projected_sphere_text_faces, name="projected_sphere_text_faces")
+    show_object(projected_sphere_text_solid, name="projected_sphere_text_solid")
+    # show_object(projected_cylinder_text_faces, name="projected_cylinder_text_faces")
+    show_object(
+        projected_cylinder_text_solid.rotate(
+            cq.Vector(0, 0, 0), cq.Vector(0, 0, 1), -45
+        ),
+        name="projected_cylinder_text_solid",
+    )
     show_object(
         cq.Vertex.makeVertex(*projection_center.toTuple()), name="projection center"
     )
-    show_object(square, name="square")
-    show_object(square_projected[FRONT], name="square_projected front")
-    show_object(square_projected[BACK], name="square_projected back")
-    show_object(text_faces, name="text_faces")
-    show_object(projected_text_faces, name="projected_text_faces")
-    show_object(projected_text_solids, name="projected_text_solids")
+    # show_object(text_conical_projection, name="text_conical_projection")
+    # show_object(text_cylindrical_projection, name="text_cylindrical_projection")
