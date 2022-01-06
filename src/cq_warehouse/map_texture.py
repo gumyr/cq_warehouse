@@ -5,7 +5,6 @@ from typing import Optional, Literal, Union
 from cadquery.occ_impl.shapes import edgesToWires
 import timeit
 from functools import reduce
-import cProfile
 
 from OCP.Font import (
     Font_FontMgr,
@@ -29,6 +28,7 @@ from OCP.GeomAbs import (
     GeomAbs_C0,
     GeomAbs_Intersection,
     GeomAbs_JoinType,
+    GeomAbs_Arc,
 )
 from OCP.BRepOffsetAPI import BRepOffsetAPI_MakeFilling
 from OCP.TopAbs import TopAbs_ShapeEnum, TopAbs_Orientation
@@ -87,34 +87,55 @@ def _hexArray(
 cq.Workplane.hexArray = _hexArray
 
 
-def _thicken(self, depth: float) -> cq.Solid:
-    """Create a solid from a potentially non planar face by thickening along the normals"""
+def _isReversed(self) -> bool:
+    """Determine if a Face normal is reversed"""
+    return self.wrapped.Orientation() == TopAbs_Orientation.TopAbs_REVERSED
+
+
+cq.Face.isReversed = _isReversed
+
+
+def _complemented(self) -> cq.Face:
+    """Return the Face with its normal flipped"""
+    return cq.Face(self.wrapped.Complemented())
+
+
+cq.Face.complemented = _complemented
+
+
+def _thicken(self, depth: float, direction: cq.Vector = None) -> cq.Solid:
+    """
+    Create a solid from a potentially non planar face by thickening along the normals.
+    The direction vector can be used to potentially flip the face normal direction such that
+    many faces with different normals all go in the same direction (direction need only be
+    +/- 90 degrees from the face normal.)
+    """
+
+    # Check to see if the normal needs to be flipped
+    face_center = self.Center()
+    face_normal = self.normalAt(face_center).normalized()
+    if not direction is None and face_normal.dot(direction.normalized()) < 0:
+        adjusted_depth = -depth
+    else:
+        adjusted_depth = depth
+
     solid = BRepOffset_MakeOffset()
     solid.Initialize(
         self.wrapped,
-        depth,
-        1.0e-5,
-        BRepOffset_Skin,
-        False,
-        False,
-        GeomAbs_Intersection,
-        True,
+        Offset=adjusted_depth,
+        Tol=1.0e-5,
+        Mode=BRepOffset_Skin,
+        Intersection=True,
+        SelfInter=False,
+        Join=GeomAbs_Intersection,
+        Thickening=True,
+        RemoveIntEdges=True,
     )
     solid.MakeOffsetShape()
     return cq.Solid(solid.Shape())
 
 
 cq.Face.thicken = _thicken
-
-
-def _flipNormal(self) -> int:
-    """Calculate a factor to flip the direction of thickening based on normal of the projected face"""
-    position = self.wrapped.outerWire().positionAt(0)
-    normal = self.normalAt()
-    return 1 if normal.dot(position) > 0 else -1
-
-
-cq.Face.flipNormal = _flipNormal
 
 
 def __makeNonPlanarFace(
@@ -255,8 +276,8 @@ def _projectFaceToSolid(
     reversed_face = self.wrapped.Orientation() == TopAbs_Orientation.TopAbs_REVERSED
 
     planar_outer_wire = self.outerWire()
-    if reversed_face:
-        planar_outer_wire = cq.Wire(planar_outer_wire.wrapped.Complemented())
+    # if reversed_face:
+    #     planar_outer_wire = cq.Wire(planar_outer_wire.wrapped.Complemented())
 
     (
         projected_front_outer_wires,
@@ -276,22 +297,22 @@ def _projectFaceToSolid(
     if len(projected_front_outer_wires) > 1 or len(projected_back_outer_wires) > 1:
         raise Exception("The projection of this face has broken into fragments")
 
-    print(f"{self.wrapped.Orientation()=}")
-
     front_face = projected_front_outer_wires[0].makeNonPlanarFace(
         interiorWires=projected_front_inner_wires
     )
-
-    if reversed_face:
-        print("Reversing face...")
-        front_face = cq.Face(front_face.wrapped.Complemented())
+    # print(f"{self.wrapped.Orientation()=}")
+    # print(f"{front_face.wrapped.Orientation()=}")
+    # if reversed_face:
+    #     print("Reversing face...")
+    #     front_face = cq.Face(front_face.wrapped.Complemented())
+    # print(f"{front_face.wrapped.Orientation()=}")
 
     if projected_back_outer_wires:
         back_face = projected_back_outer_wires[0].makeNonPlanarFace(
             interiorWires=projected_back_inner_wires
         )
-        if reversed_face:
-            back_face = cq.Face(back_face.wrapped.Complemented())
+        # if reversed_face:
+        #     back_face = cq.Face(back_face.wrapped.Complemented())
     else:
         back_face = None
     return (front_face, back_face)
@@ -378,11 +399,21 @@ xz_text_faces = (
     .faces(">Y")
     .vals()
 )
+# for i, c in enumerate("Beingφθ⌀"):
+# print(f"{c} - {xz_text_faces[i].wrapped.Orientation()}")
+# print(f"{c} - {xz_text_faces[i].normalAt(xz_text_faces[i].Center())}")
+
 projected_sphere_text_faces = [
-    f.projectToSolid(sphere_solid, cq.Vector(0, 1, 0))[FRONT] for f in xz_text_faces
+    f.projectToSolid(sphere_solid, cq.Vector(0, 1, 0))[BACK] for f in xz_text_faces
 ]
+# for i, c in enumerate("Beingφθ⌀"):
+# print(f"{c} - {projected_sphere_text_faces[i].wrapped.Orientation()}")
+# print(
+#     f"{c} - {projected_sphere_text_faces[i].normalAt(projected_sphere_text_faces[i].Center())}"
+# )
+
 projected_sphere_text_solid = cq.Compound.makeCompound(
-    [f.thicken(5) for f in projected_sphere_text_faces]
+    [f.thicken(5, direction=cq.Vector(0, -1, 0)) for f in projected_sphere_text_faces]
 )
 # print(f"The cylindrical time difference is: {timeit.default_timer() - starttime:0.2f}s")
 
@@ -399,8 +430,6 @@ xy_text_faces = (
     .faces("<Z")
     .vals()
 )
-
-
 projected_cylinder_text_faces = [f.projectToCylinder(radius=50) for f in xy_text_faces]
 projected_cylinder_text_solid = cq.Compound.makeCompound(
     [f.thicken(5) for f in projected_cylinder_text_faces]
@@ -410,8 +439,8 @@ square = cq.Workplane("XY").rect(20, 20).extrude(1).faces("<Z").val()
 square_projected = square.projectToSolid(sphere_solid, cq.Vector(0, 0, 1))
 square_solids = cq.Compound.makeCompound([f.thicken(2) for f in square_projected])
 if "show_object" in locals():
-    show_object(sphere_solid, name="sphere_solid")
-    show_object(square, name="square")
+    show_object(sphere_solid, name="sphere_solid", options={"alpha": 0.8})
+    # show_object(square, name="square")
     # show_object(square_projected[FRONT], name="square_projected front")
     # show_object(square_projected[BACK], name="square_projected back")
     show_object(square_solids, name="square_solids")
@@ -421,7 +450,7 @@ if "show_object" in locals():
     # show_object(projected_cylinder_text_faces, name="projected_cylinder_text_faces")
     show_object(
         projected_cylinder_text_solid.rotate(
-            cq.Vector(0, 0, 0), cq.Vector(0, 0, 1), -45
+            cq.Vector(0, 0, 0), cq.Vector(0, 0, 1), 45
         ),
         name="projected_cylinder_text_solid",
     )
