@@ -1,10 +1,11 @@
-from math import pi, sin, cos, sqrt
+from math import pi, sin, cos, sqrt, degrees
 import cadquery as cq
 from cadquery import Vector, Shape
 from typing import Optional, Literal, Union
-from cadquery.occ_impl.shapes import edgesToWires
-import timeit
+from cadquery.occ_impl.shapes import Face, edgesToWires
 from functools import reduce
+
+from OCP.ShapeFix import ShapeFix_Shape, ShapeFix_Solid, ShapeFix_Face
 
 from OCP.Font import (
     Font_FontMgr,
@@ -112,12 +113,12 @@ def _thicken(self, depth: float, direction: cq.Vector = None) -> cq.Solid:
     """
 
     # Check to see if the normal needs to be flipped
-    face_center = self.Center()
-    face_normal = self.normalAt(face_center).normalized()
-    if not direction is None and face_normal.dot(direction.normalized()) < 0:
-        adjusted_depth = -depth
-    else:
-        adjusted_depth = depth
+    adjusted_depth = depth
+    if direction is not None:
+        face_center = self.Center()
+        face_normal = self.normalAt(face_center).normalized()
+        if face_normal.dot(direction.normalized()) < 0:
+            adjusted_depth = -depth
 
     solid = BRepOffset_MakeOffset()
     solid.Initialize(
@@ -132,10 +133,23 @@ def _thicken(self, depth: float, direction: cq.Vector = None) -> cq.Solid:
         RemoveIntEdges=True,
     )
     solid.MakeOffsetShape()
-    return cq.Solid(solid.Shape())
+    result = cq.Solid(solid.Shape())
+    # if depth != adjusted_depth:
+    #     print("flipping")
+    #     debug(result)
+
+    return result
 
 
 cq.Face.thicken = _thicken
+
+
+def _thicken(self, depth: float, direction: cq.Vector = None):
+    """Find all of the faces on the stack and make them Solid objects by thickening along the normals"""
+    return self.newObject([f.thicken(depth, direction) for f in self.faces().vals()])
+
+
+cq.Workplane.thicken = _thicken
 
 
 def __makeNonPlanarFace(
@@ -206,10 +220,11 @@ def _projectWireToSolid(
     Project a Wire onto a Solid generating new Wires on the front and back of the object
     one and only one of `direction` or `center` must be provided
 
-    Generates two lists of wires, one for the front and one for the back
+    To avoid flipping the normal of a face built with the projected wire the orientation
+    of the output wires are forced to be the same as self.
     """
     if not (direction is None) ^ (center is None):
-        raise ValueError("Either direction or center must be provided")
+        raise ValueError("One of either direction or center must be provided")
 
     if not direction is None:
         projection_object = BRepProj_Projection(
@@ -223,10 +238,17 @@ def _projectWireToSolid(
             cq.Shape.cast(solidObject.wrapped).wrapped,
             gp_Pnt(*center.toTuple()),
         )
-    # Generate a list of the projected wires
+
+    target_orientation = self.wrapped.Orientation()
+
+    # Generate a list of the projected wires with aligned orientation
     output_wires = []
     while projection_object.More():
-        output_wires.append(cq.Wire(projection_object.Current()))
+        projected_wire = projection_object.Current()
+        if target_orientation == projected_wire.Orientation():
+            output_wires.append(cq.Wire(projected_wire))
+        else:
+            output_wires.append(cq.Wire(projected_wire.Reversed()))
         projection_object.Next()
 
     # BRepProj_Projection is inconsistent in the order that it returns projected
@@ -244,11 +266,83 @@ def _projectWireToSolid(
         if not direction is None:
             direction_normalized = direction.normalized()
         else:
-            direction_normalized = (projection_center - center).normalized()
+            direction_normalized = (center - projection_center).normalized()
         for i, d in enumerate(output_wires_directions):
             # If wire direction from center of projection aligns with direction
-            # (within tolerance) it's considered a "front" wire
-            if (d - direction_normalized).Length < 0.00001:
+            # it's considered a "front" wire
+            if d.dot(direction_normalized) > 0:
+                front_wires.append(output_wires[i])
+            else:
+                back_wires.append(output_wires[i])
+    else:
+        front_wires = output_wires
+    return (front_wires, back_wires)
+
+
+cq.Wire.projectToSolid = _projectWireToSolid
+
+
+def _projectWireToSolid(
+    self: cq.Wire,
+    solidObject: cq.Solid,
+    direction: cq.Vector = None,
+    center: cq.Vector = None,
+) -> tuple[list[cq.Wire]]:
+    """
+    Project a Wire onto a Solid generating new Wires on the front and back of the object
+    one and only one of `direction` or `center` must be provided
+
+    To avoid flipping the normal of a face built with the projected wire the orientation
+    of the output wires are forced to be the same as self.
+    """
+    if not (direction is None) ^ (center is None):
+        raise ValueError("One of either direction or center must be provided")
+
+    if not direction is None:
+        projection_object = BRepProj_Projection(
+            self.wrapped,
+            cq.Shape.cast(solidObject.wrapped).wrapped,
+            gp_Dir(*direction.toTuple()),
+        )
+    else:
+        projection_object = BRepProj_Projection(
+            self.wrapped,
+            cq.Shape.cast(solidObject.wrapped).wrapped,
+            gp_Pnt(*center.toTuple()),
+        )
+
+    target_orientation = self.wrapped.Orientation()
+
+    # Generate a list of the projected wires with aligned orientation
+    output_wires = []
+    while projection_object.More():
+        projected_wire = projection_object.Current()
+        if target_orientation == projected_wire.Orientation():
+            output_wires.append(cq.Wire(projected_wire))
+        else:
+            output_wires.append(cq.Wire(projected_wire.Reversed()))
+        projection_object.Next()
+
+    # BRepProj_Projection is inconsistent in the order that it returns projected
+    # wires, sometimes front first and sometimes back - so sort this out
+    front_wires = []
+    back_wires = []
+    if len(output_wires) > 1:
+        output_wires_centers = [w.Center() for w in output_wires]
+        projection_center = reduce(
+            lambda v0, v1: v0 + v1, output_wires_centers, cq.Vector(0, 0, 0)
+        ) * (1.0 / len(output_wires_centers))
+        output_wires_directions = [
+            (w - projection_center).normalized() for w in output_wires_centers
+        ]
+        if not direction is None:
+            direction_normalized = direction.normalized()
+        else:
+            direction_normalized = (center - projection_center).normalized()
+        for i, d in enumerate(output_wires_directions):
+            # If wire direction from center of projection aligns with direction
+            # it's considered a "front" wire
+            if d.dot(direction_normalized) > 0:
                 front_wires.append(output_wires[i])
             else:
                 back_wires.append(output_wires[i])
@@ -271,26 +365,28 @@ def _projectFaceToSolid(
     one and only one of `direction` or `center` must be provided
     """
     if not (direction is None) ^ (center is None):
-        raise ValueError("Either direction or center must be provided")
-
-    reversed_face = self.wrapped.Orientation() == TopAbs_Orientation.TopAbs_REVERSED
+        raise ValueError("One of either direction or center must be provided")
 
     planar_outer_wire = self.outerWire()
-    # if reversed_face:
-    #     planar_outer_wire = cq.Wire(planar_outer_wire.wrapped.Complemented())
-
+    planar_outer_wire_orientation = planar_outer_wire.wrapped.Orientation()
     (
         projected_front_outer_wires,
         projected_back_outer_wires,
     ) = planar_outer_wire.projectToSolid(solidObject, direction, center)
-    planar_inner_wires = self.innerWires()
+
+    planar_inner_wires = [
+        w
+        if w.wrapped.Orientation() != planar_outer_wire_orientation
+        else cq.Wire(w.wrapped.Reversed())
+        for w in self.innerWires()
+    ]
+
     projected_front_inner_wires = []
     projected_back_inner_wires = []
     for planar_inner_wire in planar_inner_wires:
-        if reversed_face:
-            w = cq.Wire(planar_inner_wire.wrapped.Complemented())
-
-        projected_inner_wires = w.projectToSolid(solidObject, direction, center)
+        projected_inner_wires = planar_inner_wire.projectToSolid(
+            solidObject, direction, center
+        )
         projected_front_inner_wires.extend(projected_inner_wires[FRONT])
         projected_back_inner_wires.extend(projected_inner_wires[BACK])
 
@@ -300,19 +396,11 @@ def _projectFaceToSolid(
     front_face = projected_front_outer_wires[0].makeNonPlanarFace(
         interiorWires=projected_front_inner_wires
     )
-    # print(f"{self.wrapped.Orientation()=}")
-    # print(f"{front_face.wrapped.Orientation()=}")
-    # if reversed_face:
-    #     print("Reversing face...")
-    #     front_face = cq.Face(front_face.wrapped.Complemented())
-    # print(f"{front_face.wrapped.Orientation()=}")
 
     if projected_back_outer_wires:
         back_face = projected_back_outer_wires[0].makeNonPlanarFace(
             interiorWires=projected_back_inner_wires
         )
-        # if reversed_face:
-        #     back_face = cq.Face(back_face.wrapped.Complemented())
     else:
         back_face = None
     return (front_face, back_face)
@@ -368,94 +456,96 @@ def _projectFaceToCylinder(self, radius: float) -> cq.Face:
 
 cq.Face.projectToCylinder = _projectFaceToCylinder
 
-sphere_solid = cq.Solid.makeSphere(50, angleDegrees1=-90)
 
-projection_center = cq.Vector(0, 0, 25)
-projection_direction = cq.Vector(0, 1, 0)
+def _alignToPoints(self, startPoint: cq.Vector, endPoint: cq.Vector):
+    """
+    Position the zAxis of the given object to the vector defined by the start and end points
 
-arrow = (
-    cq.Workplane("XY")
-    .circle(1)
-    .extrude(25)
-    .faces(">Z")
-    .workplane()
-    .circle(5)
-    .workplane(offset=5)
-    .circle(0.1)
-    .loft()
-)
-# starttime = timeit.default_timer()
+    To avoid undesirable rotations about the Z-axis when aligning objects in directions near
+    opposite to their original position, calculations are done for both rotating from Y and Z
+    and the smaller of these two rotations are used.
+    """
+    if (endPoint - startPoint).x == 0 and (endPoint - startPoint).y == 0:
+        result = self
+    else:
+        yAxis = cq.Vector(0, 1, 0)
+        zAxis = cq.Vector(0, 0, 1)
 
-xz_text_faces = (
-    cq.Workplane("XZ")
-    .text(
-        "Beingφθ⌀",
-        fontsize=20,
-        distance=1,
-        font="Serif",
-        fontPath="/usr/share/fonts/truetype/freefont",
-        halign="center",
+        # Create a normalized vector from the cq start and end vertices
+        targetVector = (endPoint - startPoint).normalized()
+
+        # Calculate the axis of rotation and the amount of rotation required
+        rotateAxisZ = targetVector.cross(zAxis)
+        rotateAngleZ = -degrees(targetVector.getAngle(zAxis))
+        rotateAxisY = targetVector.cross(yAxis)
+        rotateAngleY = -degrees(targetVector.getAngle(yAxis))
+
+        # Rotate the object to align with vector and translate to startPoint
+        if abs(rotateAngleZ) < abs(rotateAngleY):
+            result = self.rotate((0, 0, 0), rotateAxisZ, rotateAngleZ).translate(
+                startPoint
+            )
+        else:
+            # Align with Y first then rotate into position
+            result = (
+                self.rotate((0, 0, 0), (1, 0, 0), -90)
+                .rotate((0, 0, 0), rotateAxisY, rotateAngleY)
+                .translate(startPoint)
+            )
+
+    return result
+
+
+cq.Workplane.alignToPoints = _alignToPoints
+
+cq.Face.alignToPoints = _alignToPoints
+
+
+def _faceOnSolid(self, path: cq.Wire, start: float, solid_object: cq.Solid) -> cq.Face:
+    """Reposition a face from alignment to the x-axis to the provided path"""
+    path_length = path.Length()
+
+    bbox = self.BoundingBox()
+    face_bottom_center = cq.Vector((bbox.xmin + bbox.xmax) / 2, 0, 0)
+    relative_position_on_path = start + face_bottom_center.x / path_length
+    position_on_solid = path.positionAt(relative_position_on_path)
+    face_normal = solid_object.normalAt(position_on_solid)
+
+    face_to_project_on = self.alignToPoints(
+        startPoint=position_on_solid, endPoint=position_on_solid + face_normal
     )
-    .faces(">Y")
-    .vals()
-)
-# for i, c in enumerate("Beingφθ⌀"):
-# print(f"{c} - {xz_text_faces[i].wrapped.Orientation()}")
-# print(f"{c} - {xz_text_faces[i].normalAt(xz_text_faces[i].Center())}")
 
-projected_sphere_text_faces = [
-    f.projectToSolid(sphere_solid, cq.Vector(0, 1, 0))[BACK] for f in xz_text_faces
-]
-# for i, c in enumerate("Beingφθ⌀"):
-# print(f"{c} - {projected_sphere_text_faces[i].wrapped.Orientation()}")
-# print(
-#     f"{c} - {projected_sphere_text_faces[i].normalAt(projected_sphere_text_faces[i].Center())}"
-# )
+    projected_face = face_to_project_on.projectToSolid(solid_object, face_normal)[FRONT]
 
-projected_sphere_text_solid = cq.Compound.makeCompound(
-    [f.thicken(5, direction=cq.Vector(0, -1, 0)) for f in projected_sphere_text_faces]
-)
-# print(f"The cylindrical time difference is: {timeit.default_timer() - starttime:0.2f}s")
+    return projected_face
 
-xy_text_faces = (
-    cq.Workplane("XY")
-    .text(
-        "Beingφθ⌀",
-        fontsize=20,
-        distance=1,
-        font="Serif",
-        fontPath="/usr/share/fonts/truetype/freefont",
-        halign="center",
+
+cq.Face.faceOnSolid = _faceOnSolid
+
+
+def textOnSolid(
+    txt: str,
+    fontsize: float,
+    distance: float,
+    path: cq.Wire,
+    start: float,
+    solid_object: cq.Solid,
+) -> cq.Solid:
+    """Create 3D text with a baseline following the given path"""
+    linear_faces = (
+        cq.Workplane("XY")
+        .text(
+            txt=txt,
+            fontsize=fontsize,
+            distance=distance,
+            halign="left",
+            valign="bottom",
+        )
+        .faces("<Z")
+        .vals()
     )
-    .faces("<Z")
-    .vals()
-)
-projected_cylinder_text_faces = [f.projectToCylinder(radius=50) for f in xy_text_faces]
-projected_cylinder_text_solid = cq.Compound.makeCompound(
-    [f.thicken(5) for f in projected_cylinder_text_faces]
-)
 
-square = cq.Workplane("XY").rect(20, 20).extrude(1).faces("<Z").val()
-square_projected = square.projectToSolid(sphere_solid, cq.Vector(0, 0, 1))
-square_solids = cq.Compound.makeCompound([f.thicken(2) for f in square_projected])
-if "show_object" in locals():
-    show_object(sphere_solid, name="sphere_solid", options={"alpha": 0.8})
-    # show_object(square, name="square")
-    # show_object(square_projected[FRONT], name="square_projected front")
-    # show_object(square_projected[BACK], name="square_projected back")
-    show_object(square_solids, name="square_solids")
-    show_object(xz_text_faces, name="text_faces")
-    # show_object(projected_sphere_text_faces, name="projected_sphere_text_faces")
-    show_object(projected_sphere_text_solid, name="projected_sphere_text_solid")
-    # show_object(projected_cylinder_text_faces, name="projected_cylinder_text_faces")
-    show_object(
-        projected_cylinder_text_solid.rotate(
-            cq.Vector(0, 0, 0), cq.Vector(0, 0, 1), 45
-        ),
-        name="projected_cylinder_text_solid",
-    )
-    show_object(
-        cq.Vertex.makeVertex(*projection_center.toTuple()), name="projection center"
-    )
-    # show_object(text_conical_projection, name="text_conical_projection")
-    # show_object(text_cylindrical_projection, name="text_cylindrical_projection")
+    faces_on_path = [f.faceOnSolid(path, start, solid_object) for f in linear_faces]
+    solids_on_path = [f.thicken(distance) for f in faces_on_path]
+
+    return cq.Compound.makeCompound(solids_on_path)
