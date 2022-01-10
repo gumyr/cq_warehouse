@@ -1,9 +1,18 @@
 import timeit
+import random
 import cadquery as cq
-from map_texture import *
+from cq_warehouse.map_texture import *
 
-example = 5
+FLAT_PROJECTION = 0
+CONICAL_PROJECTION = 1
+CYLINDER_MAP = 2
+FACE_ON_SPHERE = 3
+CANADIAN_FLAG = 4
+TEXT_ON_PATH = 5
 
+example = TEXT_ON_PATH
+
+# A sphere used as a projection target
 sphere = cq.Solid.makeSphere(50, angleDegrees1=-90)
 
 
@@ -24,7 +33,7 @@ def make_text_faces(txt: str, plane: str, fontsize: float = 20) -> list[cq.Face]
     )
 
 
-if example == 1:
+if example == FLAT_PROJECTION:
     """Example 1 - Flat Projection of Text on Sphere"""
     starttime = timeit.default_timer()
 
@@ -44,7 +53,7 @@ if example == 1:
         show_object(projected_text, name="projected_sphere_text_solid")
 
 
-elif example == 2:
+elif example == CONICAL_PROJECTION:
     """Example 2 - Conical Projection of Text on Sphere"""
     starttime = timeit.default_timer()
 
@@ -72,7 +81,7 @@ elif example == 2:
         )
 
 
-elif example == 3:
+elif example == CYLINDER_MAP:
     """Example 3 - Mapping Text on Cylinder"""
     starttime = timeit.default_timer()
 
@@ -93,7 +102,7 @@ elif example == 3:
         show_object(text_faces, name="text_faces")
         show_object(projected_text, name="projected_text")
 
-elif example == 4:
+elif example == FACE_ON_SPHERE:
     """Example 4 - Mapping A Face on Sphere"""
     starttime = timeit.default_timer()
     projection_direction = cq.Vector(0, 0, 1)
@@ -106,7 +115,7 @@ elif example == 4:
         show_object(sphere, name="sphere_solid", options={"alpha": 0.8})
         show_object(square_solids, name="square_solids")
 
-elif example == 5:
+elif example == CANADIAN_FLAG:
     """Example 5 - A Canadian Flag blowing in the wind"""
     starttime = timeit.default_timer()
 
@@ -204,6 +213,53 @@ elif example == 5:
         show_object(
             flag_parts[-1], name="flag_white_part", options={"color": (255, 255, 255)}
         )
+
+elif example == TEXT_ON_PATH:
+    for base_plane in [
+        "XY",
+        "YZ",
+        "ZX",
+        "XZ",
+        "YX",
+        "ZY",
+        "front",
+        "back",
+        "left",
+        "right",
+        "top",
+        "bottom",
+    ]:
+        text_on_path = (
+            cq.Workplane(base_plane)
+            .threePointArc((50, 30), (100, 0))
+            .textOnPath(
+                txt=base_plane + " The quick brown fox jumped over the lazy dog",
+                fontsize=5,
+                distance=1,
+                start=0.05,
+            )
+        )
+        if "show_object" in locals():
+            show_object(text_on_path, name=base_plane)
+
+    random_plane = cq.Plane(
+        origin=(0, 0, 0), normal=(random.random(), random.random(), random.random())
+    )
+    clover = (
+        cq.Workplane(random_plane)
+        .moveTo(0, 10)
+        .radiusArc((10, 0), 7.5)
+        .radiusArc((0, -10), 7.5)
+        .radiusArc((-10, 0), 7.5)
+        .radiusArc((0, 10), 7.5)
+        .consolidateWires()
+        .textOnPath(
+            txt=".x" * 102,
+            fontsize=1,
+            distance=1,
+        )
+    )
+
 
 else:
     """Example 6 - Compound Solid - under construction"""

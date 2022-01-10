@@ -1,12 +1,12 @@
 from math import pi, sin, cos, sqrt, degrees
+from typing import Optional, Literal, Union
+from functools import reduce
 import cadquery as cq
 from cadquery import Vector, Shape
-from typing import Optional, Literal, Union
 from cadquery.occ_impl.shapes import Face, edgesToWires
-from functools import reduce
+from cadquery.cq import T
 
 from OCP.ShapeFix import ShapeFix_Shape, ShapeFix_Solid, ShapeFix_Face
-
 from OCP.Font import (
     Font_FontMgr,
     Font_FA_Regular,
@@ -14,7 +14,6 @@ from OCP.Font import (
     Font_FA_Bold,
     Font_SystemFont,
 )
-
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace
 from OCP.TCollection import TCollection_AsciiString
 from OCP.StdPrs import StdPrs_BRepFont, StdPrs_BRepTextBuilder as Font_BRepTextBuilder
@@ -33,9 +32,203 @@ from OCP.GeomAbs import (
 )
 from OCP.BRepOffsetAPI import BRepOffsetAPI_MakeFilling
 from OCP.TopAbs import TopAbs_ShapeEnum, TopAbs_Orientation
+from OCP.gp import gp_Pnt, gp_Vec
+from OCP.Bnd import Bnd_Box
+
 
 FRONT = 0  # Projection results in wires on the front and back of the object
 BACK = 1
+
+
+def _getSignedAngle(self, v: "Vector", normal: "Vector" = None) -> float:
+
+    """
+    Return the signed angle in RADIANS between two vectors with the given normal
+    based on this math:
+        angle = atan2((Va x Vb) . Vn, Va . Vb)
+    """
+
+    if normal is None:
+        gp_normal = gp_Vec(0, 0, -1)
+    else:
+        gp_normal = normal.wrapped
+    return self.wrapped.AngleWithRef(v.wrapped, gp_normal)
+
+
+cq.Vector.getSignedAngle = _getSignedAngle
+
+
+def _toLocalCoords(self, obj):
+    """Project the provided coordinates onto this plane
+
+    :param obj: an object or vector to convert
+    :type vector: a vector or shape
+    :return: an object of the same type, but converted to local coordinates
+
+    Most of the time, the z-coordinate returned will be zero, because most
+    operations based on a plane are all 2D. Occasionally, though, 3D
+    points outside of the current plane are transformed. One such example is
+    :py:meth:`Workplane.box`, where 3D corners of a box are transformed to
+    orient the box in space correctly.
+
+    """
+    # from .shapes import Shape
+
+    if isinstance(obj, Vector):
+        return obj.transform(self.fG)
+    elif isinstance(obj, Shape):
+        return obj.transformShape(self.fG)
+    elif isinstance(obj, cq.BoundBox):
+        global_bottom_left = Vector(obj.xmin, obj.ymin, obj.zmin)
+        global_top_right = Vector(obj.xmax, obj.ymax, obj.zmax)
+        local_bottom_left = global_bottom_left.transform(self.fG)
+        local_top_right = global_top_right.transform(self.fG)
+        local_bbox = Bnd_Box(
+            gp_Pnt(*local_bottom_left.toTuple()), gp_Pnt(*local_top_right.toTuple())
+        )
+        return cq.BoundBox(local_bbox)
+    else:
+        raise ValueError(
+            f"Don't know how to convert type {type(obj)} to local coordinates"
+        )
+
+
+cq.Plane.toLocalCoords = _toLocalCoords
+
+
+def textOnPath(
+    self: T,
+    txt: str,
+    fontsize: float,
+    distance: float,
+    start: float = 0.0,
+    cut: bool = True,
+    combine: bool = False,
+    clean: bool = True,
+    font: str = "Arial",
+    fontPath: Optional[str] = None,
+    kind: Literal["regular", "bold", "italic"] = "regular",
+) -> T:
+    """
+    Returns 3D text with the baseline following the given path.
+
+    :param txt: text to be rendered
+    :param fontsize: size of the font in model units
+    :param distance: the distance to extrude or cut, normal to the workplane plane
+    :type distance: float, negative means opposite the normal direction
+    :param start: the relative location on path to start the text
+    :type start: float, values must be between 0.0 and 1.0
+    :param cut: True to cut the resulting solid from the parent solids if found
+    :param combine: True to combine the resulting solid with parent solids if found
+    :param clean: call :py:meth:`clean` afterwards to have a clean shape
+    :param font: font name
+    :param fontPath: path to font file
+    :param kind: font type
+    :return: a CQ object with the resulting solid selected
+
+    The returned object is always a Workplane object, and depends on whether combine is True, and
+    whether a context solid is already defined:
+
+    *  if combine is False, the new value is pushed onto the stack.
+    *  if combine is true, the value is combined with the context solid if it exists,
+       and the resulting solid becomes the new context solid.
+
+    Examples::
+
+        fox = (
+            cq.Workplane("XZ")
+            .threePointArc((50, 30), (100, 0))
+            .textOnPath(
+                txt="The quick brown fox jumped over the lazy dog",
+                fontsize=5,
+                distance=1,
+                start=0.1,
+            )
+        )
+
+        clover = (
+            cq.Workplane("front")
+            .moveTo(0, 10)
+            .radiusArc((10, 0), 7.5)
+            .radiusArc((0, -10), 7.5)
+            .radiusArc((-10, 0), 7.5)
+            .radiusArc((0, 10), 7.5)
+            .consolidateWires()
+            .textOnPath(
+                txt=".x" * 102,
+                fontsize=1,
+                distance=1,
+            )
+        )
+    """
+
+    def position_face(orig_face: cq.Face) -> cq.Face:
+        """
+        Reposition a face to the provided path
+
+        Local coordinates are used to calculate the position of the face
+        relative to the path. Global coordinates to position the face.
+        """
+        bbox = self.plane.toLocalCoords(orig_face.BoundingBox())
+        face_bottom_center = cq.Vector((bbox.xmin + bbox.xmax) / 2, 0, 0)
+        relative_position_on_wire = start + face_bottom_center.x / path_length
+        wire_tangent = path.tangentAt(relative_position_on_wire)
+        wire_angle = degrees(
+            self.plane.xDir.getSignedAngle(wire_tangent, self.plane.zDir)
+        )
+        wire_position = path.positionAt(relative_position_on_wire)
+        global_face_bottom_center = self.plane.toWorldCoords(face_bottom_center)
+        return orig_face.translate(wire_position - global_face_bottom_center).rotate(
+            wire_position,
+            wire_position + self.plane.zDir,
+            wire_angle,
+        )
+
+    # The top edge or wire on the stack defines the path
+    if not self.ctx.pendingWires and not self.ctx.pendingEdges:
+        raise Exception("A pending edge or wire must be present to define the path")
+    if self.ctx.pendingEdges:
+        path = self.ctx.pendingEdges.pop()
+    else:
+        path = self.ctx.pendingWires.pop()
+
+    # Create text on the current workplane
+    raw_text = cq.Compound.makeText(
+        txt,
+        fontsize,
+        distance,
+        font=font,
+        fontPath=fontPath,
+        kind=kind,
+        halign="left",
+        valign="bottom",
+        position=self.plane,
+    )
+    # Extract just the faces on the workplane
+    text_faces = (
+        cq.Workplane(raw_text)
+        .faces(cq.DirectionMinMaxSelector(self.plane.zDir, False))
+        .vals()
+    )
+    path_length = path.Length()
+
+    # Reposition all of the text faces and re-create 3D text
+    faces_on_path = [position_face(f) for f in text_faces]
+    result = cq.Compound.makeCompound(
+        [cq.Solid.extrudeLinear(f, self.plane.zDir) for f in faces_on_path]
+    )
+    if cut:
+        new_solid = self._cutFromBase(result)
+    elif combine:
+        new_solid = self._combineWithBase(result)
+    else:
+        new_solid = self.newObject([result])
+    if clean:
+        new_solid = new_solid.clean()
+    return new_solid
+
+
+cq.Workplane.textOnPath = textOnPath
 
 
 def _hexArray(
@@ -208,78 +401,6 @@ def _makeNonPlanarFace(
 
 
 cq.Wire.makeNonPlanarFace = _makeNonPlanarFace
-
-
-def _projectWireToSolid(
-    self: cq.Wire,
-    solidObject: cq.Solid,
-    direction: cq.Vector = None,
-    center: cq.Vector = None,
-) -> tuple[list[cq.Wire]]:
-    """
-    Project a Wire onto a Solid generating new Wires on the front and back of the object
-    one and only one of `direction` or `center` must be provided
-
-    To avoid flipping the normal of a face built with the projected wire the orientation
-    of the output wires are forced to be the same as self.
-    """
-    if not (direction is None) ^ (center is None):
-        raise ValueError("One of either direction or center must be provided")
-
-    if not direction is None:
-        projection_object = BRepProj_Projection(
-            self.wrapped,
-            cq.Shape.cast(solidObject.wrapped).wrapped,
-            gp_Dir(*direction.toTuple()),
-        )
-    else:
-        projection_object = BRepProj_Projection(
-            self.wrapped,
-            cq.Shape.cast(solidObject.wrapped).wrapped,
-            gp_Pnt(*center.toTuple()),
-        )
-
-    target_orientation = self.wrapped.Orientation()
-
-    # Generate a list of the projected wires with aligned orientation
-    output_wires = []
-    while projection_object.More():
-        projected_wire = projection_object.Current()
-        if target_orientation == projected_wire.Orientation():
-            output_wires.append(cq.Wire(projected_wire))
-        else:
-            output_wires.append(cq.Wire(projected_wire.Reversed()))
-        projection_object.Next()
-
-    # BRepProj_Projection is inconsistent in the order that it returns projected
-    # wires, sometimes front first and sometimes back - so sort this out
-    front_wires = []
-    back_wires = []
-    if len(output_wires) > 1:
-        output_wires_centers = [w.Center() for w in output_wires]
-        projection_center = reduce(
-            lambda v0, v1: v0 + v1, output_wires_centers, cq.Vector(0, 0, 0)
-        ) * (1.0 / len(output_wires_centers))
-        output_wires_directions = [
-            (w - projection_center).normalized() for w in output_wires_centers
-        ]
-        if not direction is None:
-            direction_normalized = direction.normalized()
-        else:
-            direction_normalized = (center - projection_center).normalized()
-        for i, d in enumerate(output_wires_directions):
-            # If wire direction from center of projection aligns with direction
-            # it's considered a "front" wire
-            if d.dot(direction_normalized) > 0:
-                front_wires.append(output_wires[i])
-            else:
-                back_wires.append(output_wires[i])
-    else:
-        front_wires = output_wires
-    return (front_wires, back_wires)
-
-
-cq.Wire.projectToSolid = _projectWireToSolid
 
 
 def _projectWireToSolid(
