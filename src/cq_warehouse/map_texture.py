@@ -355,16 +355,16 @@ def __makeNonPlanarFace(
 
     # First, create the non-planar surface
     surface = BRepOffsetAPI_MakeFilling(
-        Degree=3,
-        NbPtsOnCur=15,
+        Degree=3,  # the order of energy criterion to minimize for computing the deformation of the surface
+        NbPtsOnCur=15,  # average number of points for discretisation of the edges
         NbIter=2,
         Anisotropie=False,
-        Tol2d=0.00001,
-        Tol3d=0.0001,
-        TolAng=0.01,
-        TolCurv=0.1,
-        MaxDeg=8,
-        MaxSegments=9,
+        Tol2d=0.00001,  # the maximum distance allowed between the support surface and the constraints
+        Tol3d=0.0001,  # the maximum distance allowed between the support surface and the constraints
+        TolAng=0.01,  # the maximum angle allowed between the normal of the surface and the constraints
+        TolCurv=0.1,  # the maximum difference of curvature allowed between the surface and the constraint
+        MaxDeg=8,  # the highest degree which the polynomial defining the filling surface can have
+        MaxSegments=9,  # the greatest number of segments which the filling surface can have
     )
     if isinstance(exterior, cq.Wire):
         outside_edges = exterior.Edges()
@@ -403,9 +403,9 @@ def _makeNonPlanarFace(
 cq.Wire.makeNonPlanarFace = _makeNonPlanarFace
 
 
-def _projectWireToSolid(
-    self: cq.Wire,
-    solidObject: cq.Solid,
+def _projectWireToSurface(
+    self: Union[cq.Wire, cq.Edge],
+    targetObject: cq.Solid,
     direction: cq.Vector = None,
     center: cq.Vector = None,
 ) -> tuple[list[cq.Wire]]:
@@ -422,13 +422,13 @@ def _projectWireToSolid(
     if not direction is None:
         projection_object = BRepProj_Projection(
             self.wrapped,
-            cq.Shape.cast(solidObject.wrapped).wrapped,
+            cq.Shape.cast(targetObject.wrapped).wrapped,
             gp_Dir(*direction.toTuple()),
         )
     else:
         projection_object = BRepProj_Projection(
             self.wrapped,
-            cq.Shape.cast(solidObject.wrapped).wrapped,
+            cq.Shape.cast(targetObject.wrapped).wrapped,
             gp_Pnt(*center.toTuple()),
         )
 
@@ -472,29 +472,38 @@ def _projectWireToSolid(
     return (front_wires, back_wires)
 
 
-cq.Wire.projectToSolid = _projectWireToSolid
+cq.Wire.projectToSurface = _projectWireToSurface
+cq.Edge.projectToSurface = _projectWireToSurface
 
 
-def _projectFaceToSolid(
+def _projectFaceToSurface(
     self: cq.Face,
-    solidObject: cq.Solid,
+    targetObject: cq.Solid,
     direction: cq.Vector = None,
     center: cq.Vector = None,
 ) -> tuple[cq.Face]:
     """
     Project a Face onto a Solid generating new Face on the front and back of the object
     one and only one of `direction` or `center` must be provided
+
+    There are four phase to creation of the projected face:
+    1- extract the outer wire and project
+    2- extract the inner wires and project
+    3- extract projected points within the outer wire
+    4- build a non planar face
     """
     if not (direction is None) ^ (center is None):
         raise ValueError("One of either direction or center must be provided")
 
+    # Phase 1 - outer wire
     planar_outer_wire = self.outerWire()
     planar_outer_wire_orientation = planar_outer_wire.wrapped.Orientation()
     (
         projected_front_outer_wires,
         projected_back_outer_wires,
-    ) = planar_outer_wire.projectToSolid(solidObject, direction, center)
+    ) = planar_outer_wire.projectToSurface(targetObject, direction, center)
 
+    # Phase 2 - inner wires
     planar_inner_wires = [
         w
         if w.wrapped.Orientation() != planar_outer_wire_orientation
@@ -505,8 +514,8 @@ def _projectFaceToSolid(
     projected_front_inner_wires = []
     projected_back_inner_wires = []
     for planar_inner_wire in planar_inner_wires:
-        projected_inner_wires = planar_inner_wire.projectToSolid(
-            solidObject, direction, center
+        projected_inner_wires = planar_inner_wire.projectToSurface(
+            targetObject, direction, center
         )
         projected_front_inner_wires.extend(projected_inner_wires[FRONT])
         projected_back_inner_wires.extend(projected_inner_wires[BACK])
@@ -514,20 +523,53 @@ def _projectFaceToSolid(
     if len(projected_front_outer_wires) > 1 or len(projected_back_outer_wires) > 1:
         raise Exception("The projection of this face has broken into fragments")
 
+    # Phase 3 - Find points on the surface by projecting a grid and sampling
+    planar_grid_lines = [
+        cq.Edge.makeLine(
+            planar_outer_wire.positionAt(t), planar_outer_wire.positionAt(t + 0.5)
+        )
+        # for t in [0.0, 0.125, 0.25, 0.375, 0.5]
+        for t in [0.0, 0.25, 0.5]
+    ]
+    projected_front_grid_lines = []
+    projected_back_grid_lines = []
+    for grid_line in planar_grid_lines:
+        projected_grid_lines = grid_line.projectToSurface(
+            targetObject, direction, center
+        )
+        projected_front_grid_lines.extend(projected_grid_lines[FRONT])
+        projected_back_grid_lines.extend(projected_grid_lines[BACK])
+    print(f"{len(projected_front_grid_lines)=}")
+    projected_front_points = []
+    for projected_front_grid_line in projected_front_grid_lines:
+        projected_front_points.extend(
+            [projected_front_grid_line.positionAt(p) for p in [0.1, 0.35, 0.65, 0.9]]
+        )
+    print(f"{len(projected_front_points)=}")
+    projected_back_points = []
+    for projected_back_grid_line in projected_back_grid_lines:
+        projected_back_points.extend(
+            [projected_back_grid_line.positionAt(p) for p in [0.1, 0.35, 0.65, 0.9]]
+        )
+
+    # return projected_front_points
+
+    # Phase 4 - Build the faces
     front_face = projected_front_outer_wires[0].makeNonPlanarFace(
-        interiorWires=projected_front_inner_wires
+        surfacePoints=projected_front_points, interiorWires=projected_front_inner_wires
     )
 
     if projected_back_outer_wires:
         back_face = projected_back_outer_wires[0].makeNonPlanarFace(
-            interiorWires=projected_back_inner_wires
+            surfacePoints=projected_back_points,
+            interiorWires=projected_back_inner_wires,
         )
     else:
         back_face = None
     return (front_face, back_face)
 
 
-cq.Face.projectToSolid = _projectFaceToSolid
+cq.Face.projectToSurface = _projectFaceToSurface
 
 
 def _projectWireToCylinder(self, radius: float) -> cq.Wire:
@@ -636,7 +678,9 @@ def _faceOnSolid(self, path: cq.Wire, start: float, solid_object: cq.Solid) -> c
         startPoint=position_on_solid, endPoint=position_on_solid + face_normal
     )
 
-    projected_face = face_to_project_on.projectToSolid(solid_object, face_normal)[FRONT]
+    projected_face = face_to_project_on.projectToSurface(solid_object, face_normal)[
+        FRONT
+    ]
 
     return projected_face
 

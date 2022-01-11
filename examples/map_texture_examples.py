@@ -10,7 +10,7 @@ desc: Examples face projection, thickening and textOnPath methods.
 
 license:
 
-    Copyright 2021 Gumyr
+    Copyright 2022 Gumyr
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ FACE_ON_SPHERE = 3
 CANADIAN_FLAG = 4
 TEXT_ON_PATH = 5
 
-example = TEXT_ON_PATH
+example = CANADIAN_FLAG
 
 # A sphere used as a projection target
 sphere = cq.Solid.makeSphere(50, angleDegrees1=-90)
@@ -63,7 +63,7 @@ if example == FLAT_PROJECTION:
     )
 
     projected_text_faces = [
-        f.projectToSolid(sphere, projection_direction)[BACK] for f in text_faces
+        f.projectToSurface(sphere, projection_direction)[BACK] for f in text_faces
     ]
     projected_text = cq.Compound.makeCompound(
         [f.thicken(-5, direction=projection_direction) for f in projected_text_faces]
@@ -96,7 +96,7 @@ elif example == CONICAL_PROJECTION:
     text_faces = [f.translate((0, -60, 0)) for f in text_faces]
 
     projected_text_faces = [
-        f.projectToSolid(sphere, center=projection_center)[FRONT] for f in text_faces
+        f.projectToSurface(sphere, center=projection_center)[FRONT] for f in text_faces
     ]
     projected_text = cq.Compound.makeCompound(
         [
@@ -153,7 +153,7 @@ elif example == FACE_ON_SPHERE:
     projection_direction = cq.Vector(0, 0, 1)
 
     square = cq.Workplane("XY").rect(20, 20).extrude(1).faces("<Z").val()
-    square_projected = square.projectToSolid(sphere, projection_direction)
+    square_projected = square.projectToSurface(sphere, projection_direction)
     square_solids = cq.Compound.makeCompound([f.thicken(2) for f in square_projected])
     print(f"Example #{example} time: {timeit.default_timer() - starttime:0.2f}s")
     if "show_object" in locals():
@@ -181,14 +181,17 @@ elif example == CANADIAN_FLAG:
         cq.Workplane("XY")
         .parametricSurface(
             lambda u, v: cq.Vector(
-                v * width * 1.01,
-                u * height * 1.01,
+                # v * width * 1.01,
+                # u * height * 1.01,
+                v * width * 1.2,
+                u * height * 1.2,
                 height * surface(wave_amplitude, u, v) / 2,
             ),
             N=40,
         )
         .thicken(0.5)
-        .translate((-width * 0.005, -height * 0.005, 0))
+        # .translate((-width * 0.005, -height * 0.005, 0))
+        .translate((-width * 0.1, -height * 0.1, 0))
         .val()
     )
     west_field = (
@@ -245,19 +248,27 @@ elif example == CANADIAN_FLAG:
         )
     )
     projected_flag_faces = [
-        f.projectToSolid(flag_surface, cq.Vector(0, 0, -1))[FRONT] for f in flag_faces
+        f.projectToSurface(flag_surface, cq.Vector(0, 0, -1))[FRONT]
+        for f in flag_faces[0:1]
     ]
-    flag_parts = [f.thicken(1.5, cq.Vector(0, 0, 1)) for f in projected_flag_faces]
+    # surface_points = []
+    # for f in flag_faces[0:1]:
+    #     surface_points.extend(f.projectToSurface(flag_surface, cq.Vector(0, 0, -1)))
+    # print(len(surface_points))
+    # vertices = [cq.Vertex.makeVertex(*p.toTuple()) for p in surface_points]
+    # flag_parts = [f.thicken(1.5, cq.Vector(0, 0, 1)) for f in projected_flag_faces]
     print(f"Example #{example} time: {timeit.default_timer() - starttime:0.2f}s")
 
     if "show_object" in locals():
         show_object(flag_surface, name="flag_surface", options={"alpha": 0.8})
-        show_object(
-            flag_parts[0:-1], name="flag_red_parts", options={"color": (255, 0, 0)}
-        )
-        show_object(
-            flag_parts[-1], name="flag_white_part", options={"color": (255, 255, 255)}
-        )
+        show_object(projected_flag_faces, name="projected_flag_faces")
+        # show_object(vertices, name="vertices")
+        # show_object(
+        #     flag_parts[0:-1], name="flag_red_parts", options={"color": (255, 0, 0)}
+        # )
+        # show_object(
+        #     flag_parts[-1], name="flag_white_part", options={"color": (255, 255, 255)}
+        # )
 
 elif example == TEXT_ON_PATH:
     for base_plane in [
