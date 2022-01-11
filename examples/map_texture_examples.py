@@ -1,3 +1,30 @@
+"""
+
+Texture Mapping Examples
+
+name: map_texture_examples.py
+by:   Gumyr
+date: January 10th 2022
+
+desc: Examples face projection, thickening and textOnPath methods.
+
+license:
+
+    Copyright 2021 Gumyr
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
+"""
 import timeit
 import random
 import cadquery as cq
@@ -16,29 +43,24 @@ example = TEXT_ON_PATH
 sphere = cq.Solid.makeSphere(50, angleDegrees1=-90)
 
 
-def make_text_faces(txt: str, plane: str, fontsize: float = 20) -> list[cq.Face]:
-    selector = {"XY": "<Z", "XZ": ">Y"}
-    return (
-        cq.Workplane(plane)
-        .text(
-            txt,
-            fontsize=fontsize,
-            distance=1,
-            font="Serif",
-            fontPath="/usr/share/fonts/truetype/freefont",
-            halign="center",
-        )
-        .faces(selector[plane])
-        .vals()
-    )
-
-
 if example == FLAT_PROJECTION:
     """Example 1 - Flat Projection of Text on Sphere"""
     starttime = timeit.default_timer()
 
     projection_direction = cq.Vector(0, 1, 0)
-    text_faces = make_text_faces("Beingφθ⌀", "XZ")
+    text_faces = (
+        cq.Workplane("XZ")
+        .text(
+            "Beingφθ⌀",
+            fontsize=20,
+            distance=1,
+            font="Serif",
+            fontPath="/usr/share/fonts/truetype/freefont",
+            halign="center",
+        )
+        .faces(">Y")
+        .vals()
+    )
 
     projected_text_faces = [
         f.projectToSolid(sphere, projection_direction)[BACK] for f in text_faces
@@ -58,7 +80,19 @@ elif example == CONICAL_PROJECTION:
     starttime = timeit.default_timer()
 
     projection_center = cq.Vector(0, 700, 0)
-    text_faces = make_text_faces("φθ⌀ #" + str(example), "XZ")
+    text_faces = (
+        cq.Workplane("XZ")
+        .text(
+            "φθ⌀ #" + str(example),
+            fontsize=20,
+            distance=1,
+            font="Serif",
+            fontPath="/usr/share/fonts/truetype/freefont",
+            halign="center",
+        )
+        .faces(">Y")
+        .vals()
+    )
     text_faces = [f.translate((0, -60, 0)) for f in text_faces]
 
     projected_text_faces = [
@@ -85,9 +119,20 @@ elif example == CYLINDER_MAP:
     """Example 3 - Mapping Text on Cylinder"""
     starttime = timeit.default_timer()
 
-    text_faces = make_text_faces(
-        "Example #" + str(example) + " Cylinder Wrap ⌀100", "XY"
+    text_faces = (
+        cq.Workplane("XY")
+        .text(
+            "Example #" + str(example) + " Cylinder Wrap ⌀100",
+            fontsize=20,
+            distance=1,
+            font="Serif",
+            fontPath="/usr/share/fonts/truetype/freefont",
+            halign="center",
+        )
+        .faces("<Z")
+        .vals()
     )
+
     projected_text_faces = [f.projectToCylinder(radius=50) for f in text_faces]
     projected_text = cq.Compound.makeCompound(
         [f.thicken(5, f.Center()) for f in projected_text_faces]
@@ -259,6 +304,8 @@ elif example == TEXT_ON_PATH:
             distance=1,
         )
     )
+    if "show_object" in locals():
+        show_object(clover, name="clover")
 
 
 else:

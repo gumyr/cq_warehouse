@@ -9,7 +9,7 @@ desc: Unit tests for the map_texture sub-package of cq_warehouse
 
 license:
 
-    Copyright 2021 Gumyr
+    Copyright 2022 Gumyr
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
@@ -29,6 +29,15 @@ import unittest
 import math
 import cadquery as cq
 from cq_warehouse.map_texture import *
+
+
+def _assertTupleAlmostEquals(self, expected, actual, places, msg=None):
+    """Check Tuples"""
+    for i, j in zip(actual, expected):
+        self.assertAlmostEqual(i, j, places, msg=msg)
+
+
+unittest.TestCase.assertTupleAlmostEquals = _assertTupleAlmostEquals
 
 
 class TestSupportFunctions(unittest.TestCase):
@@ -64,7 +73,7 @@ class TestSupportFunctions(unittest.TestCase):
 
         # Test for unsupported type (Location unsupported)
         with self.assertRaises(ValueError):
-            p1.toLocalCoords(cq.Location(Vector(1, 1, 1)))
+            p1.toLocalCoords(cq.Location(cq.Vector(1, 1, 1)))
 
         # Test vector translation back to world coordinates
         v2 = (
@@ -80,10 +89,10 @@ class TestSupportFunctions(unittest.TestCase):
     def testGetSignedAngle(self):
         """Verify getSignedAngle calculations with and without a provided normal"""
         a = math.pi / 3
-        v1 = Vector(1, 0, 0)
-        v2 = Vector(math.cos(a), -math.sin(a), 0)
+        v1 = cq.Vector(1, 0, 0)
+        v2 = cq.Vector(math.cos(a), -math.sin(a), 0)
         d1 = v1.getSignedAngle(v2)
-        d2 = v1.getSignedAngle(v2, Vector(0, 0, 1))
+        d2 = v1.getSignedAngle(v2, cq.Vector(0, 0, 1))
         self.assertAlmostEqual(d1, a)
         self.assertAlmostEqual(d2, -a)
 
@@ -142,3 +151,7 @@ class TestTextOnPath(unittest.TestCase):
         # Verify that an edge or wire must be present
         with self.assertRaises(Exception):
             cq.Workplane("XY").textOnPath("error", 5, 1, 1)
+
+
+if __name__ == "__main__":
+    unittest.main()
