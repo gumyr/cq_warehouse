@@ -507,7 +507,7 @@ def _projectFaceToSurface(
     targetObject: cq.Solid,
     direction: cq.Vector = None,
     center: cq.Vector = None,
-    internalFacePoints: list[cq.Vector] = None,
+    internalFacePoints: list[cq.Vector] = [],
 ) -> tuple[cq.Face]:
     """
     Project a Face onto a Solid generating new Face on the front and back of the object
@@ -548,44 +548,38 @@ def _projectFaceToSurface(
         projected_back_inner_wires.extend(projected_inner_wires[BACK])
 
     if len(projected_front_outer_wires) > 1 or len(projected_back_outer_wires) > 1:
-        raise Exception("The projection of this face has broken into fragments")
+        raise ValueError("The projection of this face has broken into fragments")
 
-    # Phase 3 - Find points on the surface by projecting either the center or internalFacePoints
-    if internalFacePoints is None:
-        planar_grid = cq.Edge.makeLine(
-            planar_outer_wire.positionAt(0), planar_outer_wire.Center()
-        )
+    # Phase 3 - Find points on the surface by projecting a "grid" composed of internalFacePoints
+    if not internalFacePoints:
+        projected_front_points = []
+        projected_back_points = []
     else:
-        planar_grid = cq.Wire.makePolygon([cq.Vector(v) for v in internalFacePoints])
-    projected_grid = planar_grid.projectToSurface(targetObject, direction, center)
-    projected_front_grid = projected_grid[FRONT]
-    projected_back_grid = projected_grid[BACK]
-    if internalFacePoints is not None:
-        projected_front_points = [
-            cq.Vector(*projected_front_grid[0].positionAt(1).toTuple())
-        ]
-    else:
+        if len(internalFacePoints) == 1:
+            planar_grid = cq.Edge.makeLine(
+                planar_outer_wire.positionAt(0), internalFacePoints[0]
+            )
+        else:
+            planar_grid = cq.Wire.makePolygon(
+                [cq.Vector(v) for v in internalFacePoints]
+            )
+
+        projected_grid = planar_grid.projectToSurface(targetObject, direction, center)
+        projected_front_grid = projected_grid[FRONT]
+        projected_back_grid = projected_grid[BACK]
         projected_front_points = []
         for line in projected_front_grid:
             projected_front_points.extend(
                 [cq.Vector(*v.toTuple()) for v in line.Vertices()]
             )
-    if projected_back_grid:
-        if internalFacePoints is not None:
-            projected_back_points = [
-                cq.Vector(*projected_back_grid[0].positionAt(1).toTuple())
-            ]
-        else:
-            projected_back_points = [
-                cq.Vector(*v.toTuple()) for v in projected_back_grid[0].Vertices()
-            ]
+        if projected_back_grid:
             projected_back_points = []
             for line in projected_back_grid:
                 projected_back_points.extend(
                     [cq.Vector(*v.toTuple()) for v in line.Vertices()]
                 )
-    else:
-        projected_back_points = []
+        else:
+            projected_back_points = []
 
     # Phase 4 - Build the faces
     front_face = projected_front_outer_wires[0].makeNonPlanarFace(
