@@ -20,7 +20,7 @@ from OCP.StdPrs import StdPrs_BRepFont, StdPrs_BRepTextBuilder as Font_BRepTextB
 from OCP.NCollection import NCollection_Utf8String
 from OCP.ShapeAnalysis import ShapeAnalysis_FreeBounds
 from OCP.TopTools import TopTools_HSequenceOfShape
-from OCP.BRepOffset import BRepOffset_MakeOffset, BRepOffset_Skin
+from OCP.BRepOffset import BRepOffset_MakeOffset, BRepOffset_Skin, BRepOffset_RectoVerso
 from OCP.BRepProj import BRepProj_Projection
 from OCP.gp import gp_Pnt, gp_Dir
 from OCP.GeomAbs import (
@@ -29,11 +29,14 @@ from OCP.GeomAbs import (
     GeomAbs_Intersection,
     GeomAbs_JoinType,
     GeomAbs_Arc,
+    GeomAbs_Tangent,
+    GeomAbs_Intersection,
 )
 from OCP.BRepOffsetAPI import BRepOffsetAPI_MakeFilling
 from OCP.TopAbs import TopAbs_ShapeEnum, TopAbs_Orientation
 from OCP.gp import gp_Pnt, gp_Vec
 from OCP.Bnd import Bnd_Box
+from OCP.StdFail import StdFail_NotDone
 
 
 FRONT = 0  # Projection results in wires on the front and back of the object
@@ -160,6 +163,10 @@ def textOnPath(
                 distance=1,
             )
         )
+
+    TODO: Get last edge/wire put on the stack with:
+    You can end the Fluent API call chain and get the last object on the stack with Workplane.val()
+    alternatively you can get all the objects with Workplane.vals()
     """
 
     def position_face(orig_face: cq.Face) -> cq.Face:
@@ -297,7 +304,7 @@ def _complemented(self) -> cq.Face:
 cq.Face.complemented = _complemented
 
 
-def _thicken(self, depth: float, direction: cq.Vector = None) -> cq.Solid:
+def _faceThicken(self, depth: float, direction: cq.Vector = None) -> cq.Solid:
     """
     Create a solid from a potentially non planar face by thickening along the normals.
     The direction vector can be used to potentially flip the face normal direction such that
@@ -319,30 +326,32 @@ def _thicken(self, depth: float, direction: cq.Vector = None) -> cq.Solid:
         Offset=adjusted_depth,
         Tol=1.0e-5,
         Mode=BRepOffset_Skin,
+        # BRepOffset_RectoVerso - which describes the offset of a given surface shell along both
+        # sides of the surface but doesn't seem to work
         Intersection=True,
         SelfInter=False,
-        Join=GeomAbs_Intersection,
+        Join=GeomAbs_Intersection,  # Could be GeomAbs_Arc,GeomAbs_Tangent,GeomAbs_Intersection
         Thickening=True,
         RemoveIntEdges=True,
     )
     solid.MakeOffsetShape()
-    result = cq.Solid(solid.Shape())
-    # if depth != adjusted_depth:
-    #     print("flipping")
-    #     debug(result)
+    try:
+        result = cq.Solid(solid.Shape())
+    except StdFail_NotDone as e:
+        raise ValueError("Error applying thicken to given Face") from e
 
     return result
 
 
-cq.Face.thicken = _thicken
+cq.Face.thicken = _faceThicken
 
 
-def _thicken(self, depth: float, direction: cq.Vector = None):
+def _workplaneThicken(self, depth: float, direction: cq.Vector = None):
     """Find all of the faces on the stack and make them Solid objects by thickening along the normals"""
     return self.newObject([f.thicken(depth, direction) for f in self.faces().vals()])
 
 
-cq.Workplane.thicken = _thicken
+cq.Workplane.thicken = _workplaneThicken
 
 
 def __makeNonPlanarFace(
@@ -372,22 +381,39 @@ def __makeNonPlanarFace(
         outside_edges = [e.Edge() for e in exterior]
     for edge in outside_edges:
         surface.Add(edge.wrapped, GeomAbs_C0)
+    surface.Build()
+    try:
+        surface_face = cq.Face(surface.Shape())
+    except StdFail_NotDone as e:
+        raise ValueError("Error building non-planar face with provided exterior") from e
+    if not surface_face.isValid():
+        raise ValueError("Invalid non-planar face from provided exterior")
     if surfacePoints:
         for pt in surfacePoints:
             surface.Add(gp_Pnt(*pt.toTuple()))
-    surface.Build()
-    surface_face = cq.Face(surface.Shape())
-    if not surface_face.isValid():
-        raise ValueError("Unable to build face from exterior")
+        surface.Build()
+        try:
+            surface_face = cq.Face(surface.Shape())
+        except StdFail_NotDone as e:
+            raise ValueError(
+                "Error building non-planar face with provided surfacePoints"
+            ) from e
+        if not surface_face.isValid():
+            raise ValueError("Invalid non-planar face from provided surfacePoints")
 
     # Next, add wires that define interior holes - note these wires must be entirely interior
     if interiorWires:
         makeface_object = BRepBuilderAPI_MakeFace(surface_face.wrapped)
         for w in interiorWires:
             makeface_object.Add(w.wrapped)
-        surface_face = cq.Face(makeface_object.Face()).fix()
+        try:
+            surface_face = cq.Face(makeface_object.Face()).fix()
+        except StdFail_NotDone as e:
+            raise ValueError(
+                "Error adding interior hole in non-planar face with provided interiorWires"
+            ) from e
         if not surface_face.isValid():
-            raise ValueError("interiorWires must be completely within exterior")
+            raise ValueError("Invalid non-planar face from provided interiorWires")
 
     return surface_face
 
@@ -481,6 +507,7 @@ def _projectFaceToSurface(
     targetObject: cq.Solid,
     direction: cq.Vector = None,
     center: cq.Vector = None,
+    internalFacePoints: list[cq.Vector] = None,
 ) -> tuple[cq.Face]:
     """
     Project a Face onto a Solid generating new Face on the front and back of the object
@@ -489,7 +516,7 @@ def _projectFaceToSurface(
     There are four phase to creation of the projected face:
     1- extract the outer wire and project
     2- extract the inner wires and project
-    3- extract projected points within the outer wire
+    3- extract surface points within the outer wire
     4- build a non planar face
     """
     if not (direction is None) ^ (center is None):
@@ -523,36 +550,42 @@ def _projectFaceToSurface(
     if len(projected_front_outer_wires) > 1 or len(projected_back_outer_wires) > 1:
         raise Exception("The projection of this face has broken into fragments")
 
-    # Phase 3 - Find points on the surface by projecting a grid and sampling
-    planar_grid_lines = [
-        cq.Edge.makeLine(
-            planar_outer_wire.positionAt(t), planar_outer_wire.positionAt(t + 0.5)
+    # Phase 3 - Find points on the surface by projecting either the center or internalFacePoints
+    if internalFacePoints is None:
+        planar_grid = cq.Edge.makeLine(
+            planar_outer_wire.positionAt(0), planar_outer_wire.Center()
         )
-        # for t in [0.0, 0.125, 0.25, 0.375, 0.5]
-        for t in [0.0, 0.25, 0.5]
-    ]
-    projected_front_grid_lines = []
-    projected_back_grid_lines = []
-    for grid_line in planar_grid_lines:
-        projected_grid_lines = grid_line.projectToSurface(
-            targetObject, direction, center
-        )
-        projected_front_grid_lines.extend(projected_grid_lines[FRONT])
-        projected_back_grid_lines.extend(projected_grid_lines[BACK])
-    print(f"{len(projected_front_grid_lines)=}")
-    projected_front_points = []
-    for projected_front_grid_line in projected_front_grid_lines:
-        projected_front_points.extend(
-            [projected_front_grid_line.positionAt(p) for p in [0.1, 0.35, 0.65, 0.9]]
-        )
-    print(f"{len(projected_front_points)=}")
-    projected_back_points = []
-    for projected_back_grid_line in projected_back_grid_lines:
-        projected_back_points.extend(
-            [projected_back_grid_line.positionAt(p) for p in [0.1, 0.35, 0.65, 0.9]]
-        )
-
-    # return projected_front_points
+    else:
+        planar_grid = cq.Wire.makePolygon([cq.Vector(v) for v in internalFacePoints])
+    projected_grid = planar_grid.projectToSurface(targetObject, direction, center)
+    projected_front_grid = projected_grid[FRONT]
+    projected_back_grid = projected_grid[BACK]
+    if internalFacePoints is not None:
+        projected_front_points = [
+            cq.Vector(*projected_front_grid[0].positionAt(1).toTuple())
+        ]
+    else:
+        projected_front_points = []
+        for line in projected_front_grid:
+            projected_front_points.extend(
+                [cq.Vector(*v.toTuple()) for v in line.Vertices()]
+            )
+    if projected_back_grid:
+        if internalFacePoints is not None:
+            projected_back_points = [
+                cq.Vector(*projected_back_grid[0].positionAt(1).toTuple())
+            ]
+        else:
+            projected_back_points = [
+                cq.Vector(*v.toTuple()) for v in projected_back_grid[0].Vertices()
+            ]
+            projected_back_points = []
+            for line in projected_back_grid:
+                projected_back_points.extend(
+                    [cq.Vector(*v.toTuple()) for v in line.Vertices()]
+                )
+    else:
+        projected_back_points = []
 
     # Phase 4 - Build the faces
     front_face = projected_front_outer_wires[0].makeNonPlanarFace(
@@ -664,7 +697,9 @@ cq.Workplane.alignToPoints = _alignToPoints
 cq.Face.alignToPoints = _alignToPoints
 
 
-def _faceOnSolid(self, path: cq.Wire, start: float, solid_object: cq.Solid) -> cq.Face:
+def _faceOnSurface(
+    self, path: cq.Wire, start: float, solid_object: cq.Solid
+) -> cq.Face:
     """Reposition a face from alignment to the x-axis to the provided path"""
     path_length = path.Length()
 
@@ -685,10 +720,10 @@ def _faceOnSolid(self, path: cq.Wire, start: float, solid_object: cq.Solid) -> c
     return projected_face
 
 
-cq.Face.faceOnSolid = _faceOnSolid
+cq.Face.faceOnSurface = _faceOnSurface
 
 
-def textOnSolid(
+def textOnSurface(
     txt: str,
     fontsize: float,
     distance: float,

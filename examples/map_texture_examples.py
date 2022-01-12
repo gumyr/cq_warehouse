@@ -181,17 +181,13 @@ elif example == CANADIAN_FLAG:
         cq.Workplane("XY")
         .parametricSurface(
             lambda u, v: cq.Vector(
-                # v * width * 1.01,
-                # u * height * 1.01,
-                v * width * 1.2,
-                u * height * 1.2,
+                width * (v * 1.1 - 0.05),
+                height * (u * 1.2 - 0.1),
                 height * surface(wave_amplitude, u, v) / 2,
             ),
             N=40,
         )
         .thicken(0.5)
-        # .translate((-width * 0.005, -height * 0.005, 0))
-        .translate((-width * 0.1, -height * 0.1, 0))
         .val()
     )
     west_field = (
@@ -232,12 +228,20 @@ elif example == CANADIAN_FLAG:
         .lineTo(0.1562, 0.8146)
         .lineTo(0.0881, 0.7752)
         .radiusArc((0.0692, 0.7808), 0.0271)
-        .lineTo(0.0, 0.9167)
+        .lineTo(0.0000, 0.9167)
         .mirrorY()
         .wires()
         .val()
         .scale(height)
     )
+    # To help build a good projection, provide a couple points in the face
+    west_vertices = cq.Edge.makeLine(
+        cq.Vector(27 * width / 32, height / 2, 30),
+        cq.Vector(29 * width / 32, height / 2, 30),
+    ).Vertices()
+    west_points = [cq.Vector(*v.toTuple()) for v in west_vertices]
+
+    # Create planar faces for all of the flag components
     flag_faces = [
         cq.Face.makeFromWires(w, []).translate(cq.Vector(width / 2, 0, 30))
         for w in [west_field, maple_leaf, east_field]
@@ -247,28 +251,44 @@ elif example == CANADIAN_FLAG:
             cq.Vector(width / 2, 0, 30)
         )
     )
+    # Are all of the faces valid?
+    for i, f in enumerate(flag_faces):
+        print(f"Face #{i} is valid: {f.isValid()}")
+
+    # Create non-planar faces on the surface for all of the flag components
     projected_flag_faces = [
-        f.projectToSurface(flag_surface, cq.Vector(0, 0, -1))[FRONT]
-        for f in flag_faces[0:1]
+        flag_faces[2].projectToSurface(
+            flag_surface, direction=cq.Vector(0, 0, -1), internalFacePoints=west_points
+        )[FRONT]
     ]
-    # surface_points = []
-    # for f in flag_faces[0:1]:
-    #     surface_points.extend(f.projectToSurface(flag_surface, cq.Vector(0, 0, -1)))
-    # print(len(surface_points))
-    # vertices = [cq.Vertex.makeVertex(*p.toTuple()) for p in surface_points]
-    # flag_parts = [f.thicken(1.5, cq.Vector(0, 0, 1)) for f in projected_flag_faces]
+    projected_flag_faces.extend(
+        [
+            f.projectToSurface(
+                flag_surface,
+                direction=cq.Vector(0, 0, -1),
+            )[FRONT]
+            for f in [flag_faces[0], flag_faces[1], flag_faces[3]]
+        ]
+    )
+    flag_parts = [f.thicken(1, cq.Vector(0, 0, 1)) for f in projected_flag_faces]
     print(f"Example #{example} time: {timeit.default_timer() - starttime:0.2f}s")
 
     if "show_object" in locals():
-        show_object(flag_surface, name="flag_surface", options={"alpha": 0.8})
+        show_object(flag_faces, name="flag_faces")
+        show_object(west_vertices, name="west_vertices")
+        show_object(
+            flag_surface,
+            name="flag_surface",
+            options={"alpha": 0.8, "color": (170 / 255, 85 / 255, 255 / 255)},
+        )
         show_object(projected_flag_faces, name="projected_flag_faces")
         # show_object(vertices, name="vertices")
-        # show_object(
-        #     flag_parts[0:-1], name="flag_red_parts", options={"color": (255, 0, 0)}
-        # )
-        # show_object(
-        #     flag_parts[-1], name="flag_white_part", options={"color": (255, 255, 255)}
-        # )
+        show_object(
+            flag_parts[0:-1], name="flag_red_parts", options={"color": (255, 0, 0)}
+        )
+        show_object(
+            flag_parts[-1], name="flag_white_part", options={"color": (255, 255, 255)}
+        )
 
 elif example == TEXT_ON_PATH:
     for base_plane in [
