@@ -37,6 +37,8 @@ from OCP.TopAbs import TopAbs_ShapeEnum, TopAbs_Orientation
 from OCP.gp import gp_Pnt, gp_Vec
 from OCP.Bnd import Bnd_Box
 from OCP.StdFail import StdFail_NotDone
+from OCP.BRepIntCurveSurface import BRepIntCurveSurface_Inter
+from OCP.gce import gce_MakeLin, gce_MakeDir
 
 
 FRONT = 0  # Projection results in wires on the front and back of the object
@@ -77,13 +79,13 @@ def _toLocalCoords(self, obj):
     """
     # from .shapes import Shape
 
-    if isinstance(obj, Vector):
+    if isinstance(obj, cq.Vector):
         return obj.transform(self.fG)
-    elif isinstance(obj, Shape):
+    elif isinstance(obj, cq.Shape):
         return obj.transformShape(self.fG)
     elif isinstance(obj, cq.BoundBox):
-        global_bottom_left = Vector(obj.xmin, obj.ymin, obj.zmin)
-        global_top_right = Vector(obj.xmax, obj.ymax, obj.zmax)
+        global_bottom_left = cq.Vector(obj.xmin, obj.ymin, obj.zmin)
+        global_top_right = cq.Vector(obj.xmax, obj.ymax, obj.zmax)
         local_bottom_left = global_bottom_left.transform(self.fG)
         local_top_right = global_top_right.transform(self.fG)
         local_bbox = Bnd_Box(
@@ -163,10 +165,6 @@ def textOnPath(
                 distance=1,
             )
         )
-
-    TODO: Get last edge/wire put on the stack with:
-    You can end the Fluent API call chain and get the last object on the stack with Workplane.val()
-    alternatively you can get all the objects with Workplane.vals()
     """
 
     def position_face(orig_face: cq.Face) -> cq.Face:
@@ -194,10 +192,13 @@ def textOnPath(
     # The top edge or wire on the stack defines the path
     if not self.ctx.pendingWires and not self.ctx.pendingEdges:
         raise Exception("A pending edge or wire must be present to define the path")
-    if self.ctx.pendingEdges:
-        path = self.ctx.pendingEdges.pop()
-    else:
-        path = self.ctx.pendingWires.pop()
+    for stack_object in self.vals():
+        if type(stack_object) == cq.Edge:
+            path = self.ctx.pendingEdges.pop(0)
+            break
+        if type(stack_object) == cq.Wire:
+            path = self.ctx.pendingWires.pop(0)
+            break
 
     # Create text on the current workplane
     raw_text = cq.Compound.makeText(
@@ -286,22 +287,6 @@ def _hexArray(
 
 
 cq.Workplane.hexArray = _hexArray
-
-
-def _isReversed(self) -> bool:
-    """Determine if a Face normal is reversed"""
-    return self.wrapped.Orientation() == TopAbs_Orientation.TopAbs_REVERSED
-
-
-cq.Face.isReversed = _isReversed
-
-
-def _complemented(self) -> cq.Face:
-    """Return the Face with its normal flipped"""
-    return cq.Face(self.wrapped.Complemented())
-
-
-cq.Face.complemented = _complemented
 
 
 def _faceThicken(self, depth: float, direction: cq.Vector = None) -> cq.Solid:
@@ -429,9 +414,9 @@ def _makeNonPlanarFace(
 cq.Wire.makeNonPlanarFace = _makeNonPlanarFace
 
 
-def _projectWireToSurface(
+def _projectWireToShape(
     self: Union[cq.Wire, cq.Edge],
-    targetObject: cq.Solid,
+    targetObject: cq.Shape,
     direction: cq.Vector = None,
     center: cq.Vector = None,
 ) -> tuple[list[cq.Wire]]:
@@ -498,13 +483,13 @@ def _projectWireToSurface(
     return (front_wires, back_wires)
 
 
-cq.Wire.projectToSurface = _projectWireToSurface
-cq.Edge.projectToSurface = _projectWireToSurface
+cq.Wire.projectToShape = _projectWireToShape
+cq.Edge.projectToShape = _projectWireToShape
 
 
-def _projectFaceToSurface(
+def _projectFaceToShape(
     self: cq.Face,
-    targetObject: cq.Solid,
+    targetObject: cq.Shape,
     direction: cq.Vector = None,
     center: cq.Vector = None,
     internalFacePoints: list[cq.Vector] = [],
@@ -528,7 +513,7 @@ def _projectFaceToSurface(
     (
         projected_front_outer_wires,
         projected_back_outer_wires,
-    ) = planar_outer_wire.projectToSurface(targetObject, direction, center)
+    ) = planar_outer_wire.projectToShape(targetObject, direction, center)
 
     # Phase 2 - inner wires
     planar_inner_wires = [
@@ -541,7 +526,7 @@ def _projectFaceToSurface(
     projected_front_inner_wires = []
     projected_back_inner_wires = []
     for planar_inner_wire in planar_inner_wires:
-        projected_inner_wires = planar_inner_wire.projectToSurface(
+        projected_inner_wires = planar_inner_wire.projectToShape(
             targetObject, direction, center
         )
         projected_front_inner_wires.extend(projected_inner_wires[FRONT])
@@ -551,6 +536,12 @@ def _projectFaceToSurface(
         raise ValueError("The projection of this face has broken into fragments")
 
     # Phase 3 - Find points on the surface by projecting a "grid" composed of internalFacePoints
+
+    # Not sure if it's always a good idea to add an internal central point so the next
+    # two lines of code can be easily removed without impacting the rest
+    if not internalFacePoints:
+        internalFacePoints = [planar_outer_wire.Center()]
+
     if not internalFacePoints:
         projected_front_points = []
         projected_back_points = []
@@ -564,7 +555,7 @@ def _projectFaceToSurface(
                 [cq.Vector(v) for v in internalFacePoints]
             )
 
-        projected_grid = planar_grid.projectToSurface(targetObject, direction, center)
+        projected_grid = planar_grid.projectToShape(targetObject, direction, center)
         projected_front_grid = projected_grid[FRONT]
         projected_back_grid = projected_grid[BACK]
         projected_front_points = []
@@ -596,11 +587,13 @@ def _projectFaceToSurface(
     return (front_face, back_face)
 
 
-cq.Face.projectToSurface = _projectFaceToSurface
+cq.Face.projectToShape = _projectFaceToShape
 
 
-def _projectWireToCylinder(self, radius: float) -> cq.Wire:
-    """Map a closed planar wire to a cylindrical surface"""
+def _projectWireToCylinder(
+    self, radius: float, normal: cq.Vector = cq.Vector(0, 0, 1)
+) -> cq.Wire:
+    """Map a wire to a cylindrical surface"""
 
     text_flat_edges = self.Edges()
     circumference = 2 * pi * radius
@@ -608,6 +601,7 @@ def _projectWireToCylinder(self, radius: float) -> cq.Wire:
     edges_in = TopTools_HSequenceOfShape()
     wires_out = TopTools_HSequenceOfShape()
 
+    cylinder_plane = cq.Plane(origin=(0, 0, 0), normal=normal.toTuple())
     text_cylindrical_edges = []
     for t in text_flat_edges:
         # x,y,z
@@ -622,7 +616,9 @@ def _projectWireToCylinder(self, radius: float) -> cq.Wire:
         edges_in.Append(cylindrical_edge.wrapped)
 
     ShapeAnalysis_FreeBounds.ConnectEdgesToWires_s(edges_in, 0.0001, False, wires_out)
-    wires = [cq.Wire(w) for w in wires_out]
+    wires = [cq.Wire(w).transformShape(cylinder_plane.fG) for w in wires_out]
+    # wires = [cq.Wire(w) for w in wires_out]
+
     return wires[0]
 
 
@@ -632,10 +628,14 @@ cq.Wire.projectToCylinder = _projectWireToCylinder
 def _projectFaceToCylinder(self, radius: float) -> cq.Face:
     """Project the face to a cylinder of the given radius"""
 
+    normal = self.normalAt(self.Center()) * -1
     planar_outer_wire = self.outerWire()
-    projected_outer_wire = planar_outer_wire.projectToCylinder(radius)
+    projected_outer_wire = planar_outer_wire.projectToCylinder(radius, normal)
     planar_inner_wires = self.innerWires()
-    projected_inner_wires = [w.projectToCylinder(radius) for w in planar_inner_wires]
+    projected_inner_wires = [
+        w.projectToCylinder(radius, normal) for w in planar_inner_wires
+    ]
+    # return projected_outer_wire
     face = projected_outer_wire.makeNonPlanarFace(interiorWires=projected_inner_wires)
 
     if self.wrapped.Orientation() == TopAbs_Orientation.TopAbs_REVERSED:
@@ -647,99 +647,77 @@ def _projectFaceToCylinder(self, radius: float) -> cq.Face:
 cq.Face.projectToCylinder = _projectFaceToCylinder
 
 
-def _alignToPoints(self, startPoint: cq.Vector, endPoint: cq.Vector):
-    """
-    Position the zAxis of the given object to the vector defined by the start and end points
-
-    To avoid undesirable rotations about the Z-axis when aligning objects in directions near
-    opposite to their original position, calculations are done for both rotating from Y and Z
-    and the smaller of these two rotations are used.
-    """
-    if (endPoint - startPoint).x == 0 and (endPoint - startPoint).y == 0:
-        result = self
-    else:
-        yAxis = cq.Vector(0, 1, 0)
-        zAxis = cq.Vector(0, 0, 1)
-
-        # Create a normalized vector from the cq start and end vertices
-        targetVector = (endPoint - startPoint).normalized()
-
-        # Calculate the axis of rotation and the amount of rotation required
-        rotateAxisZ = targetVector.cross(zAxis)
-        rotateAngleZ = -degrees(targetVector.getAngle(zAxis))
-        rotateAxisY = targetVector.cross(yAxis)
-        rotateAngleY = -degrees(targetVector.getAngle(yAxis))
-
-        # Rotate the object to align with vector and translate to startPoint
-        if abs(rotateAngleZ) < abs(rotateAngleY):
-            result = self.rotate((0, 0, 0), rotateAxisZ, rotateAngleZ).translate(
-                startPoint
-            )
-        else:
-            # Align with Y first then rotate into position
-            result = (
-                self.rotate((0, 0, 0), (1, 0, 0), -90)
-                .rotate((0, 0, 0), rotateAxisY, rotateAngleY)
-                .translate(startPoint)
-            )
-
-    return result
-
-
-cq.Workplane.alignToPoints = _alignToPoints
-
-cq.Face.alignToPoints = _alignToPoints
-
-
-def _faceOnSurface(
-    self, path: cq.Wire, start: float, solid_object: cq.Solid
-) -> cq.Face:
-    """Reposition a face from alignment to the x-axis to the provided path"""
-    path_length = path.Length()
-
-    bbox = self.BoundingBox()
-    face_bottom_center = cq.Vector((bbox.xmin + bbox.xmax) / 2, 0, 0)
-    relative_position_on_path = start + face_bottom_center.x / path_length
-    position_on_solid = path.positionAt(relative_position_on_path)
-    face_normal = solid_object.normalAt(position_on_solid)
-
-    face_to_project_on = self.alignToPoints(
-        startPoint=position_on_solid, endPoint=position_on_solid + face_normal
-    )
-
-    projected_face = face_to_project_on.projectToSurface(solid_object, face_normal)[
-        FRONT
-    ]
-
-    return projected_face
-
-
-cq.Face.faceOnSurface = _faceOnSurface
-
-
-def textOnSurface(
+def _textOnShape(
+    self,
     txt: str,
     fontsize: float,
-    distance: float,
-    path: cq.Wire,
-    start: float,
-    solid_object: cq.Solid,
-) -> cq.Solid:
+    depth: float,
+    direction: cq.Vector = None,
+    center: cq.Vector = None,
+    # start: float,
+) -> cq.Compound:
     """Create 3D text with a baseline following the given path"""
-    linear_faces = (
-        cq.Workplane("XY")
+    planar_faces = (
+        cq.Workplane("XZ")
         .text(
             txt=txt,
             fontsize=fontsize,
-            distance=distance,
+            distance=depth,
             halign="left",
             valign="bottom",
         )
-        .faces("<Z")
+        .faces("<Y")
         .vals()
     )
 
-    faces_on_path = [f.faceOnSolid(path, start, solid_object) for f in linear_faces]
-    solids_on_path = [f.thicken(distance) for f in faces_on_path]
+    projected_front_faces = []
+    projected_back_faces = []
+    oc_shape = self.wrapped
+    tol = 0.0001
+    for planar_face in planar_faces:
+        face_center = planar_face.Center()
+        oc_point = gp_Pnt(*face_center.toTuple())
+        if direction is not None:
+            oc_axis = gp_Dir(*direction.toTuple())
+        else:
+            oc_axis = gp_Dir(*(center - face_center).toTuple())
+        intersection_line = gce_MakeLin(oc_point, oc_axis).Value()
+        intersectMaker = BRepIntCurveSurface_Inter()
+        intersectMaker.Init(oc_shape, intersection_line, tol)
 
-    return cq.Compound.makeCompound(solids_on_path)
+        intersections = []
+        while intersectMaker.More():
+            interPt = intersectMaker.Pnt()
+            distance = oc_point.SquareDistance(interPt)
+            intersections.append(
+                (cq.Face(intersectMaker.Face()), cq.Vector(interPt), abs(distance))
+            )
+            intersectMaker.Next()
+        intersections.sort(key=lambda x: x[2])
+
+        intersecting_faces = [i[0] for i in intersections]
+        intersecting_points = [i[1] for i in intersections]
+        intersecting_normals = [
+            f.normalAt(intersecting_points[i]).normalized()
+            for i, f in enumerate(intersecting_faces)
+        ]
+        for projection_normal in intersecting_normals:
+            print(f"{projection_normal=}")
+        projected_front_faces.append(
+            planar_face.projectToShape(
+                self,
+                direction=intersecting_normals[FRONT],
+            )[FRONT]
+        )
+        projected_back_faces.append(
+            planar_face.projectToShape(
+                self,
+                direction=intersecting_normals[BACK],
+            )[FRONT]
+        )
+    print(f"{len(projected_front_faces)=}")
+
+    return projected_front_faces
+
+
+cq.Shape.textOnShape = _textOnShape

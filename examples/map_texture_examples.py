@@ -30,14 +30,15 @@ import random
 import cadquery as cq
 from cq_warehouse.map_texture import *
 
-FLAT_PROJECTION = 0
-CONICAL_PROJECTION = 1
-CYLINDER_MAP = 2
-FACE_ON_SPHERE = 3
-CANADIAN_FLAG = 4
-TEXT_ON_PATH = 5
+FLAT_PROJECTION = 1
+CONICAL_PROJECTION = 2
+CYLINDER_WRAP = 3
+FACE_ON_SPHERE = 4
+CANADIAN_FLAG = 5
+TEXT_ON_PATH = 6
+TEXT_ON_SHAPE = 7
 
-example = CANADIAN_FLAG
+example = TEXT_ON_SHAPE
 
 # A sphere used as a projection target
 sphere = cq.Solid.makeSphere(50, angleDegrees1=-90)
@@ -48,11 +49,11 @@ if example == FLAT_PROJECTION:
     starttime = timeit.default_timer()
 
     projection_direction = cq.Vector(0, 1, 0)
-    text_faces = (
+    planar_text_faces = (
         cq.Workplane("XZ")
         .text(
-            "Beingφθ⌀",
-            fontsize=20,
+            "Flat #" + str(example),
+            fontsize=30,
             distance=1,
             font="Serif",
             fontPath="/usr/share/fonts/truetype/freefont",
@@ -63,28 +64,40 @@ if example == FLAT_PROJECTION:
     )
 
     projected_text_faces = [
-        f.projectToSurface(sphere, projection_direction)[BACK] for f in text_faces
+        f.projectToSurface(sphere, projection_direction)[BACK]
+        for f in planar_text_faces
     ]
     projected_text = cq.Compound.makeCompound(
         [f.thicken(-5, direction=projection_direction) for f in projected_text_faces]
     )
+    projection_beams = [
+        cq.Solid.extrudeLinear(f, cq.Vector(projection_direction * -80))
+        for f in planar_text_faces
+    ]
     print(f"Example #{example} time: {timeit.default_timer() - starttime:0.2f}s")
     if "show_object" in locals():
         show_object(sphere, name="sphere_solid", options={"alpha": 0.8})
-        show_object(text_faces, name="text_faces")
+        show_object(planar_text_faces, name="planar_text_faces")
+        show_object(projected_text_faces, name="projected_text_faces")
         show_object(projected_text, name="projected_sphere_text_solid")
+        show_object(
+            projection_beams,
+            name="projection_beams",
+            options={"alpha": 0.9, "color": (170 / 255, 170 / 255, 255 / 255)},
+        )
 
 
 elif example == CONICAL_PROJECTION:
     """Example 2 - Conical Projection of Text on Sphere"""
     starttime = timeit.default_timer()
 
-    projection_center = cq.Vector(0, 700, 0)
-    text_faces = (
+    # projection_center = cq.Vector(0, 700, 0)
+    projection_center = cq.Vector(0, 0, 0)
+    planar_text_faces = (
         cq.Workplane("XZ")
         .text(
-            "φθ⌀ #" + str(example),
-            fontsize=20,
+            "Conical #" + str(example),
+            fontsize=25,
             distance=1,
             font="Serif",
             fontPath="/usr/share/fonts/truetype/freefont",
@@ -93,33 +106,51 @@ elif example == CONICAL_PROJECTION:
         .faces(">Y")
         .vals()
     )
-    text_faces = [f.translate((0, -60, 0)) for f in text_faces]
+    planar_text_faces = [f.translate((0, -60, 0)) for f in planar_text_faces]
 
     projected_text_faces = [
-        f.projectToSurface(sphere, center=projection_center)[FRONT] for f in text_faces
+        f.projectToSurface(sphere, center=projection_center)[FRONT]
+        for f in planar_text_faces
+    ]
+    projection_source = cq.Solid.makeBox(1, 1, 1, pnt=cq.Vector(-0.5, -0.5, -0.5))
+    projected_text_source_faces = [
+        f.projectToSurface(projection_source, center=projection_center)[FRONT]
+        for f in planar_text_faces
     ]
     projected_text = cq.Compound.makeCompound(
-        [
-            f.thicken(-5, direction=text_faces[0].Center() - projection_center)
-            for f in projected_text_faces
-        ]
+        [f.thicken(5, direction=cq.Vector(0, -1, 0)) for f in projected_text_faces]
     )
+    projection_beams = [
+        cq.Solid.makeLoft(
+            [
+                projected_text_source_faces[i].outerWire(),
+                planar_text_faces[i].outerWire(),
+            ]
+        )
+        for i in range(len(planar_text_faces))
+    ]
     print(f"Example #{example} time: {timeit.default_timer() - starttime:0.2f}s")
     if "show_object" in locals():
         show_object(sphere, name="sphere_solid", options={"alpha": 0.8})
-        show_object(text_faces, name="text_faces")
+        show_object(planar_text_faces, name="planar_text_faces", options={"alpha": 0.5})
         show_object(projected_text_faces, name="projected_text_faces")
+        show_object(projected_text_source_faces, name="projected_text_source_faces")
         show_object(projected_text, name="projected_sphere_text_solid")
         show_object(
             cq.Vertex.makeVertex(*projection_center.toTuple()), name="projection center"
         )
+        show_object(
+            projection_beams,
+            name="projection_beams",
+            options={"alpha": 0.9, "color": (170 / 255, 170 / 255, 255 / 255)},
+        )
 
 
-elif example == CYLINDER_MAP:
+elif example == CYLINDER_WRAP:
     """Example 3 - Mapping Text on Cylinder"""
     starttime = timeit.default_timer()
 
-    text_faces = (
+    planar_text_faces = (
         cq.Workplane("XY")
         .text(
             "Example #" + str(example) + " Cylinder Wrap ⌀100",
@@ -133,7 +164,7 @@ elif example == CYLINDER_MAP:
         .vals()
     )
 
-    projected_text_faces = [f.projectToCylinder(radius=50) for f in text_faces]
+    projected_text_faces = [f.projectToCylinder(radius=50) for f in planar_text_faces]
     projected_text = cq.Compound.makeCompound(
         [f.thicken(5, f.Center()) for f in projected_text_faces]
     )
@@ -144,7 +175,7 @@ elif example == CYLINDER_MAP:
             name="sphere_solid",
             options={"alpha": 0.8},
         )
-        show_object(text_faces, name="text_faces")
+        show_object(planar_text_faces, name="text_faces")
         show_object(projected_text, name="projected_text")
 
 elif example == FACE_ON_SPHERE:
@@ -177,7 +208,7 @@ elif example == CANADIAN_FLAG:
 
     # Note that the surface to project on must be a little larger than the faces
     # being projected onto it to create valid projected faces
-    flag_surface = (
+    the_wind = (
         cq.Workplane("XY")
         .parametricSurface(
             lambda u, v: cq.Vector(
@@ -258,13 +289,13 @@ elif example == CANADIAN_FLAG:
     # Create non-planar faces on the surface for all of the flag components
     projected_flag_faces = [
         flag_faces[2].projectToSurface(
-            flag_surface, direction=cq.Vector(0, 0, -1), internalFacePoints=west_points
+            the_wind, direction=cq.Vector(0, 0, -1), internalFacePoints=west_points
         )[FRONT]
     ]
     projected_flag_faces.extend(
         [
             f.projectToSurface(
-                flag_surface,
+                the_wind,
                 direction=cq.Vector(0, 0, -1),
             )[FRONT]
             for f in [flag_faces[0], flag_faces[1], flag_faces[3]]
@@ -277,12 +308,11 @@ elif example == CANADIAN_FLAG:
         show_object(flag_faces, name="flag_faces")
         show_object(west_vertices, name="west_vertices")
         show_object(
-            flag_surface,
-            name="flag_surface",
+            the_wind,
+            name="the_wind",
             options={"alpha": 0.8, "color": (170 / 255, 85 / 255, 255 / 255)},
         )
         show_object(projected_flag_faces, name="projected_flag_faces")
-        # show_object(vertices, name="vertices")
         show_object(
             flag_parts[0:-1], name="flag_red_parts", options={"color": (255, 0, 0)}
         )
@@ -335,12 +365,33 @@ elif example == TEXT_ON_PATH:
             distance=1,
         )
     )
+    order = (
+        cq.Workplane(random_plane)
+        .lineTo(100, 0)  # Not used for path
+        .circle(15)
+        .textOnPath(
+            txt=".o" * 140,
+            fontsize=1,
+            distance=1,
+        )
+    )
+
     if "show_object" in locals():
         show_object(clover, name="clover")
+        show_object(order, name="order")
+
+
+elif example == TEXT_ON_SHAPE:
+    text_on_sphere = sphere.textOnShape(
+        txt="ω", fontsize=25, depth=5, center=cq.Vector(0, 0, 0)
+    )
+    if "show_object" in locals():
+        show_object(text_on_sphere, name="text_on_sphere")
+        show_object(sphere, name="sphere_solid", options={"alpha": 0.8})
 
 
 else:
-    """Example 6 - Compound Solid - under construction"""
+    """Example 8 - Compound Solid - under construction"""
     compound_solid = (
         cq.Workplane("XY")
         .rect(100, 50)
