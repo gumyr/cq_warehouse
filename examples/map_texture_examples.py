@@ -37,8 +37,9 @@ FACE_ON_SPHERE = 4
 CANADIAN_FLAG = 5
 TEXT_ON_PATH = 6
 TEXT_ON_SHAPE = 7
+EMBOSS = 8
 
-example = CANADIAN_FLAG
+example = EMBOSS
 
 # A sphere used as a projection target
 sphere = cq.Solid.makeSphere(50, angleDegrees1=-90)
@@ -389,9 +390,60 @@ elif example == TEXT_ON_SHAPE:
         show_object(text_on_sphere, name="text_on_sphere")
         show_object(sphere, name="sphere_solid", options={"alpha": 0.8})
 
+elif example == EMBOSS:
+
+    # test_edge = cq.Edge.makeLine(cq.Vector(0, 0, 0), cq.Vector(0, 10, 0))
+    test_edge = cq.Edge.makeThreePointArc(
+        cq.Vector(0, 5, 0), cq.Vector(20, 25, 0), cq.Vector(40, 5, 0)
+    )
+    test_path = cq.Workplane(sphere).section().edges().val()
+    wrapped_edge = test_edge.wrapToShape(
+        sphere, test_path.positionAt(0), test_path.tangentAt(0)
+    )
+    # wrapped_edge_vertices = [
+    #     cq.Vertex.makeVertex(*v.toTuple())
+    #     for v in test_edge.wrapToShape(sphere, test_path)
+    # ]
+
+    planar_text_faces = (
+        cq.Workplane("XY")
+        .text(
+            txt="ω",
+            fontsize=10,
+            distance=1,
+            font="Serif",
+            fontPath="/usr/share/fonts/truetype/freefont",
+            halign="center",
+        )
+        .faces("<Z")
+        .vals()
+    )
+    omega_wire = planar_text_faces[0].outerWire()
+    omega_edges = omega_wire.Edges()
+    omega_wrapped_edges = [
+        e.wrapToShape(sphere, test_path.positionAt(0), test_path.tangentAt(0))
+        for e in omega_edges
+    ]
+    omega_wrapped_wire = omega_wire.wrapToShape(
+        sphere, test_path.positionAt(0), test_path.tangentAt(0)
+    )
+    print(f"{omega_wrapped_wire.isValid()=}")
+    omega_wrapped_face = planar_text_faces[0].wrapToShape(
+        sphere, test_path.positionAt(0), test_path.tangentAt(0)
+    )
+    if "show_object" in locals():
+        show_object(sphere, name="sphere_solid", options={"alpha": 0.8})
+        show_object(test_edge, name="test_edge")
+        show_object(test_path, name="test_path")
+        show_object(wrapped_edge, name="wrapped_edge")
+        show_object(omega_wire, name="omega_wire")
+        show_object(omega_wrapped_wire, name="omega_wrapped_wire")
+        show_object(omega_wrapped_edges, name="omega_wrapped_edges")
+        show_object(omega_wrapped_face, name="omega_wrapped_face")
+        # show_object(wrapped_edge_vertices[0], name="wrapped_edge_vertices")
 
 else:
-    """Example 8 - Compound Solid - under construction"""
+    """Example 9 - Compound Solid - under construction"""
     compound_solid = (
         cq.Workplane("XY")
         .rect(100, 50)

@@ -4,7 +4,7 @@ from typing import Optional, Literal, Union
 from functools import reduce
 import cadquery as cq
 from cadquery import Vector, Shape
-from cadquery.occ_impl.shapes import Face, edgesToWires
+from cadquery.occ_impl.shapes import Face, VectorLike, edgesToWires
 from cadquery.cq import T
 
 from OCP.ShapeFix import ShapeFix_Shape, ShapeFix_Solid, ShapeFix_Face
@@ -649,12 +649,12 @@ cq.Face.projectToCylinder = _projectFaceToCylinder
 
 
 def _findIntersection(
-    self: cq.Shape, line: cq.Edge
+    self: cq.Shape, point: cq.Vector, direction: cq.Vector
 ) -> list[tuple[cq.Vector, cq.Vector]]:
     """Return both the point(s) and normal(s) of the intersection of the line and the shape"""
 
-    oc_point = gp_Pnt(*line.positionAt(0).toTuple())
-    oc_axis = gp_Dir(*(line.positionAt(1) - line.positionAt(0)).toTuple())
+    oc_point = gp_Pnt(*point.toTuple())
+    oc_axis = gp_Dir(*direction.toTuple())
     oc_shape = self.wrapped
 
     intersection_line = gce_MakeLin(oc_point, oc_axis).Value()
@@ -664,14 +664,16 @@ def _findIntersection(
     intersections = []
     while intersectMaker.More():
         interPt = intersectMaker.Pnt()
-        distance = oc_point.SquareDistance(interPt)
+        # distance = oc_point.SquareDistance(interPt)
+        distance = oc_point.Distance(interPt)
         intersections.append(
-            (cq.Face(intersectMaker.Face()), cq.Vector(interPt), abs(distance))
+            (cq.Face(intersectMaker.Face()), cq.Vector(interPt), distance)
         )
         intersectMaker.Next()
 
     intersections.sort(key=lambda x: x[2])
-
+    # for i in intersections:
+    #     print(i)
     intersecting_faces = [i[0] for i in intersections]
     intersecting_points = [i[1] for i in intersections]
     intersecting_normals = [
@@ -679,7 +681,7 @@ def _findIntersection(
         for i, f in enumerate(intersecting_faces)
     ]
     result = []
-    for i in range(intersecting_points):
+    for i in range(len(intersecting_points)):
         result.append((intersecting_points[i], intersecting_normals[i]))
 
     return result
@@ -765,102 +767,204 @@ def _textOnShape(
 cq.Shape.textOnShape = _textOnShape
 
 
-def _wrapToShape(
+def _wrapEdgeToShape(
     self: cq.Edge,
     targetObject: cq.Shape,
-    path: Union[cq.Edge, cq.Wire],
-    start: float = 0.0,
-    tolerance: float = 0.001,
+    surfacePoint: VectorLike,
+    surfaceXDirection: VectorLike,
+    tolerance: float = 0.0,
 ) -> cq.Edge:
     """
-    Wrap - as in the bottom layer of emboss - a planar Edge or Wire to targetObject maintaining
-    the length while doing so. Emboss is enabled by creating a non-planar face from wrapped wires
-    and thickening the face.
+    Wrap - as used in emboss - a planar Edge to targetObject while maintaining edge length
 
-    Assumptions
-    - self is aligned to the XY plane
-    - X gets mapped along path
-    - Y gets mapped perpendicular to path
+    Algorithm - piecewise approximation of points on surface -> generate spline:
 
+    - successively increasing the number of points to wrap
+        - create local plane at current point given surface normal and surface x direction
+        - create new approximate point on local plane from next planar point
+        - get global position of next approximate point
+        - using current normal and next approximate point find next surface intersection point and normal
+    - create spline from points
+    - measure length of spline
+    - repeat with more points unless within target tolerance
 
-    How about piece wise approximation - given a tolerance
-    - do linear approximation
-    - create spline and measure length
-    - if > tolerance and < max iterations, subdivide and try again
-
-        create local plane at current point given surface normal and path as xDir
-        create new approximate point on local plane from next planar point
-        get global position of next approximate point
-        using current normal and next approximate point find next intersection point and normal
-        create spline from point and next point with path tangents
-        measure length of spline
-        repeat
-
-    The algorithm used is:
-    - split planar Edge/Wire to a list[Vector]
-        - for each point, use XY planar locations to create approximate face normal location
-        - calculate intersect point with Shape
-        - create approximate Edge as two pointed spline with tangents
-        - measure length of approximate Edge relative to planar length between points
-        - recalculate face normal location and store Shape intersection point
-    - Once all the points are available, return generated spline
     """
-    planar_length = self.Length()
-    path_length = path.Length()
+
+    def find_point_on_surface(
+        current_surface_point: cq.Vector,
+        current_surface_normal: cq.Vector,
+        planar_relative_position: cq.Vector,
+    ) -> cq.Vector:
+        """
+        Given an initial surface point and a 2D relative position from this point,
+        find the closest surface point for this relative position.
+        """
+        segment_plane = cq.Plane(
+            origin=current_surface_point,
+            xDir=surface_x_direction,
+            normal=current_surface_normal,
+        )
+        target_point = segment_plane.toWorldCoords(planar_relative_position.toTuple())
+        (next_surface_point, next_surface_normal) = targetObject.findIntersection(
+            point=target_point, direction=target_point - target_object_center
+        )[0]
+        return (next_surface_point, next_surface_normal)
+
+    surface_x_direction = cq.Vector(surfaceXDirection)
+
+    planar_edge_length = self.Length()
     target_object_center = targetObject.Center()
     loop_count = 0
     subdivisions = 1
     length_error = sys.float_info.max
 
-    while length_error < tolerance and loop_count < 5:
-        path_relative_division_size = (planar_length / path_length) / subdivisions
-        path_relative_position = start + div * path_relative_division_size
-        segment_start_point = path.positionAt(path_relative_position)
-        segment_start_tangent = path.tangentAt(path_relative_position)
-        wrap_points = [segment_start_point]
+    while length_error > tolerance and loop_count < 8:
 
-        start_approx_surface_normal = cq.Edge.makeLine(
-            target_object_center, segment_start_point
+        # Initialize the algorithm by priming it with the start of Edge self
+        surface_origin = cq.Vector(surfacePoint)
+        (_surface_point, surface_origin_normal) = targetObject.findIntersection(
+            point=surface_origin,
+            direction=surface_origin - target_object_center,
+        )[0]
+        planar_relative_position = self.positionAt(0)
+        (current_surface_point, current_surface_normal) = find_point_on_surface(
+            surface_origin,
+            surface_origin_normal,
+            planar_relative_position,
         )
-        (start_surface_point, start_surface_normal) = targetObject.findIntersection(
-            cq.Edge.makeLine(
-                segment_start_point,
-                segment_start_point + start_approx_surface_normal,
-            )
-        )[-1]
+        wrapped_edge_points = [current_surface_point]
 
-        for div in range(1, subdivisions):
-            t = div / subdivisions
-            segment_plane = cq.Plane(
-                origin=start_surface_point,
-                xDir=segment_start_tangent,
-                normal=start_surface_normal,
+        # Loop through all of the subdivisions calculating surface points
+        for div in range(1, subdivisions + 1):
+            planar_relative_position = self.positionAt(
+                div / subdivisions
+            ) - self.positionAt((div - 1) / subdivisions)
+            (current_surface_point, current_surface_normal) = find_point_on_surface(
+                current_surface_point,
+                current_surface_normal,
+                planar_relative_position,
             )
-            target_point = segment_plane.toWorldCoords(*self.positionAt(t).toTuple())
+            wrapped_edge_points.append(current_surface_point)
 
-            end_approx_surface_normal = cq.Edge.makeLine(
-                target_object_center,
-                path.positionAt(target_point + div * path_relative_division_size),
-            )
-            (end_surface_point, end_surface_normal) = targetObject.findIntersection(
-                cq.Edge.makeLine(target_point, target_point + end_approx_surface_normal)
-            )[-1]
-            segment_start_point = end_surface_point
-            segment_start_tangent = (wrap_points[-1] - wrap_points[-2]).normalized()
-            (start_surface_point, start_surface_normal) = targetObject.findIntersection(
-                cq.Edge.makeLine(
-                    end_surface_point,
-                    end_surface_point + end_surface_normal,
-                )
-            )[-1]
-            wrap_points.append(start_surface_point)
-
-        wrapped_edge = cq.Edge.makeSpline(wrap_points)
-        length_error = planar_length - wrapped_edge.Length()
+        # Create a spline through the points and determine difference from target
+        if len(wrapped_edge_points) > 1:
+            wrapped_edge = cq.Edge.makeSplineApprox(wrapped_edge_points)
+            length_error = planar_edge_length - wrapped_edge.Length()
         loop_count = loop_count + 1
         subdivisions = subdivisions * 2
 
+    print(f"{length_error=}, {tolerance=}, {loop_count=}")
+    # return wrapped_edge_points
     return wrapped_edge
 
 
-cq.Edge.wrapToShape = _wrapToShape
+cq.Edge.wrapToShape = _wrapEdgeToShape
+
+
+def _wrapWireToShape(
+    self: cq.Edge,
+    targetObject: cq.Shape,
+    surfacePoint: VectorLike,
+    surfaceXDirection: VectorLike,
+    tolerance: float = 0.001,
+) -> cq.Wire:
+    """
+    Wrap - as in the bottom layer of emboss - a planar Edge or Wire to targetObject maintaining
+    the length while doing so. Emboss is enabled by creating a non-planar face from wrapped wires
+    and thickening the face.
+    """
+
+    planar_edges = self.Edges()
+    edges_in = TopTools_HSequenceOfShape()
+    wires_out = TopTools_HSequenceOfShape()
+
+    for planar_edge in planar_edges:
+        wrapped_edge = planar_edge.wrapToShape(
+            targetObject, surfacePoint, surfaceXDirection, tolerance
+        )
+        edges_in.Append(wrapped_edge.wrapped)
+
+    ShapeAnalysis_FreeBounds.ConnectEdgesToWires_s(
+        edges_in, tolerance * 10, False, wires_out
+    )
+    wires = [cq.Wire(w) for w in wires_out]
+
+    return wires[0]
+
+
+cq.Wire.wrapToShape = _wrapWireToShape
+
+# TODO: all the projections need to return a full list of objects returned, not just front and back
+
+
+def _wrapFaceToShape(
+    self: cq.Face,
+    targetObject: cq.Shape,
+    surfacePoint: VectorLike,
+    surfaceXDirection: VectorLike,
+    internalFacePoints: list[cq.Vector] = [],
+) -> cq.Face:
+    """
+    Wrap a Face onto a Shape
+
+    There are four phase to creation of the projected face:
+    1- extract the outer wire and project
+    2- extract the inner wires and project
+    3- extract surface points within the outer wire
+    4- build a non planar face
+    """
+
+    # Phase 1 - outer wire
+    planar_outer_wire = self.outerWire()
+    planar_outer_wire_orientation = planar_outer_wire.wrapped.Orientation()
+    wrapped_outer_wire = planar_outer_wire.wrapToShape(
+        targetObject, surfacePoint, surfaceXDirection
+    )
+
+    # Phase 2 - inner wires
+    planar_inner_wires = [
+        w
+        if w.wrapped.Orientation() != planar_outer_wire_orientation
+        else cq.Wire(w.wrapped.Reversed())
+        for w in self.innerWires()
+    ]
+    wrapped_inner_wires = [
+        w.wrapToShape(targetObject, surfacePoint, surfaceXDirection)
+        for w in planar_inner_wires
+    ]
+
+    # Phase 3 - Find points on the surface by projecting a "grid" composed of internalFacePoints
+
+    # Not sure if it's always a good idea to add an internal central point so the next
+    # two lines of code can be easily removed without impacting the rest
+    if not internalFacePoints:
+        internalFacePoints = [planar_outer_wire.Center()]
+
+    if not internalFacePoints:
+        wrapped_surface_points = []
+    else:
+        if len(internalFacePoints) == 1:
+            planar_grid = cq.Edge.makeLine(
+                planar_outer_wire.positionAt(0), internalFacePoints[0]
+            )
+        else:
+            planar_grid = cq.Wire.makePolygon(
+                [cq.Vector(v) for v in internalFacePoints]
+            )
+
+        wrapped_grid = planar_grid.wrapToShape(
+            targetObject, surfacePoint, surfaceXDirection
+        )
+        wrapped_surface_points = [
+            cq.Vector(*v.toTuple()) for v in wrapped_grid.Vertices()
+        ]
+
+    # Phase 4 - Build the faces
+    wrapped_face = wrapped_outer_wire.makeNonPlanarFace(
+        surfacePoints=wrapped_surface_points, interiorWires=wrapped_inner_wires
+    )
+
+    return wrapped_face
+
+
+cq.Face.wrapToShape = _wrapFaceToShape
