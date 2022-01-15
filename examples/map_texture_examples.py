@@ -38,7 +38,7 @@ CANADIAN_FLAG = 5
 TEXT_ON_PATH = 6
 TEXT_ON_SHAPE = 7
 
-example = TEXT_ON_SHAPE
+example = CANADIAN_FLAG
 
 # A sphere used as a projection target
 sphere = cq.Solid.makeSphere(50, angleDegrees1=-90)

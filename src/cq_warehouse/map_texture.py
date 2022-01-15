@@ -1,3 +1,4 @@
+import sys
 from math import pi, sin, cos, sqrt, degrees
 from typing import Optional, Literal, Union
 from functools import reduce
@@ -647,14 +648,55 @@ def _projectFaceToCylinder(self, radius: float) -> cq.Face:
 cq.Face.projectToCylinder = _projectFaceToCylinder
 
 
+def _findIntersection(
+    self: cq.Shape, line: cq.Edge
+) -> list[tuple[cq.Vector, cq.Vector]]:
+    """Return both the point(s) and normal(s) of the intersection of the line and the shape"""
+
+    oc_point = gp_Pnt(*line.positionAt(0).toTuple())
+    oc_axis = gp_Dir(*(line.positionAt(1) - line.positionAt(0)).toTuple())
+    oc_shape = self.wrapped
+
+    intersection_line = gce_MakeLin(oc_point, oc_axis).Value()
+    intersectMaker = BRepIntCurveSurface_Inter()
+    intersectMaker.Init(oc_shape, intersection_line, 0.0001)
+
+    intersections = []
+    while intersectMaker.More():
+        interPt = intersectMaker.Pnt()
+        distance = oc_point.SquareDistance(interPt)
+        intersections.append(
+            (cq.Face(intersectMaker.Face()), cq.Vector(interPt), abs(distance))
+        )
+        intersectMaker.Next()
+
+    intersections.sort(key=lambda x: x[2])
+
+    intersecting_faces = [i[0] for i in intersections]
+    intersecting_points = [i[1] for i in intersections]
+    intersecting_normals = [
+        f.normalAt(intersecting_points[i]).normalized()
+        for i, f in enumerate(intersecting_faces)
+    ]
+    result = []
+    for i in range(intersecting_points):
+        result.append((intersecting_points[i], intersecting_normals[i]))
+
+    return result
+
+
+cq.Shape.findIntersection = _findIntersection
+
+
 def _textOnShape(
     self,
     txt: str,
     fontsize: float,
     depth: float,
+    path: Union[cq.Wire, cq.Edge],
+    start: float = 0,
     direction: cq.Vector = None,
     center: cq.Vector = None,
-    # start: float,
 ) -> cq.Compound:
     """Create 3D text with a baseline following the given path"""
     planar_faces = (
@@ -721,3 +763,104 @@ def _textOnShape(
 
 
 cq.Shape.textOnShape = _textOnShape
+
+
+def _wrapToShape(
+    self: cq.Edge,
+    targetObject: cq.Shape,
+    path: Union[cq.Edge, cq.Wire],
+    start: float = 0.0,
+    tolerance: float = 0.001,
+) -> cq.Edge:
+    """
+    Wrap - as in the bottom layer of emboss - a planar Edge or Wire to targetObject maintaining
+    the length while doing so. Emboss is enabled by creating a non-planar face from wrapped wires
+    and thickening the face.
+
+    Assumptions
+    - self is aligned to the XY plane
+    - X gets mapped along path
+    - Y gets mapped perpendicular to path
+
+
+    How about piece wise approximation - given a tolerance
+    - do linear approximation
+    - create spline and measure length
+    - if > tolerance and < max iterations, subdivide and try again
+
+        create local plane at current point given surface normal and path as xDir
+        create new approximate point on local plane from next planar point
+        get global position of next approximate point
+        using current normal and next approximate point find next intersection point and normal
+        create spline from point and next point with path tangents
+        measure length of spline
+        repeat
+
+    The algorithm used is:
+    - split planar Edge/Wire to a list[Vector]
+        - for each point, use XY planar locations to create approximate face normal location
+        - calculate intersect point with Shape
+        - create approximate Edge as two pointed spline with tangents
+        - measure length of approximate Edge relative to planar length between points
+        - recalculate face normal location and store Shape intersection point
+    - Once all the points are available, return generated spline
+    """
+    planar_length = self.Length()
+    path_length = path.Length()
+    target_object_center = targetObject.Center()
+    loop_count = 0
+    subdivisions = 1
+    length_error = sys.float_info.max
+
+    while length_error < tolerance and loop_count < 5:
+        path_relative_division_size = (planar_length / path_length) / subdivisions
+        path_relative_position = start + div * path_relative_division_size
+        segment_start_point = path.positionAt(path_relative_position)
+        segment_start_tangent = path.tangentAt(path_relative_position)
+        wrap_points = [segment_start_point]
+
+        start_approx_surface_normal = cq.Edge.makeLine(
+            target_object_center, segment_start_point
+        )
+        (start_surface_point, start_surface_normal) = targetObject.findIntersection(
+            cq.Edge.makeLine(
+                segment_start_point,
+                segment_start_point + start_approx_surface_normal,
+            )
+        )[-1]
+
+        for div in range(1, subdivisions):
+            t = div / subdivisions
+            segment_plane = cq.Plane(
+                origin=start_surface_point,
+                xDir=segment_start_tangent,
+                normal=start_surface_normal,
+            )
+            target_point = segment_plane.toWorldCoords(*self.positionAt(t).toTuple())
+
+            end_approx_surface_normal = cq.Edge.makeLine(
+                target_object_center,
+                path.positionAt(target_point + div * path_relative_division_size),
+            )
+            (end_surface_point, end_surface_normal) = targetObject.findIntersection(
+                cq.Edge.makeLine(target_point, target_point + end_approx_surface_normal)
+            )[-1]
+            segment_start_point = end_surface_point
+            segment_start_tangent = (wrap_points[-1] - wrap_points[-2]).normalized()
+            (start_surface_point, start_surface_normal) = targetObject.findIntersection(
+                cq.Edge.makeLine(
+                    end_surface_point,
+                    end_surface_point + end_surface_normal,
+                )
+            )[-1]
+            wrap_points.append(start_surface_point)
+
+        wrapped_edge = cq.Edge.makeSpline(wrap_points)
+        length_error = planar_length - wrapped_edge.Length()
+        loop_count = loop_count + 1
+        subdivisions = subdivisions * 2
+
+    return wrapped_edge
+
+
+cq.Edge.wrapToShape = _wrapToShape
