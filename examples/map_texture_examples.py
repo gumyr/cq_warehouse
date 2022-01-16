@@ -392,24 +392,24 @@ elif example == TEXT_ON_SHAPE:
 
 elif example == EMBOSS:
 
-    # test_edge = cq.Edge.makeLine(cq.Vector(0, 0, 0), cq.Vector(0, 10, 0))
-    test_edge = cq.Edge.makeThreePointArc(
-        cq.Vector(0, 5, 0), cq.Vector(20, 25, 0), cq.Vector(40, 5, 0)
-    )
+    # # test_edge = cq.Edge.makeLine(cq.Vector(0, 0, 0), cq.Vector(0, 10, 0))
+    # test_edge = cq.Edge.makeThreePointArc(
+    #     cq.Vector(0, 5, 0), cq.Vector(20, 25, 0), cq.Vector(40, 5, 0)
+    # )
     test_path = cq.Workplane(sphere).section().edges().val()
-    wrapped_edge = test_edge.wrapToShape(
-        sphere, test_path.positionAt(0), test_path.tangentAt(0)
-    )
-    # wrapped_edge_vertices = [
-    #     cq.Vertex.makeVertex(*v.toTuple())
-    #     for v in test_edge.wrapToShape(sphere, test_path)
-    # ]
+    # wrapped_edge = test_edge.wrapToShape(
+    #     sphere, test_path.positionAt(0), test_path.tangentAt(0)
+    # )
+    # # wrapped_edge_vertices = [
+    # #     cq.Vertex.makeVertex(*v.toTuple())
+    # #     for v in test_edge.wrapToShape(sphere, test_path)
+    # # ]
 
     planar_text_faces = (
         cq.Workplane("XY")
         .text(
             txt="ω",
-            fontsize=10,
+            fontsize=20,
             distance=1,
             font="Serif",
             fontPath="/usr/share/fonts/truetype/freefont",
@@ -431,16 +431,32 @@ elif example == EMBOSS:
     omega_wrapped_face = planar_text_faces[0].wrapToShape(
         sphere, test_path.positionAt(0), test_path.tangentAt(0)
     )
+    # emboss_text = sphere.textToShape(txt="Α to Ω", fontsize=10, depth=3, path=test_path)
+    # emboss_text = sphere.embossText(txt="ω", fontsize=10, depth=3, path=test_path)
+    # def _textToShape(
+    #     self,
+    #     txt: str,
+    #     fontsize: float,
+    #     depth: float,
+    #     path: Union[cq.Wire, cq.Edge],
+    #     font: str = "Arial",
+    #     fontPath: Optional[str] = None,
+    #     kind: Literal["regular", "bold", "italic"] = "regular",
+    #     direction: cq.Vector = None,
+    #     start: float = 0,
+    # ) -> cq.Compound:
+
     if "show_object" in locals():
         show_object(sphere, name="sphere_solid", options={"alpha": 0.8})
-        show_object(test_edge, name="test_edge")
-        show_object(test_path, name="test_path")
-        show_object(wrapped_edge, name="wrapped_edge")
+        # show_object(test_edge, name="test_edge")
+        # show_object(test_path, name="test_path")
+        # show_object(wrapped_edge, name="wrapped_edge")
         show_object(omega_wire, name="omega_wire")
         show_object(omega_wrapped_wire, name="omega_wrapped_wire")
         show_object(omega_wrapped_edges, name="omega_wrapped_edges")
         show_object(omega_wrapped_face, name="omega_wrapped_face")
         # show_object(wrapped_edge_vertices[0], name="wrapped_edge_vertices")
+        # show_object(emboss_text, name="emboss_text")
 
 else:
     """Example 9 - Compound Solid - under construction"""

@@ -114,6 +114,7 @@ def textOnPath(
     font: str = "Arial",
     fontPath: Optional[str] = None,
     kind: Literal["regular", "bold", "italic"] = "regular",
+    valign: Literal["center", "top", "bottom"] = "center",
 ) -> T:
     """
     Returns 3D text with the baseline following the given path.
@@ -210,7 +211,7 @@ def textOnPath(
         fontPath=fontPath,
         kind=kind,
         halign="left",
-        valign="bottom",
+        valign=valign,
         position=self.plane,
     )
     # Extract just the faces on the workplane
@@ -690,81 +691,7 @@ def _findIntersection(
 cq.Shape.findIntersection = _findIntersection
 
 
-def _textOnShape(
-    self,
-    txt: str,
-    fontsize: float,
-    depth: float,
-    path: Union[cq.Wire, cq.Edge],
-    start: float = 0,
-    direction: cq.Vector = None,
-    center: cq.Vector = None,
-) -> cq.Compound:
-    """Create 3D text with a baseline following the given path"""
-    planar_faces = (
-        cq.Workplane("XZ")
-        .text(
-            txt=txt,
-            fontsize=fontsize,
-            distance=depth,
-            halign="left",
-            valign="bottom",
-        )
-        .faces("<Y")
-        .vals()
-    )
-
-    projected_front_faces = []
-    projected_back_faces = []
-    oc_shape = self.wrapped
-    tol = 0.0001
-    for planar_face in planar_faces:
-        face_center = planar_face.Center()
-        oc_point = gp_Pnt(*face_center.toTuple())
-        if direction is not None:
-            oc_axis = gp_Dir(*direction.toTuple())
-        else:
-            oc_axis = gp_Dir(*(center - face_center).toTuple())
-        intersection_line = gce_MakeLin(oc_point, oc_axis).Value()
-        intersectMaker = BRepIntCurveSurface_Inter()
-        intersectMaker.Init(oc_shape, intersection_line, tol)
-
-        intersections = []
-        while intersectMaker.More():
-            interPt = intersectMaker.Pnt()
-            distance = oc_point.SquareDistance(interPt)
-            intersections.append(
-                (cq.Face(intersectMaker.Face()), cq.Vector(interPt), abs(distance))
-            )
-            intersectMaker.Next()
-        intersections.sort(key=lambda x: x[2])
-
-        intersecting_faces = [i[0] for i in intersections]
-        intersecting_points = [i[1] for i in intersections]
-        intersecting_normals = [
-            f.normalAt(intersecting_points[i]).normalized()
-            for i, f in enumerate(intersecting_faces)
-        ]
-        for projection_normal in intersecting_normals:
-            print(f"{projection_normal=}")
-        projected_front_faces.append(
-            planar_face.projectToShape(
-                self,
-                direction=intersecting_normals[FRONT],
-            )[FRONT]
-        )
-        projected_back_faces.append(
-            planar_face.projectToShape(
-                self,
-                direction=intersecting_normals[BACK],
-            )[FRONT]
-        )
-    print(f"{len(projected_front_faces)=}")
-
-    return projected_front_faces
-
-
-cq.Shape.textOnShape = _textOnShape
+# TODO: all the projections need to return a full list of objects returned, not just front and back
 
 
 def _wrapEdgeToShape(
@@ -772,7 +699,7 @@ def _wrapEdgeToShape(
     targetObject: cq.Shape,
     surfacePoint: VectorLike,
     surfaceXDirection: VectorLike,
-    tolerance: float = 0.0,
+    tolerance: float = 0.01,
 ) -> cq.Edge:
     """
     Wrap - as used in emboss - a planar Edge to targetObject while maintaining edge length
@@ -796,8 +723,7 @@ def _wrapEdgeToShape(
         planar_relative_position: cq.Vector,
     ) -> cq.Vector:
         """
-        Given an initial surface point and a 2D relative position from this point,
-        find the closest surface point for this relative position.
+        Given a 2D relative position from a surface point, find the closest point on the surface.
         """
         segment_plane = cq.Plane(
             origin=current_surface_point,
@@ -813,22 +739,23 @@ def _wrapEdgeToShape(
     surface_x_direction = cq.Vector(surfaceXDirection)
 
     planar_edge_length = self.Length()
+    planar_edge_closed = self.IsClosed()
     target_object_center = targetObject.Center()
     loop_count = 0
-    subdivisions = 1
+    subdivisions = 2
     length_error = sys.float_info.max
 
     while length_error > tolerance and loop_count < 8:
 
         # Initialize the algorithm by priming it with the start of Edge self
         surface_origin = cq.Vector(surfacePoint)
-        (_surface_point, surface_origin_normal) = targetObject.findIntersection(
+        (surface_origin_point, surface_origin_normal) = targetObject.findIntersection(
             point=surface_origin,
             direction=surface_origin - target_object_center,
         )[0]
         planar_relative_position = self.positionAt(0)
         (current_surface_point, current_surface_normal) = find_point_on_surface(
-            surface_origin,
+            surface_origin_point,
             surface_origin_normal,
             planar_relative_position,
         )
@@ -846,15 +773,18 @@ def _wrapEdgeToShape(
             )
             wrapped_edge_points.append(current_surface_point)
 
-        # Create a spline through the points and determine difference from target
-        if len(wrapped_edge_points) > 1:
-            wrapped_edge = cq.Edge.makeSplineApprox(wrapped_edge_points)
-            length_error = planar_edge_length - wrapped_edge.Length()
+        # Create a spline through the points and determine length difference from target
+        wrapped_edge = cq.Edge.makeSpline(
+            wrapped_edge_points, periodic=planar_edge_closed
+        )
+        length_error = planar_edge_length - wrapped_edge.Length()
         loop_count = loop_count + 1
         subdivisions = subdivisions * 2
 
-    print(f"{length_error=}, {tolerance=}, {loop_count=}")
-    # return wrapped_edge_points
+    if length_error > tolerance:
+        raise ValueError(
+            f"Length error of {length_error} exceeds requested tolerance {tolerance}"
+        )
     return wrapped_edge
 
 
@@ -869,23 +799,35 @@ def _wrapWireToShape(
     tolerance: float = 0.001,
 ) -> cq.Wire:
     """
-    Wrap - as in the bottom layer of emboss - a planar Edge or Wire to targetObject maintaining
-    the length while doing so. Emboss is enabled by creating a non-planar face from wrapped wires
-    and thickening the face.
+    Wrap - as in the bottom layer of emboss - a planar Wire to targetObject maintaining
+    the length while doing so.
     """
 
     planar_edges = self.Edges()
     edges_in = TopTools_HSequenceOfShape()
     wires_out = TopTools_HSequenceOfShape()
 
+    # Need to keep track of the separation between adjacent edges
+    last_end_point = None
+    edge_separatons = []
+
+    # Wrap each edge and add them to the wire builder
     for planar_edge in planar_edges:
         wrapped_edge = planar_edge.wrapToShape(
             targetObject, surfacePoint, surfaceXDirection, tolerance
         )
         edges_in.Append(wrapped_edge.wrapped)
+        if last_end_point is not None:
+            edge_separatons.append((wrapped_edge.positionAt(0) - last_end_point).Length)
+        last_end_point = wrapped_edge.positionAt(1)
 
+    # Set the tolerance of edge connection to more than the worst case edge separation
+    max_edge_separation = max(edge_separatons)
     ShapeAnalysis_FreeBounds.ConnectEdgesToWires_s(
-        edges_in, tolerance * 10, False, wires_out
+        edges_in,
+        2 * max_edge_separation,
+        False,
+        wires_out,
     )
     wires = [cq.Wire(w) for w in wires_out]
 
@@ -893,8 +835,6 @@ def _wrapWireToShape(
 
 
 cq.Wire.wrapToShape = _wrapWireToShape
-
-# TODO: all the projections need to return a full list of objects returned, not just front and back
 
 
 def _wrapFaceToShape(
@@ -968,3 +908,66 @@ def _wrapFaceToShape(
 
 
 cq.Face.wrapToShape = _wrapFaceToShape
+
+# TODO: instead of assuming faces are on the XY plane, do a toLocalCoords conversion to XY
+
+
+def _embossText(
+    self,
+    txt: str,
+    fontsize: float,
+    depth: float,
+    path: Union[cq.Wire, cq.Edge],
+    font: str = "Arial",
+    fontPath: Optional[str] = None,
+    kind: Literal["regular", "bold", "italic"] = "regular",
+    valign: Literal["center", "top", "bottom"] = "center",
+    direction: cq.Vector = None,
+    start: float = 0,
+) -> cq.Compound:
+    """Create 3D text with a baseline following the given path on Shape"""
+
+    path_length = path.Length()
+
+    # Create text faces
+    text_faces = (
+        cq.Workplane("XY")
+        .text(
+            txt,
+            fontsize,
+            1,
+            font=font,
+            fontPath=fontPath,
+            kind=kind,
+            halign="left",
+            valign=valign,
+        )
+        .faces("<Z")
+        .vals()
+    )
+
+    # Determine the distance along the path to position the face and wrap around shape
+    wrapped_faces = []
+    for text_face in text_faces:
+        bbox = text_face.BoundingBox()
+        face_center_x = (bbox.xmin + bbox.xmax) / 2
+        relative_position_on_wire = start + face_center_x / path_length
+        path_position = path.positionAt(relative_position_on_wire)
+        path_tangent = path.tangentAt(relative_position_on_wire)
+        # print(f"{relative_position_on_wire=}")
+        # print(f"{path_position=}")
+        # print(f"{path_tangent=}")
+        wrapped_faces.append(text_face.wrapToShape(self, path_position, path_tangent))
+
+    # Assume that the user just want faces if depth is zero
+    if depth == 0:
+        embossed_text = wrapped_faces
+    else:
+        embossed_text = [f.thicken(depth, direction) for f in wrapped_faces]
+
+    return cq.Compound.makeCompound(embossed_text)
+
+    # return cq.Compound.makeCompound(text_faces)
+
+
+cq.Shape.embossText = _embossText
