@@ -397,42 +397,53 @@ elif example == EMBOSS:
     #     cq.Vector(0, 5, 0), cq.Vector(20, 25, 0), cq.Vector(40, 5, 0)
     # )
     test_path = cq.Workplane(sphere).section().edges().val()
-    # wrapped_edge = test_edge.wrapToShape(
+    # embossed_edge = test_edge.embossToShape(
     #     sphere, test_path.positionAt(0), test_path.tangentAt(0)
     # )
-    # # wrapped_edge_vertices = [
+    # # embossed_edge_vertices = [
     # #     cq.Vertex.makeVertex(*v.toTuple())
-    # #     for v in test_edge.wrapToShape(sphere, test_path)
+    # #     for v in test_edge.embossToShape(sphere, test_path)
     # # ]
 
-    planar_text_faces = (
-        cq.Workplane("XY")
-        .text(
-            txt="ω",
-            fontsize=20,
-            distance=1,
-            font="Serif",
-            fontPath="/usr/share/fonts/truetype/freefont",
-            halign="center",
-        )
-        .faces("<Z")
-        .vals()
-    )
-    omega_wire = planar_text_faces[0].outerWire()
-    omega_edges = omega_wire.Edges()
-    omega_wrapped_edges = [
-        e.wrapToShape(sphere, test_path.positionAt(0), test_path.tangentAt(0))
-        for e in omega_edges
-    ]
-    omega_wrapped_wire = omega_wire.wrapToShape(
-        sphere, test_path.positionAt(0), test_path.tangentAt(0)
-    )
-    print(f"{omega_wrapped_wire.isValid()=}")
-    omega_wrapped_face = planar_text_faces[0].wrapToShape(
-        sphere, test_path.positionAt(0), test_path.tangentAt(0)
-    )
+    # planar_text_faces = (
+    #     cq.Workplane("XY")
+    #     .text(
+    #         txt="ω",
+    #         fontsize=20,
+    #         distance=1,
+    #         font="Serif",
+    #         fontPath="/usr/share/fonts/truetype/freefont",
+    #         halign="center",
+    #     )
+    #     .faces("<Z")
+    #     .vals()
+    # )
+    # omega_wire = planar_text_faces[0].outerWire()
+    # omega_edges = omega_wire.Edges()
+    # omega_embossed_edges = [
+    #     e.embossToShape(sphere, test_path.positionAt(0), test_path.tangentAt(0))
+    #     for e in omega_edges
+    # ]
+    # omega_embossed_wire = omega_wire.embossToShape(
+    #     sphere, test_path.positionAt(0), test_path.tangentAt(0)
+    # )
+    # omega_embossed_face = planar_text_faces[0].embossToShape(
+    #     sphere, test_path.positionAt(0), test_path.tangentAt(0)
+    # )
     # emboss_text = sphere.textToShape(txt="Α to Ω", fontsize=10, depth=3, path=test_path)
     # emboss_text = sphere.embossText(txt="ω", fontsize=10, depth=3, path=test_path)
+    embossed_text = sphere.embossText(
+        # txt="ω",
+        # txt="Α to Ω",
+        # txt="Α",
+        # txt="to",
+        txt="Α to Ω",
+        fontsize=30,
+        font="Serif",
+        fontPath="/usr/share/fonts/truetype/freefont",
+        depth=3,
+        path=test_path,
+    )
     # def _textToShape(
     #     self,
     #     txt: str,
@@ -450,13 +461,13 @@ elif example == EMBOSS:
         show_object(sphere, name="sphere_solid", options={"alpha": 0.8})
         # show_object(test_edge, name="test_edge")
         # show_object(test_path, name="test_path")
-        # show_object(wrapped_edge, name="wrapped_edge")
-        show_object(omega_wire, name="omega_wire")
-        show_object(omega_wrapped_wire, name="omega_wrapped_wire")
-        show_object(omega_wrapped_edges, name="omega_wrapped_edges")
-        show_object(omega_wrapped_face, name="omega_wrapped_face")
-        # show_object(wrapped_edge_vertices[0], name="wrapped_edge_vertices")
-        # show_object(emboss_text, name="emboss_text")
+        # show_object(embossed_edge, name="embossed_edge")
+        # show_object(omega_wire, name="omega_wire")
+        # show_object(omega_embossed_wire, name="omega_embossed_wire")
+        # show_object(omega_embossed_edges, name="omega_embossed_edges")
+        # show_object(omega_embossed_face, name="omega_embossed_face")
+        # show_object(embossed_edge_vertices[0], name="embossed_edge_vertices")
+        show_object(embossed_text, name="embossed_text")
 
 else:
     """Example 9 - Compound Solid - under construction"""

@@ -1,13 +1,23 @@
 import sys
+import logging
 from math import pi, sin, cos, sqrt, degrees
 from typing import Optional, Literal, Union
 from functools import reduce
 import cadquery as cq
 from cadquery import Vector, Shape
-from cadquery.occ_impl.shapes import Face, VectorLike, edgesToWires
+from cadquery.occ_impl.shapes import (
+    Face,
+    VectorLike,
+    edgesToWires,
+)
 from cadquery.cq import T
 
-from OCP.ShapeFix import ShapeFix_Shape, ShapeFix_Solid, ShapeFix_Face
+from OCP.ShapeFix import (
+    ShapeFix_Shape,
+    ShapeFix_Solid,
+    ShapeFix_Face,
+    ShapeFix_Wire,
+)
 from OCP.Font import (
     Font_FontMgr,
     Font_FA_Regular,
@@ -38,12 +48,21 @@ from OCP.TopAbs import TopAbs_ShapeEnum, TopAbs_Orientation
 from OCP.gp import gp_Pnt, gp_Vec
 from OCP.Bnd import Bnd_Box
 from OCP.StdFail import StdFail_NotDone
+from OCP.Standard import Standard_NoSuchObject
 from OCP.BRepIntCurveSurface import BRepIntCurveSurface_Inter
 from OCP.gce import gce_MakeLin, gce_MakeDir
 
 
 FRONT = 0  # Projection results in wires on the front and back of the object
 BACK = 1
+
+logging.basicConfig(
+    filename="map_texture.log",
+    encoding="utf-8",
+    level=logging.INFO,
+    # format="%(asctime)s - %(funcName)s - %(message)s",
+    format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)s - %(funcName)20s() ] - %(message)s",
+)
 
 
 def _getSignedAngle(self, v: "Vector", normal: "Vector" = None) -> float:
@@ -325,7 +344,7 @@ def _faceThicken(self, depth: float, direction: cq.Vector = None) -> cq.Solid:
     try:
         result = cq.Solid(solid.Shape())
     except StdFail_NotDone as e:
-        raise ValueError("Error applying thicken to given Face") from e
+        raise RuntimeError("Error applying thicken to given Face") from e
 
     return result
 
@@ -368,25 +387,28 @@ def __makeNonPlanarFace(
         outside_edges = [e.Edge() for e in exterior]
     for edge in outside_edges:
         surface.Add(edge.wrapped, GeomAbs_C0)
-    surface.Build()
+
     try:
+        surface.Build()
         surface_face = cq.Face(surface.Shape())
-    except StdFail_NotDone as e:
-        raise ValueError("Error building non-planar face with provided exterior") from e
+    except (StdFail_NotDone, Standard_NoSuchObject) as e:
+        raise RuntimeError(
+            "Error building non-planar face with provided exterior"
+        ) from e
     if not surface_face.isValid():
-        raise ValueError("Invalid non-planar face from provided exterior")
+        raise RuntimeError("Invalid non-planar face from provided exterior")
     if surfacePoints:
         for pt in surfacePoints:
             surface.Add(gp_Pnt(*pt.toTuple()))
-        surface.Build()
         try:
+            surface.Build()
             surface_face = cq.Face(surface.Shape())
         except StdFail_NotDone as e:
-            raise ValueError(
+            raise RuntimeError(
                 "Error building non-planar face with provided surfacePoints"
             ) from e
         if not surface_face.isValid():
-            raise ValueError("Invalid non-planar face from provided surfacePoints")
+            raise RuntimeError("Invalid non-planar face from provided surfacePoints")
 
     # Next, add wires that define interior holes - note these wires must be entirely interior
     if interiorWires:
@@ -396,11 +418,11 @@ def __makeNonPlanarFace(
         try:
             surface_face = cq.Face(makeface_object.Face()).fix()
         except StdFail_NotDone as e:
-            raise ValueError(
+            raise RuntimeError(
                 "Error adding interior hole in non-planar face with provided interiorWires"
             ) from e
         if not surface_face.isValid():
-            raise ValueError("Invalid non-planar face from provided interiorWires")
+            raise RuntimeError("Invalid non-planar face from provided interiorWires")
 
     return surface_face
 
@@ -535,7 +557,7 @@ def _projectFaceToShape(
         projected_back_inner_wires.extend(projected_inner_wires[BACK])
 
     if len(projected_front_outer_wires) > 1 or len(projected_back_outer_wires) > 1:
-        raise ValueError("The projection of this face has broken into fragments")
+        raise RuntimeError("The projection of this face has broken into fragments")
 
     # Phase 3 - Find points on the surface by projecting a "grid" composed of internalFacePoints
 
@@ -694,7 +716,7 @@ cq.Shape.findIntersection = _findIntersection
 # TODO: all the projections need to return a full list of objects returned, not just front and back
 
 
-def _wrapEdgeToShape(
+def _embossEdgeToShape(
     self: cq.Edge,
     targetObject: cq.Shape,
     surfacePoint: VectorLike,
@@ -706,7 +728,7 @@ def _wrapEdgeToShape(
 
     Algorithm - piecewise approximation of points on surface -> generate spline:
 
-    - successively increasing the number of points to wrap
+    - successively increasing the number of points to emboss
         - create local plane at current point given surface normal and surface x direction
         - create new approximate point on local plane from next planar point
         - get global position of next approximate point
@@ -759,7 +781,7 @@ def _wrapEdgeToShape(
             surface_origin_normal,
             planar_relative_position,
         )
-        wrapped_edge_points = [current_surface_point]
+        embossed_edge_points = [current_surface_point]
 
         # Loop through all of the subdivisions calculating surface points
         for div in range(1, subdivisions + 1):
@@ -771,73 +793,115 @@ def _wrapEdgeToShape(
                 current_surface_normal,
                 planar_relative_position,
             )
-            wrapped_edge_points.append(current_surface_point)
+            embossed_edge_points.append(current_surface_point)
 
         # Create a spline through the points and determine length difference from target
-        wrapped_edge = cq.Edge.makeSpline(
-            wrapped_edge_points, periodic=planar_edge_closed
+        embossed_edge = cq.Edge.makeSpline(
+            embossed_edge_points, periodic=planar_edge_closed
         )
-        length_error = planar_edge_length - wrapped_edge.Length()
+        length_error = planar_edge_length - embossed_edge.Length()
         loop_count = loop_count + 1
         subdivisions = subdivisions * 2
 
     if length_error > tolerance:
-        raise ValueError(
+        raise RuntimeError(
             f"Length error of {length_error} exceeds requested tolerance {tolerance}"
         )
-    return wrapped_edge
+    return embossed_edge
 
 
-cq.Edge.wrapToShape = _wrapEdgeToShape
+cq.Edge.embossToShape = _embossEdgeToShape
 
 
-def _wrapWireToShape(
+def _embossWireToShape(
     self: cq.Edge,
     targetObject: cq.Shape,
     surfacePoint: VectorLike,
     surfaceXDirection: VectorLike,
     tolerance: float = 0.001,
 ) -> cq.Wire:
-    """
-    Wrap - as in the bottom layer of emboss - a planar Wire to targetObject maintaining
-    the length while doing so.
-    """
+    """Emboss a planar Wire to targetObject maintaining the length while doing so"""
 
     planar_edges = self.Edges()
+    planar_closed = self.IsClosed()
+    logging.info(f"embossing wire with {len(planar_edges)} edges")
     edges_in = TopTools_HSequenceOfShape()
     wires_out = TopTools_HSequenceOfShape()
 
     # Need to keep track of the separation between adjacent edges
+    first_start_point = None
     last_end_point = None
     edge_separatons = []
 
     # Wrap each edge and add them to the wire builder
     for planar_edge in planar_edges:
-        wrapped_edge = planar_edge.wrapToShape(
+        embossed_edge = planar_edge.embossToShape(
             targetObject, surfacePoint, surfaceXDirection, tolerance
         )
-        edges_in.Append(wrapped_edge.wrapped)
+        if first_start_point is None:
+            first_start_point = embossed_edge.positionAt(0)
+            first_edge = embossed_edge
+        edges_in.Append(embossed_edge.wrapped)
         if last_end_point is not None:
-            edge_separatons.append((wrapped_edge.positionAt(0) - last_end_point).Length)
-        last_end_point = wrapped_edge.positionAt(1)
+            edge_separatons.append(
+                (embossed_edge.positionAt(0) - last_end_point).Length
+            )
+        last_end_point = embossed_edge.positionAt(1)
 
     # Set the tolerance of edge connection to more than the worst case edge separation
     max_edge_separation = max(edge_separatons)
+    closure_gap = (last_end_point - first_start_point).Length
+    logging.info(
+        f"embossed wire maximum edge gap {max_edge_separation:0.3f}, closure gap {closure_gap:0.3f}"
+    )
+    if planar_closed and closure_gap > 2 * max_edge_separation:
+        logging.info(f"closing gap in embossed wire of size {closure_gap}")
+        gap_edge = cq.Edge.makeSpline(
+            [last_end_point, first_start_point],
+            tangents=[embossed_edge.tangentAt(1), first_edge.tangentAt(0)],
+        )
+        edges_in.Append(gap_edge.wrapped)
+
     ShapeAnalysis_FreeBounds.ConnectEdgesToWires_s(
         edges_in,
         2 * max_edge_separation,
         False,
         wires_out,
     )
-    wires = [cq.Wire(w) for w in wires_out]
+    # Note: wires_out is an OCP.TopTools.TopTools_HSequenceOfShape not a simple list
+    embossed_wires = [w for w in wires_out]
+    embossed_wire = cq.Wire(embossed_wires[0])
 
-    return wires[0]
+    if planar_closed and not embossed_wire.IsClosed():
+        # To fix the wire, the face it's on needs to be found
+        embossed_wire.close()
+        # end_face = targetObject.facesIntersectedByLine(
+        #     last_end_point, targetObject.Center() - last_end_point
+        # )[0]
+        # wire_fixer = ShapeFix_Wire(
+        #     embossed_wire.wrapped, end_face.wrapped, 1.1 * closure_gap
+        # )
+        # wire_fixer.ModifyTopologyMode = True
+        # wire_fixer.ClosedWireMode = True
+        # wire_fixer.FixReorder()
+        # wire_fixer.FixConnected()
+        # wire_fixer.FixClosed()
+        # wire_fixer.Perform()
+        # embossed_wire = cq.Wire(wire_fixer.Wire())
+        logging.info(
+            f"embossed wire was not closed, did fixing succeed: {embossed_wire.IsClosed()}"
+        )
+
+    if not embossed_wire.isValid():
+        raise RuntimeError("embossed wire is not valid")
+
+    return embossed_wire
 
 
-cq.Wire.wrapToShape = _wrapWireToShape
+cq.Wire.embossToShape = _embossWireToShape
 
 
-def _wrapFaceToShape(
+def _embossFaceToShape(
     self: cq.Face,
     targetObject: cq.Shape,
     surfacePoint: VectorLike,
@@ -857,7 +921,7 @@ def _wrapFaceToShape(
     # Phase 1 - outer wire
     planar_outer_wire = self.outerWire()
     planar_outer_wire_orientation = planar_outer_wire.wrapped.Orientation()
-    wrapped_outer_wire = planar_outer_wire.wrapToShape(
+    embossed_outer_wire = planar_outer_wire.embossToShape(
         targetObject, surfacePoint, surfaceXDirection
     )
 
@@ -868,8 +932,8 @@ def _wrapFaceToShape(
         else cq.Wire(w.wrapped.Reversed())
         for w in self.innerWires()
     ]
-    wrapped_inner_wires = [
-        w.wrapToShape(targetObject, surfacePoint, surfaceXDirection)
+    embossed_inner_wires = [
+        w.embossToShape(targetObject, surfacePoint, surfaceXDirection)
         for w in planar_inner_wires
     ]
 
@@ -881,7 +945,7 @@ def _wrapFaceToShape(
         internalFacePoints = [planar_outer_wire.Center()]
 
     if not internalFacePoints:
-        wrapped_surface_points = []
+        embossed_surface_points = []
     else:
         if len(internalFacePoints) == 1:
             planar_grid = cq.Edge.makeLine(
@@ -892,22 +956,22 @@ def _wrapFaceToShape(
                 [cq.Vector(v) for v in internalFacePoints]
             )
 
-        wrapped_grid = planar_grid.wrapToShape(
+        embossed_grid = planar_grid.embossToShape(
             targetObject, surfacePoint, surfaceXDirection
         )
-        wrapped_surface_points = [
-            cq.Vector(*v.toTuple()) for v in wrapped_grid.Vertices()
+        embossed_surface_points = [
+            cq.Vector(*v.toTuple()) for v in embossed_grid.Vertices()
         ]
 
     # Phase 4 - Build the faces
-    wrapped_face = wrapped_outer_wire.makeNonPlanarFace(
-        surfacePoints=wrapped_surface_points, interiorWires=wrapped_inner_wires
+    embossed_face = embossed_outer_wire.makeNonPlanarFace(
+        surfacePoints=embossed_surface_points, interiorWires=embossed_inner_wires
     )
 
-    return wrapped_face
+    return embossed_face
 
 
-cq.Face.wrapToShape = _wrapFaceToShape
+cq.Face.embossToShape = _embossFaceToShape
 
 # TODO: instead of assuming faces are on the XY plane, do a toLocalCoords conversion to XY
 
@@ -946,28 +1010,30 @@ def _embossText(
         .vals()
     )
 
-    # Determine the distance along the path to position the face and wrap around shape
-    wrapped_faces = []
+    logging.info(f"embossing text sting '{txt}' as {len(text_faces)} faces")
+
+    # Determine the distance along the path to position the face and emboss around shape
+    embossed_faces = []
     for text_face in text_faces:
         bbox = text_face.BoundingBox()
         face_center_x = (bbox.xmin + bbox.xmax) / 2
         relative_position_on_wire = start + face_center_x / path_length
         path_position = path.positionAt(relative_position_on_wire)
         path_tangent = path.tangentAt(relative_position_on_wire)
-        # print(f"{relative_position_on_wire=}")
-        # print(f"{path_position=}")
-        # print(f"{path_tangent=}")
-        wrapped_faces.append(text_face.wrapToShape(self, path_position, path_tangent))
+        logging.info(f"embossing face at {relative_position_on_wire=:0.2f}")
+        embossed_faces.append(
+            text_face.translate((-face_center_x, 0, 0)).embossToShape(
+                self, path_position, path_tangent
+            )
+        )
 
     # Assume that the user just want faces if depth is zero
     if depth == 0:
-        embossed_text = wrapped_faces
+        embossed_text = embossed_faces
     else:
-        embossed_text = [f.thicken(depth, direction) for f in wrapped_faces]
+        embossed_text = [f.thicken(depth, direction) for f in embossed_faces]
 
     return cq.Compound.makeCompound(embossed_text)
-
-    # return cq.Compound.makeCompound(text_faces)
 
 
 cq.Shape.embossText = _embossText
