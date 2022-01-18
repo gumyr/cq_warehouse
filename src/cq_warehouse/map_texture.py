@@ -51,7 +51,7 @@ from OCP.StdFail import StdFail_NotDone
 from OCP.Standard import Standard_NoSuchObject
 from OCP.BRepIntCurveSurface import BRepIntCurveSurface_Inter
 from OCP.gce import gce_MakeLin, gce_MakeDir
-
+from OCP.BRepPrimAPI import BRepPrimAPI_MakePrism
 
 FRONT = 0  # Projection results in wires on the front and back of the object
 BACK = 1
@@ -395,8 +395,6 @@ def __makeNonPlanarFace(
         raise RuntimeError(
             "Error building non-planar face with provided exterior"
         ) from e
-    if not surface_face.isValid():
-        raise RuntimeError("Invalid non-planar face from provided exterior")
     if surfacePoints:
         for pt in surfacePoints:
             surface.Add(gp_Pnt(*pt.toTuple()))
@@ -407,8 +405,6 @@ def __makeNonPlanarFace(
             raise RuntimeError(
                 "Error building non-planar face with provided surfacePoints"
             ) from e
-        if not surface_face.isValid():
-            raise RuntimeError("Invalid non-planar face from provided surfacePoints")
 
     # Next, add wires that define interior holes - note these wires must be entirely interior
     if interiorWires:
@@ -416,13 +412,15 @@ def __makeNonPlanarFace(
         for w in interiorWires:
             makeface_object.Add(w.wrapped)
         try:
-            surface_face = cq.Face(makeface_object.Face()).fix()
+            surface_face = cq.Face(makeface_object.Face())
         except StdFail_NotDone as e:
             raise RuntimeError(
                 "Error adding interior hole in non-planar face with provided interiorWires"
             ) from e
-        if not surface_face.isValid():
-            raise RuntimeError("Invalid non-planar face from provided interiorWires")
+
+    surface_face = surface_face.fix()
+    if not surface_face.isValid():
+        raise RuntimeError("embossed face is invalid")
 
     return surface_face
 
@@ -614,6 +612,76 @@ def _projectFaceToShape(
 cq.Face.projectToShape = _projectFaceToShape
 
 
+def _projectText(
+    self,
+    txt: str,
+    fontsize: float,
+    depth: float,
+    path: Union[cq.Wire, cq.Edge],
+    font: str = "Arial",
+    fontPath: Optional[str] = None,
+    kind: Literal["regular", "bold", "italic"] = "regular",
+    valign: Literal["center", "top", "bottom"] = "center",
+    start: float = 0,
+) -> cq.Compound:
+    """Create 3D text with a baseline following the given path on Shape"""
+
+    path_length = path.Length()
+    shape_center = self.Center()
+
+    # Create text faces
+    text_faces = (
+        cq.Workplane("XY")
+        .text(
+            txt,
+            fontsize,
+            1,
+            font=font,
+            fontPath=fontPath,
+            kind=kind,
+            halign="left",
+            valign=valign,
+        )
+        .faces("<Z")
+        .vals()
+    )
+    logging.info(f"projecting text sting '{txt}' as {len(text_faces)} face(s)")
+
+    # Position each text face normal to the surface along the path and project to the surface
+    projected_faces = []
+    for text_face in text_faces:
+        bbox = text_face.BoundingBox()
+        face_center_x = (bbox.xmin + bbox.xmax) / 2
+        relative_position_on_wire = start + face_center_x / path_length
+        path_position = path.positionAt(relative_position_on_wire)
+        path_tangent = path.tangentAt(relative_position_on_wire)
+        (surface_point, surface_normal) = self.findIntersection(
+            path_position,
+            path_position - shape_center,
+        )[0]
+        surface_normal_plane = cq.Plane(
+            origin=surface_point, xDir=path_tangent, normal=surface_normal
+        )
+        projection_face = text_face.translate((-face_center_x, 0, 0)).transformShape(
+            surface_normal_plane.rG
+        )
+        logging.info(f"projecting face at {relative_position_on_wire=:0.2f}")
+        projected_faces.append(projection_face.projectToShape(self, surface_normal)[0])
+
+    # Assume that the user just want faces if depth is zero
+    if depth == 0:
+        projected_text = projected_faces
+    else:
+        projected_text = [
+            f.thicken(depth, f.Center() - shape_center) for f in projected_faces
+        ]
+
+    return cq.Compound.makeCompound(projected_text)
+
+
+cq.Shape.projectText = _projectText
+
+
 def _projectWireToCylinder(
     self, radius: float, normal: cq.Vector = cq.Vector(0, 0, 1)
 ) -> cq.Wire:
@@ -687,7 +755,6 @@ def _findIntersection(
     intersections = []
     while intersectMaker.More():
         interPt = intersectMaker.Pnt()
-        # distance = oc_point.SquareDistance(interPt)
         distance = oc_point.Distance(interPt)
         intersections.append(
             (cq.Face(intersectMaker.Face()), cq.Vector(interPt), distance)
@@ -695,8 +762,6 @@ def _findIntersection(
         intersectMaker.Next()
 
     intersections.sort(key=lambda x: x[2])
-    # for i in intersections:
-    #     print(i)
     intersecting_faces = [i[0] for i in intersections]
     intersecting_points = [i[1] for i in intersections]
     intersecting_normals = [
@@ -807,6 +872,9 @@ def _embossEdgeToShape(
         raise RuntimeError(
             f"Length error of {length_error} exceeds requested tolerance {tolerance}"
         )
+    if not embossed_edge.isValid():
+        raise RuntimeError("embossed edge invalid")
+
     return embossed_edge
 
 
@@ -891,6 +959,8 @@ def _embossWireToShape(
         logging.info(
             f"embossed wire was not closed, did fixing succeed: {embossed_wire.IsClosed()}"
         )
+
+    embossed_wire = embossed_wire.fix()
 
     if not embossed_wire.isValid():
         raise RuntimeError("embossed wire is not valid")
@@ -986,12 +1056,12 @@ def _embossText(
     fontPath: Optional[str] = None,
     kind: Literal["regular", "bold", "italic"] = "regular",
     valign: Literal["center", "top", "bottom"] = "center",
-    direction: cq.Vector = None,
     start: float = 0,
 ) -> cq.Compound:
     """Create 3D text with a baseline following the given path on Shape"""
 
     path_length = path.Length()
+    shape_center = self.Center()
 
     # Create text faces
     text_faces = (
@@ -1010,7 +1080,7 @@ def _embossText(
         .vals()
     )
 
-    logging.info(f"embossing text sting '{txt}' as {len(text_faces)} faces")
+    logging.info(f"embossing text sting '{txt}' as {len(text_faces)} face(s)")
 
     # Determine the distance along the path to position the face and emboss around shape
     embossed_faces = []
@@ -1031,7 +1101,9 @@ def _embossText(
     if depth == 0:
         embossed_text = embossed_faces
     else:
-        embossed_text = [f.thicken(depth, direction) for f in embossed_faces]
+        embossed_text = [
+            f.thicken(depth, f.Center() - shape_center) for f in embossed_faces
+        ]
 
     return cq.Compound.makeCompound(embossed_text)
 

@@ -25,6 +25,7 @@ license:
     limitations under the License.
 
 """
+from math import tan
 import timeit
 import random
 import cadquery as cq
@@ -37,9 +38,11 @@ FACE_ON_SPHERE = 4
 CANADIAN_FLAG = 5
 TEXT_ON_PATH = 6
 TEXT_ON_SHAPE = 7
-EMBOSS = 8
+EMBOSS_TEXT = 8
+PROJECT_TEXT = 9
+EMBOSS_WIRE = 10
 
-example = EMBOSS
+example = EMBOSS_WIRE
 
 # A sphere used as a projection target
 sphere = cq.Solid.makeSphere(50, angleDegrees1=-90)
@@ -390,87 +393,92 @@ elif example == TEXT_ON_SHAPE:
         show_object(text_on_sphere, name="text_on_sphere")
         show_object(sphere, name="sphere_solid", options={"alpha": 0.8})
 
-elif example == EMBOSS:
+elif example == EMBOSS_TEXT:
 
-    # # test_edge = cq.Edge.makeLine(cq.Vector(0, 0, 0), cq.Vector(0, 10, 0))
-    # test_edge = cq.Edge.makeThreePointArc(
-    #     cq.Vector(0, 5, 0), cq.Vector(20, 25, 0), cq.Vector(40, 5, 0)
-    # )
-    test_path = cq.Workplane(sphere).section().edges().val()
-    # embossed_edge = test_edge.embossToShape(
-    #     sphere, test_path.positionAt(0), test_path.tangentAt(0)
-    # )
-    # # embossed_edge_vertices = [
-    # #     cq.Vertex.makeVertex(*v.toTuple())
-    # #     for v in test_edge.embossToShape(sphere, test_path)
-    # # ]
-
-    # planar_text_faces = (
-    #     cq.Workplane("XY")
-    #     .text(
-    #         txt="ω",
-    #         fontsize=20,
-    #         distance=1,
-    #         font="Serif",
-    #         fontPath="/usr/share/fonts/truetype/freefont",
-    #         halign="center",
-    #     )
-    #     .faces("<Z")
-    #     .vals()
-    # )
-    # omega_wire = planar_text_faces[0].outerWire()
-    # omega_edges = omega_wire.Edges()
-    # omega_embossed_edges = [
-    #     e.embossToShape(sphere, test_path.positionAt(0), test_path.tangentAt(0))
-    #     for e in omega_edges
-    # ]
-    # omega_embossed_wire = omega_wire.embossToShape(
-    #     sphere, test_path.positionAt(0), test_path.tangentAt(0)
-    # )
-    # omega_embossed_face = planar_text_faces[0].embossToShape(
-    #     sphere, test_path.positionAt(0), test_path.tangentAt(0)
-    # )
-    # emboss_text = sphere.textToShape(txt="Α to Ω", fontsize=10, depth=3, path=test_path)
-    # emboss_text = sphere.embossText(txt="ω", fontsize=10, depth=3, path=test_path)
-    embossed_text = sphere.embossText(
-        # txt="ω",
+    arch_path = (
+        cq.Workplane(sphere)
+        .cut(
+            cq.Solid.makeCylinder(
+                80, 100, pnt=cq.Vector(-50, 0, -70), dir=cq.Vector(1, 0, 0)
+            )
+        )
+        .edges("<Z")
+        .val()
+    )
+    projected_text = sphere.embossText(
         # txt="Α to Ω",
-        # txt="Α",
-        # txt="to",
-        txt="Α to Ω",
-        fontsize=30,
+        # txt="o-" * 26,
+        txt="the quick brown fox jumped over the lazy dog",
+        fontsize=5,
         font="Serif",
         fontPath="/usr/share/fonts/truetype/freefont",
         depth=3,
-        path=test_path,
+        path=arch_path,
     )
-    # def _textToShape(
-    #     self,
-    #     txt: str,
-    #     fontsize: float,
-    #     depth: float,
-    #     path: Union[cq.Wire, cq.Edge],
-    #     font: str = "Arial",
-    #     fontPath: Optional[str] = None,
-    #     kind: Literal["regular", "bold", "italic"] = "regular",
-    #     direction: cq.Vector = None,
-    #     start: float = 0,
-    # ) -> cq.Compound:
 
     if "show_object" in locals():
         show_object(sphere, name="sphere_solid", options={"alpha": 0.8})
-        # show_object(test_edge, name="test_edge")
-        # show_object(test_path, name="test_path")
-        # show_object(embossed_edge, name="embossed_edge")
-        # show_object(omega_wire, name="omega_wire")
-        # show_object(omega_embossed_wire, name="omega_embossed_wire")
-        # show_object(omega_embossed_edges, name="omega_embossed_edges")
-        # show_object(omega_embossed_face, name="omega_embossed_face")
-        # show_object(embossed_edge_vertices[0], name="embossed_edge_vertices")
-        show_object(embossed_text, name="embossed_text")
+        show_object(arch_path, name="arch_path", options={"alpha": 0.8})
+        show_object(projected_text, name="embossed_text")
+
+elif example == PROJECT_TEXT:
+
+    arch_path = (
+        cq.Workplane(sphere)
+        .cut(
+            cq.Solid.makeCylinder(
+                80, 100, pnt=cq.Vector(-50, 0, -70), dir=cq.Vector(1, 0, 0)
+            )
+        )
+        .edges("<Z")
+        .val()
+    )
+    arch_path_start = cq.Vertex.makeVertex(*arch_path.positionAt(0).toTuple())
+    projected_text = sphere.projectText(
+        # txt="Α to Ω",
+        # txt="o-" * 26,
+        txt="the quick brown fox jumped over the lazy dog",
+        fontsize=17.5,
+        font="Serif",
+        fontPath="/usr/share/fonts/truetype/freefont",
+        depth=3,
+        path=arch_path,
+    )
+
+    if "show_object" in locals():
+        show_object(sphere, name="sphere_solid", options={"alpha": 0.8})
+        show_object(arch_path, name="arch_path")
+        show_object(arch_path_start, name="arch_path_start")
+        show_object(projected_text, name="projected_text")
+
+elif example == EMBOSS_WIRE:
+
+    target_object = cq.Solid.makeCylinder(
+        50, 100, pnt=cq.Vector(0, 0, -50), dir=cq.Vector(0, 0, 1)
+    )
+    path = cq.Workplane(target_object).section().edges().val()
+    slot_wire = cq.Workplane("XY").slot2D(80, 40).wires().val()
+    for e in slot_wire.Edges():
+        print(e.Length())
+    embossed_slot_wire = slot_wire.embossToShape(
+        targetObject=target_object,
+        surfacePoint=path.positionAt(0),
+        surfaceXDirection=path.tangentAt(0),
+        tolerance=0.01,
+    )
+    for e in embossed_slot_wire.Edges():
+        print(e.Length())
+    if "show_object" in locals():
+        show_object(target_object, name="target_object", options={"alpha": 0.8})
+        show_object(path, name="path")
+        show_object(slot_wire, name="slot_wire")
+        show_object(embossed_slot_wire, name="embossed_slot_wire")
+        show_object(quarter_spline, name="quarter_spline")
+        show_object(quarter_embossed_spline, name="quarter_embossed_spline")
+
 
 else:
-    """Example 9 - Compound Solid - under construction"""
+    """Example 10 - Compound Solid - under construction"""
     compound_solid = (
         cq.Workplane("XY")
         .rect(100, 50)
@@ -486,15 +494,6 @@ else:
     for i, f in enumerate(compound_solid_faces):
         print(f"{i}:{f.isInside(text_path.positionAt(0))}")
     print(type(text_path))
-
-    # text_on_compound = textOnSolid(
-    #     txt="The quick brown fox jumped over the lazy dog",
-    #     fontsize=10,
-    #     distance=5,
-    #     path=text_path,
-    #     start=0,
-    #     solid_object=compound_solid.val(),
-    # )
 
     if "show_object" in locals():
         show_object(compound_solid, name="compound_solid", options={"alpha": 0.8})
