@@ -1,60 +1,34 @@
+"""
+TODO: instead of assuming faces are on the XY plane, do a toLocalCoords conversion to XY
+"""
 import sys
 import logging
 from math import pi, sin, cos, sqrt, degrees
 from typing import Optional, Literal, Union
 from functools import reduce
 import cadquery as cq
-from cadquery import Vector, Shape
-from cadquery.occ_impl.shapes import (
-    Face,
-    VectorLike,
-    edgesToWires,
-)
+from cadquery.occ_impl.shapes import VectorLike, edgesToWires
 from cadquery.cq import T
 
-from OCP.ShapeFix import (
-    ShapeFix_Shape,
-    ShapeFix_Solid,
-    ShapeFix_Face,
-    ShapeFix_Wire,
-)
-from OCP.Font import (
-    Font_FontMgr,
-    Font_FA_Regular,
-    Font_FA_Italic,
-    Font_FA_Bold,
-    Font_SystemFont,
-)
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace
-from OCP.TCollection import TCollection_AsciiString
-from OCP.StdPrs import StdPrs_BRepFont, StdPrs_BRepTextBuilder as Font_BRepTextBuilder
-from OCP.NCollection import NCollection_Utf8String
 from OCP.ShapeAnalysis import ShapeAnalysis_FreeBounds
 from OCP.TopTools import TopTools_HSequenceOfShape
 from OCP.BRepOffset import BRepOffset_MakeOffset, BRepOffset_Skin, BRepOffset_RectoVerso
 from OCP.BRepProj import BRepProj_Projection
 from OCP.gp import gp_Pnt, gp_Dir
+from OCP.gce import gce_MakeLin
 from OCP.GeomAbs import (
-    GeomAbs_Shape,
     GeomAbs_C0,
     GeomAbs_Intersection,
-    GeomAbs_JoinType,
-    GeomAbs_Arc,
-    GeomAbs_Tangent,
     GeomAbs_Intersection,
 )
 from OCP.BRepOffsetAPI import BRepOffsetAPI_MakeFilling
-from OCP.TopAbs import TopAbs_ShapeEnum, TopAbs_Orientation
+from OCP.TopAbs import TopAbs_Orientation
 from OCP.gp import gp_Pnt, gp_Vec
 from OCP.Bnd import Bnd_Box
 from OCP.StdFail import StdFail_NotDone
 from OCP.Standard import Standard_NoSuchObject
 from OCP.BRepIntCurveSurface import BRepIntCurveSurface_Inter
-from OCP.gce import gce_MakeLin, gce_MakeDir
-from OCP.BRepPrimAPI import BRepPrimAPI_MakePrism
-
-FRONT = 0  # Projection results in wires on the front and back of the object
-BACK = 1
 
 
 def _toVertex(self):
@@ -64,10 +38,9 @@ def _toVertex(self):
 cq.Vector.toVertex = _toVertex
 
 logging.basicConfig(
-    filename="map_texture.log",
+    filename="cq_warehouse.log",
     encoding="utf-8",
-    level=logging.INFO,
-    # format="%(asctime)s - %(funcName)s - %(message)s",
+    level=logging.DEBUG,
     format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)s - %(funcName)20s() ] - %(message)s",
 )
 
@@ -298,17 +271,17 @@ def _hexArray(
     lpoints = []  # coordinates relative to bottom left point
     for x in range(0, xCount, 2):
         for y in range(yCount):
-            lpoints.append(Vector(xSpacing * x, ySpacing * y + ySpacing / 2))
+            lpoints.append(cq.Vector(xSpacing * x, ySpacing * y + ySpacing / 2))
     for x in range(1, xCount, 2):
         for y in range(yCount):
-            lpoints.append(Vector(xSpacing * x, ySpacing * y + ySpacing))
+            lpoints.append(cq.Vector(xSpacing * x, ySpacing * y + ySpacing))
 
     # shift points down and left relative to origin if requested
-    offset = Vector()
+    offset = cq.Vector()
     if center[0]:
-        offset += Vector(-xSpacing * (xCount - 1) * 0.5, 0)
+        offset += cq.Vector(-xSpacing * (xCount - 1) * 0.5, 0)
     if center[1]:
-        offset += Vector(0, -ySpacing * (yCount - 1) * 0.5)
+        offset += cq.Vector(0, -ySpacing * (yCount - 1) * 0.5)
     lpoints = [x + offset for x in lpoints]
 
     return self.pushPoints(lpoints)
@@ -320,9 +293,9 @@ cq.Workplane.hexArray = _hexArray
 def _faceThicken(self, depth: float, direction: cq.Vector = None) -> cq.Solid:
     """
     Create a solid from a potentially non planar face by thickening along the normals.
-    The direction vector can be used to potentially flip the face normal direction such that
-    many faces with different normals all go in the same direction (direction need only be
-    +/- 90 degrees from the face normal.)
+    The direction vector can be used to indicate which way is 'up', potentially flipping the
+    face normal direction such that many faces with different normals all go in the same
+    direction (direction need only be +/- 90 degrees from the face normal.)
     """
 
     # Check to see if the normal needs to be flipped
@@ -442,42 +415,48 @@ def _makeNonPlanarFace(
 
 cq.Wire.makeNonPlanarFace = _makeNonPlanarFace
 
-# TODO: all the projections need to return a full list of objects returned, not just front and back
-
 
 def _projectWireToShape(
     self: Union[cq.Wire, cq.Edge],
     targetObject: cq.Shape,
-    direction: cq.Vector = None,
-    center: cq.Vector = None,
-) -> tuple[list[cq.Wire]]:
+    direction: VectorLike = None,
+    center: VectorLike = None,
+) -> list[cq.Wire]:
     """
-    Project a Wire onto a Solid generating new Wires on the front and back of the object
-    one and only one of `direction` or `center` must be provided
+    Project a Wire onto a Solid generating new Wires on the surfaces of the object
+    one and only one of `direction` or `center` must be provided. Note that one more
+    more wires may be generated depending on the topology of the target object and
+    location/direction of projection.
 
     To avoid flipping the normal of a face built with the projected wire the orientation
     of the output wires are forced to be the same as self.
     """
     if not (direction is None) ^ (center is None):
         raise ValueError("One of either direction or center must be provided")
+    if direction is not None:
+        direction_vector = cq.Vector(direction).normalized()
+        center_point = None
+    else:
+        direction_vector = None
+        center_point = cq.Vector(center)
 
-    if not direction is None:
+    # Project the wire on the target object
+    if not direction_vector is None:
         projection_object = BRepProj_Projection(
             self.wrapped,
             cq.Shape.cast(targetObject.wrapped).wrapped,
-            gp_Dir(*direction.toTuple()),
+            gp_Dir(*direction_vector.toTuple()),
         )
     else:
         projection_object = BRepProj_Projection(
             self.wrapped,
             cq.Shape.cast(targetObject.wrapped).wrapped,
-            gp_Pnt(*center.toTuple()),
+            gp_Pnt(*center_point.toTuple()),
         )
-
-    target_orientation = self.wrapped.Orientation()
 
     # Generate a list of the projected wires with aligned orientation
     output_wires = []
+    target_orientation = self.wrapped.Orientation()
     while projection_object.More():
         projected_wire = projection_object.Current()
         if target_orientation == projected_wire.Orientation():
@@ -487,31 +466,33 @@ def _projectWireToShape(
         projection_object.Next()
 
     # BRepProj_Projection is inconsistent in the order that it returns projected
-    # wires, sometimes front first and sometimes back - so sort this out
-    front_wires = []
-    back_wires = []
+    # wires, sometimes front first and sometimes back - so sort this out by sorting
+    # by distance from the original planar wire
     if len(output_wires) > 1:
-        output_wires_centers = [w.Center() for w in output_wires]
-        projection_center = reduce(
-            lambda v0, v1: v0 + v1, output_wires_centers, cq.Vector(0, 0, 0)
-        ) * (1.0 / len(output_wires_centers))
-        output_wires_directions = [
-            (w - projection_center).normalized() for w in output_wires_centers
-        ]
-        if not direction is None:
-            direction_normalized = direction.normalized()
-        else:
-            direction_normalized = (center - projection_center).normalized()
-        for i, d in enumerate(output_wires_directions):
-            # If wire direction from center of projection aligns with direction
-            # it's considered a "front" wire
-            if d.dot(direction_normalized) > 0:
-                front_wires.append(output_wires[i])
+        output_wires_distances = []
+        planar_wire_center = self.Center()
+        for output_wire in output_wires:
+            output_wire_center = output_wire.Center()
+            if direction_vector is not None:
+                output_wire_direction = (
+                    output_wire_center - planar_wire_center
+                ).normalized()
+                if output_wire_direction.dot(direction_vector) > 0:
+                    output_wires_distances.append(
+                        (
+                            output_wire,
+                            (output_wire_center - planar_wire_center).Length,
+                        )
+                    )
             else:
-                back_wires.append(output_wires[i])
-    else:
-        front_wires = output_wires
-    return (front_wires, back_wires)
+                output_wires_distances.append(
+                    (output_wire, (output_wire_center - center_point).Length)
+                )
+
+        output_wires_distances.sort(key=lambda x: x[1])
+        output_wires = [w[0] for w in output_wires_distances]
+
+    return output_wires
 
 
 cq.Wire.projectToShape = _projectWireToShape
@@ -521,13 +502,13 @@ cq.Edge.projectToShape = _projectWireToShape
 def _projectFaceToShape(
     self: cq.Face,
     targetObject: cq.Shape,
-    direction: cq.Vector = None,
-    center: cq.Vector = None,
+    direction: VectorLike = None,
+    center: VectorLike = None,
     internalFacePoints: list[cq.Vector] = [],
-) -> tuple[cq.Face]:
+) -> list[cq.Face]:
     """
-    Project a Face onto a Solid generating new Face on the front and back of the object
-    one and only one of `direction` or `center` must be provided
+    Project a Face onto a Solid generating new Face on the surfaces of the object
+    one and only one of `direction` or `center` must be provided.
 
     There are four phase to creation of the projected face:
     1- extract the outer wire and project
@@ -535,36 +516,39 @@ def _projectFaceToShape(
     3- extract surface points within the outer wire
     4- build a non planar face
     """
+
     if not (direction is None) ^ (center is None):
         raise ValueError("One of either direction or center must be provided")
+    if direction is not None:
+        direction_vector = cq.Vector(direction)
+        center_point = None
+    else:
+        direction_vector = None
+        center_point = cq.Vector(center)
 
     # Phase 1 - outer wire
     planar_outer_wire = self.outerWire()
     planar_outer_wire_orientation = planar_outer_wire.wrapped.Orientation()
-    (
-        projected_front_outer_wires,
-        projected_back_outer_wires,
-    ) = planar_outer_wire.projectToShape(targetObject, direction, center)
+    projected_outer_wires = planar_outer_wire.projectToShape(
+        targetObject, direction_vector, center_point
+    )
 
     # Phase 2 - inner wires
-    planar_inner_wires = [
+    planar_inner_wire_list = [
         w
         if w.wrapped.Orientation() != planar_outer_wire_orientation
         else cq.Wire(w.wrapped.Reversed())
         for w in self.innerWires()
     ]
-
-    projected_front_inner_wires = []
-    projected_back_inner_wires = []
-    for planar_inner_wire in planar_inner_wires:
-        projected_inner_wires = planar_inner_wire.projectToShape(
-            targetObject, direction, center
-        )
-        projected_front_inner_wires.extend(projected_inner_wires[FRONT])
-        projected_back_inner_wires.extend(projected_inner_wires[BACK])
-
-    if len(projected_front_outer_wires) > 1 or len(projected_back_outer_wires) > 1:
-        raise RuntimeError("The projection of this face has broken into fragments")
+    # A list of list of projected wires
+    projected_inner_wire_list = [
+        w.projectToShape(targetObject, direction_vector, center_point)
+        for w in planar_inner_wire_list
+    ]
+    # Ensure the length of the list is the same as that of the outer wires
+    projected_inner_wire_list.extend(
+        [[] for _ in range(len(projected_outer_wires) - len(projected_inner_wire_list))]
+    )
 
     # Phase 3 - Find points on the surface by projecting a "grid" composed of internalFacePoints
 
@@ -574,8 +558,7 @@ def _projectFaceToShape(
         internalFacePoints = [planar_outer_wire.Center()]
 
     if not internalFacePoints:
-        projected_front_points = []
-        projected_back_points = []
+        projected_grid_points = []
     else:
         if len(internalFacePoints) == 1:
             planar_grid = cq.Edge.makeLine(
@@ -585,37 +568,29 @@ def _projectFaceToShape(
             planar_grid = cq.Wire.makePolygon(
                 [cq.Vector(v) for v in internalFacePoints]
             )
+        projected_grids = planar_grid.projectToShape(
+            targetObject, direction_vector, center_point
+        )
+        projected_grid_points = [
+            [cq.Vector(*v.toTuple()) for v in grid.Vertices()]
+            for grid in projected_grids
+        ]
 
-        projected_grid = planar_grid.projectToShape(targetObject, direction, center)
-        projected_front_grid = projected_grid[FRONT]
-        projected_back_grid = projected_grid[BACK]
-        projected_front_points = []
-        for line in projected_front_grid:
-            projected_front_points.extend(
-                [cq.Vector(*v.toTuple()) for v in line.Vertices()]
-            )
-        if projected_back_grid:
-            projected_back_points = []
-            for line in projected_back_grid:
-                projected_back_points.extend(
-                    [cq.Vector(*v.toTuple()) for v in line.Vertices()]
-                )
-        else:
-            projected_back_points = []
-
-    # Phase 4 - Build the faces
-    front_face = projected_front_outer_wires[0].makeNonPlanarFace(
-        surfacePoints=projected_front_points, interiorWires=projected_front_inner_wires
+    # Ensure the length of the list is the same as that of the outer wires
+    projected_grid_points.extend(
+        [[] for _ in range(len(projected_outer_wires) - len(projected_grid_points))]
     )
 
-    if projected_back_outer_wires:
-        back_face = projected_back_outer_wires[0].makeNonPlanarFace(
-            surfacePoints=projected_back_points,
-            interiorWires=projected_back_inner_wires,
+    # Phase 4 - Build the faces
+    projected_faces = [
+        ow.makeNonPlanarFace(
+            surfacePoints=projected_grid_points[i],
+            interiorWires=projected_inner_wire_list[i],
         )
-    else:
-        back_face = None
-    return (front_face, back_face)
+        for i, ow in enumerate(projected_outer_wires)
+    ]
+
+    return projected_faces
 
 
 cq.Face.projectToShape = _projectFaceToShape
@@ -654,7 +629,7 @@ def _projectText(
         .faces("<Z")
         .vals()
     )
-    logging.info(f"projecting text sting '{txt}' as {len(text_faces)} face(s)")
+    logging.debug(f"projecting text sting '{txt}' as {len(text_faces)} face(s)")
 
     # Position each text face normal to the surface along the path and project to the surface
     projected_faces = []
@@ -674,7 +649,7 @@ def _projectText(
         projection_face = text_face.translate((-face_center_x, 0, 0)).transformShape(
             surface_normal_plane.rG
         )
-        logging.info(f"projecting face at {relative_position_on_wire=:0.2f}")
+        logging.debug(f"projecting face at {relative_position_on_wire=:0.2f}")
         projected_faces.append(projection_face.projectToShape(self, surface_normal)[0])
 
     # Assume that the user just want faces if depth is zero
@@ -685,7 +660,7 @@ def _projectText(
             f.thicken(depth, f.Center() - shape_center) for f in projected_faces
         ]
 
-    logging.info(f"finished projecting text sting '{txt}'")
+    logging.debug(f"finished projecting text sting '{txt}'")
 
     return cq.Compound.makeCompound(projected_text)
 
@@ -900,7 +875,7 @@ def _embossWireToShape(
 
     planar_edges = self.Edges()
     planar_closed = self.IsClosed()
-    logging.info(f"embossing wire with {len(planar_edges)} edges")
+    logging.debug(f"embossing wire with {len(planar_edges)} edges")
     edges_in = TopTools_HSequenceOfShape()
     wires_out = TopTools_HSequenceOfShape()
 
@@ -947,12 +922,12 @@ def _embossWireToShape(
     # Set the tolerance of edge connection to more than the worst case edge separation
     # max_edge_separation = max(edge_separatons)
     closure_gap = (last_end_point - first_start_point).Length
-    # logging.info(
+    # logging.debug(
     #     f"embossed wire maximum edge gap {max_edge_separation:0.3f}, closure gap {closure_gap:0.3f}"
     # )
-    logging.info(f"embossed wire closure gap {closure_gap:0.3f}")
+    logging.debug(f"embossed wire closure gap {closure_gap:0.3f}")
     if planar_closed and closure_gap > tolerance:
-        logging.info(f"closing gap in embossed wire of size {closure_gap}")
+        logging.debug(f"closing gap in embossed wire of size {closure_gap}")
         gap_edge = cq.Edge.makeSpline(
             [last_end_point, first_start_point],
             tangents=[embossed_edge.tangentAt(1), first_edge.tangentAt(0)],
@@ -970,22 +945,8 @@ def _embossWireToShape(
     embossed_wire = cq.Wire(embossed_wires[0])
 
     if planar_closed and not embossed_wire.IsClosed():
-        # To fix the wire, the face it's on needs to be found
         embossed_wire.close()
-        # end_face = targetObject.facesIntersectedByLine(
-        #     last_end_point, targetObject.Center() - last_end_point
-        # )[0]
-        # wire_fixer = ShapeFix_Wire(
-        #     embossed_wire.wrapped, end_face.wrapped, 1.1 * closure_gap
-        # )
-        # wire_fixer.ModifyTopologyMode = True
-        # wire_fixer.ClosedWireMode = True
-        # wire_fixer.FixReorder()
-        # wire_fixer.FixConnected()
-        # wire_fixer.FixClosed()
-        # wire_fixer.Perform()
-        # embossed_wire = cq.Wire(wire_fixer.Wire())
-        logging.info(
+        logging.debug(
             f"embossed wire was not closed, did fixing succeed: {embossed_wire.IsClosed()}"
         )
 
@@ -1072,8 +1033,6 @@ def _embossFaceToShape(
 
 cq.Face.embossToShape = _embossFaceToShape
 
-# TODO: instead of assuming faces are on the XY plane, do a toLocalCoords conversion to XY
-
 
 def _embossText(
     self,
@@ -1109,7 +1068,7 @@ def _embossText(
         .vals()
     )
 
-    logging.info(f"embossing text sting '{txt}' as {len(text_faces)} face(s)")
+    logging.debug(f"embossing text sting '{txt}' as {len(text_faces)} face(s)")
 
     # Determine the distance along the path to position the face and emboss around shape
     embossed_faces = []
@@ -1119,7 +1078,7 @@ def _embossText(
         relative_position_on_wire = start + face_center_x / path_length
         path_position = path.positionAt(relative_position_on_wire)
         path_tangent = path.tangentAt(relative_position_on_wire)
-        logging.info(f"embossing face at {relative_position_on_wire=:0.2f}")
+        logging.debug(f"embossing face at {relative_position_on_wire=:0.2f}")
         embossed_faces.append(
             text_face.translate((-face_center_x, 0, 0)).embossToShape(
                 self, path_position, path_tangent
@@ -1134,7 +1093,7 @@ def _embossText(
             f.thicken(depth, f.Center() - shape_center) for f in embossed_faces
         ]
 
-    logging.info(f"finished embossing text sting '{txt}'")
+    logging.debug(f"finished embossing text sting '{txt}'")
 
     return cq.Compound.makeCompound(embossed_text)
 

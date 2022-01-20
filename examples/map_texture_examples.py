@@ -33,7 +33,6 @@ from cq_warehouse.map_texture import *
 
 FLAT_PROJECTION = 1
 CONICAL_PROJECTION = 2
-CYLINDER_WRAP = 3
 FACE_ON_SPHERE = 4
 CANADIAN_FLAG = 5
 TEXT_ON_PATH = 6
@@ -42,7 +41,7 @@ EMBOSS_TEXT = 8
 PROJECT_TEXT = 9
 EMBOSS_WIRE = 10
 
-example = EMBOSS_WIRE
+example = FLAT_PROJECTION
 
 # A sphere used as a projection target
 sphere = cq.Solid.makeSphere(50, angleDegrees1=-90)
@@ -52,7 +51,7 @@ if example == FLAT_PROJECTION:
     """Example 1 - Flat Projection of Text on Sphere"""
     starttime = timeit.default_timer()
 
-    projection_direction = cq.Vector(0, 1, 0)
+    projection_direction = cq.Vector(0, -1, 0)
     planar_text_faces = (
         cq.Workplane("XZ")
         .text(
@@ -66,16 +65,11 @@ if example == FLAT_PROJECTION:
         .faces(">Y")
         .vals()
     )
-
     projected_text_faces = [
-        f.projectToSurface(sphere, projection_direction)[BACK]
-        for f in planar_text_faces
+        f.projectToShape(sphere, projection_direction)[0] for f in planar_text_faces
     ]
-    projected_text = cq.Compound.makeCompound(
-        [f.thicken(-5, direction=projection_direction) for f in projected_text_faces]
-    )
     projection_beams = [
-        cq.Solid.extrudeLinear(f, cq.Vector(projection_direction * -80))
+        cq.Solid.extrudeLinear(f, cq.Vector(projection_direction * 80))
         for f in planar_text_faces
     ]
     print(f"Example #{example} time: {timeit.default_timer() - starttime:0.2f}s")
@@ -83,7 +77,6 @@ if example == FLAT_PROJECTION:
         show_object(sphere, name="sphere_solid", options={"alpha": 0.8})
         show_object(planar_text_faces, name="planar_text_faces")
         show_object(projected_text_faces, name="projected_text_faces")
-        show_object(projected_text, name="projected_sphere_text_solid")
         show_object(
             projection_beams,
             name="projection_beams",
@@ -113,17 +106,13 @@ elif example == CONICAL_PROJECTION:
     planar_text_faces = [f.translate((0, -60, 0)) for f in planar_text_faces]
 
     projected_text_faces = [
-        f.projectToSurface(sphere, center=projection_center)[FRONT]
-        for f in planar_text_faces
+        f.projectToShape(sphere, center=projection_center)[0] for f in planar_text_faces
     ]
     projection_source = cq.Solid.makeBox(1, 1, 1, pnt=cq.Vector(-0.5, -0.5, -0.5))
     projected_text_source_faces = [
-        f.projectToSurface(projection_source, center=projection_center)[FRONT]
+        f.projectToShape(projection_source, center=projection_center)[0]
         for f in planar_text_faces
     ]
-    projected_text = cq.Compound.makeCompound(
-        [f.thicken(5, direction=cq.Vector(0, -1, 0)) for f in projected_text_faces]
-    )
     projection_beams = [
         cq.Solid.makeLoft(
             [
@@ -139,7 +128,6 @@ elif example == CONICAL_PROJECTION:
         show_object(planar_text_faces, name="planar_text_faces", options={"alpha": 0.5})
         show_object(projected_text_faces, name="projected_text_faces")
         show_object(projected_text_source_faces, name="projected_text_source_faces")
-        show_object(projected_text, name="projected_sphere_text_solid")
         show_object(
             cq.Vertex.makeVertex(*projection_center.toTuple()), name="projection center"
         )
@@ -149,46 +137,13 @@ elif example == CONICAL_PROJECTION:
             options={"alpha": 0.9, "color": (170 / 255, 170 / 255, 255 / 255)},
         )
 
-
-elif example == CYLINDER_WRAP:
-    """Example 3 - Mapping Text on Cylinder"""
-    starttime = timeit.default_timer()
-
-    planar_text_faces = (
-        cq.Workplane("XY")
-        .text(
-            "Example #" + str(example) + " Cylinder Wrap ⌀100",
-            fontsize=20,
-            distance=1,
-            font="Serif",
-            fontPath="/usr/share/fonts/truetype/freefont",
-            halign="center",
-        )
-        .faces("<Z")
-        .vals()
-    )
-
-    projected_text_faces = [f.projectToCylinder(radius=50) for f in planar_text_faces]
-    projected_text = cq.Compound.makeCompound(
-        [f.thicken(5, f.Center()) for f in projected_text_faces]
-    )
-    print(f"Example #{example} time: {timeit.default_timer() - starttime:0.2f}s")
-    if "show_object" in locals():
-        show_object(
-            cq.Solid.makeCylinder(50, 100, cq.Vector(0, 0, -50)),
-            name="sphere_solid",
-            options={"alpha": 0.8},
-        )
-        show_object(planar_text_faces, name="text_faces")
-        show_object(projected_text, name="projected_text")
-
 elif example == FACE_ON_SPHERE:
     """Example 4 - Mapping A Face on Sphere"""
     starttime = timeit.default_timer()
     projection_direction = cq.Vector(0, 0, 1)
 
     square = cq.Workplane("XY").rect(20, 20).extrude(1).faces("<Z").val()
-    square_projected = square.projectToSurface(sphere, projection_direction)
+    square_projected = square.projectToShape(sphere, projection_direction)
     square_solids = cq.Compound.makeCompound([f.thicken(2) for f in square_projected])
     print(f"Example #{example} time: {timeit.default_timer() - starttime:0.2f}s")
     if "show_object" in locals():
@@ -292,16 +247,16 @@ elif example == CANADIAN_FLAG:
 
     # Create non-planar faces on the surface for all of the flag components
     projected_flag_faces = [
-        flag_faces[2].projectToSurface(
+        flag_faces[2].projectToShape(
             the_wind, direction=cq.Vector(0, 0, -1), internalFacePoints=west_points
-        )[FRONT]
+        )[0]
     ]
     projected_flag_faces.extend(
         [
-            f.projectToSurface(
+            f.projectToShape(
                 the_wind,
                 direction=cq.Vector(0, 0, -1),
-            )[FRONT]
+            )[0]
             for f in [flag_faces[0], flag_faces[1], flag_faces[3]]
         ]
     )
