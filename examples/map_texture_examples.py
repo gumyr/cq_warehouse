@@ -408,8 +408,8 @@ elif example == EMBOSS_TEXT:
     projected_text = sphere.embossText(
         # txt="Α to Ω",
         # txt="o-" * 26,
-        txt="the quick brown fox jumped over the lazy dog",
-        fontsize=5,
+        txt="emboss - 'the quick brown fox jumped over the lazy dog'",
+        fontsize=14,
         font="Serif",
         fontPath="/usr/share/fonts/truetype/freefont",
         depth=3,
@@ -437,8 +437,8 @@ elif example == PROJECT_TEXT:
     projected_text = sphere.projectText(
         # txt="Α to Ω",
         # txt="o-" * 26,
-        txt="the quick brown fox jumped over the lazy dog",
-        fontsize=17.5,
+        txt="project - 'the quick brown fox jumped over the lazy dog'",
+        fontsize=14,
         font="Serif",
         fontPath="/usr/share/fonts/truetype/freefont",
         depth=3,
@@ -458,23 +458,25 @@ elif example == EMBOSS_WIRE:
     )
     path = cq.Workplane(target_object).section().edges().val()
     slot_wire = cq.Workplane("XY").slot2D(80, 40).wires().val()
-    for e in slot_wire.Edges():
-        print(e.Length())
     embossed_slot_wire = slot_wire.embossToShape(
         targetObject=target_object,
         surfacePoint=path.positionAt(0),
         surfaceXDirection=path.tangentAt(0),
-        tolerance=0.01,
+        tolerance=0.1,
     )
-    for e in embossed_slot_wire.Edges():
-        print(e.Length())
+    embossed_edges = embossed_slot_wire.Edges()
+    for i, e in enumerate(slot_wire.Edges()):
+        target = e.Length()
+        actual = embossed_edges[i].Length()
+        print(
+            f"Edge lengths: target {target}, actual {actual}, difference {abs(target-actual)}"
+        )
+
     if "show_object" in locals():
         show_object(target_object, name="target_object", options={"alpha": 0.8})
         show_object(path, name="path")
         show_object(slot_wire, name="slot_wire")
         show_object(embossed_slot_wire, name="embossed_slot_wire")
-        show_object(quarter_spline, name="quarter_spline")
-        show_object(quarter_embossed_spline, name="quarter_embossed_spline")
 
 
 else:

@@ -56,6 +56,13 @@ from OCP.BRepPrimAPI import BRepPrimAPI_MakePrism
 FRONT = 0  # Projection results in wires on the front and back of the object
 BACK = 1
 
+
+def _toVertex(self):
+    return cq.Vertex.makeVertex(*self.toTuple())
+
+
+cq.Vector.toVertex = _toVertex
+
 logging.basicConfig(
     filename="map_texture.log",
     encoding="utf-8",
@@ -435,6 +442,8 @@ def _makeNonPlanarFace(
 
 cq.Wire.makeNonPlanarFace = _makeNonPlanarFace
 
+# TODO: all the projections need to return a full list of objects returned, not just front and back
+
 
 def _projectWireToShape(
     self: Union[cq.Wire, cq.Edge],
@@ -676,6 +685,8 @@ def _projectText(
             f.thicken(depth, f.Center() - shape_center) for f in projected_faces
         ]
 
+    logging.info(f"finished projecting text sting '{txt}'")
+
     return cq.Compound.makeCompound(projected_text)
 
 
@@ -776,9 +787,6 @@ def _findIntersection(
 
 
 cq.Shape.findIntersection = _findIntersection
-
-
-# TODO: all the projections need to return a full list of objects returned, not just front and back
 
 
 def _embossEdgeToShape(
@@ -900,12 +908,32 @@ def _embossWireToShape(
     first_start_point = None
     last_end_point = None
     edge_separatons = []
+    surface_point = cq.Vector(surfacePoint)
+    surface_x_direction = cq.Vector(surfaceXDirection)
 
-    # Wrap each edge and add them to the wire builder
-    for planar_edge in planar_edges:
-        embossed_edge = planar_edge.embossToShape(
-            targetObject, surfacePoint, surfaceXDirection, tolerance
+    # If the wire doesn't start at the origin, create an embossed construction line to get
+    # to the beginning of the first edge
+    if planar_edges[0].positionAt(0) == cq.Vector(0, 0, 0):
+        edge_surface_point = surface_point
+        planar_edge_end_point = cq.Vector(0, 0, 0)
+    else:
+        construction_line = cq.Edge.makeLine(
+            cq.Vector(0, 0, 0), planar_edges[0].positionAt(0)
         )
+        embossed_construction_line = construction_line.embossToShape(
+            targetObject, surface_point, surface_x_direction, tolerance
+        )
+        edge_surface_point = embossed_construction_line.positionAt(1)
+        planar_edge_end_point = planar_edges[0].positionAt(0)
+
+    # Emboss each edge and add them to the wire builder
+    for planar_edge in planar_edges:
+        local_planar_edge = planar_edge.translate(-planar_edge_end_point)
+        embossed_edge = local_planar_edge.embossToShape(
+            targetObject, edge_surface_point, surface_x_direction, tolerance
+        )
+        edge_surface_point = embossed_edge.positionAt(1)
+        planar_edge_end_point = planar_edge.positionAt(1)
         if first_start_point is None:
             first_start_point = embossed_edge.positionAt(0)
             first_edge = embossed_edge
@@ -917,12 +945,13 @@ def _embossWireToShape(
         last_end_point = embossed_edge.positionAt(1)
 
     # Set the tolerance of edge connection to more than the worst case edge separation
-    max_edge_separation = max(edge_separatons)
+    # max_edge_separation = max(edge_separatons)
     closure_gap = (last_end_point - first_start_point).Length
-    logging.info(
-        f"embossed wire maximum edge gap {max_edge_separation:0.3f}, closure gap {closure_gap:0.3f}"
-    )
-    if planar_closed and closure_gap > 2 * max_edge_separation:
+    # logging.info(
+    #     f"embossed wire maximum edge gap {max_edge_separation:0.3f}, closure gap {closure_gap:0.3f}"
+    # )
+    logging.info(f"embossed wire closure gap {closure_gap:0.3f}")
+    if planar_closed and closure_gap > tolerance:
         logging.info(f"closing gap in embossed wire of size {closure_gap}")
         gap_edge = cq.Edge.makeSpline(
             [last_end_point, first_start_point],
@@ -932,7 +961,7 @@ def _embossWireToShape(
 
     ShapeAnalysis_FreeBounds.ConnectEdgesToWires_s(
         edges_in,
-        2 * max_edge_separation,
+        tolerance,
         False,
         wires_out,
     )
@@ -1104,6 +1133,8 @@ def _embossText(
         embossed_text = [
             f.thicken(depth, f.Center() - shape_center) for f in embossed_faces
         ]
+
+    logging.info(f"finished embossing text sting '{txt}'")
 
     return cq.Compound.makeCompound(embossed_text)
 
