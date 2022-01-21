@@ -1,8 +1,8 @@
 """
 
-Texture Mapping Examples
+Extensions Examples
 
-name: map_texture_examples.py
+name: extensions_examples.py
 by:   Gumyr
 date: January 10th 2022
 
