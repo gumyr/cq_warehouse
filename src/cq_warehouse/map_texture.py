@@ -5,9 +5,8 @@ import sys
 import logging
 from math import pi, sin, cos, sqrt, degrees
 from typing import Optional, Literal, Union
-from functools import reduce
 import cadquery as cq
-from cadquery.occ_impl.shapes import VectorLike, edgesToWires
+from cadquery.occ_impl.shapes import VectorLike
 from cadquery.cq import T
 
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace
@@ -31,18 +30,19 @@ from OCP.Standard import Standard_NoSuchObject
 from OCP.BRepIntCurveSurface import BRepIntCurveSurface_Inter
 
 
-def _toVertex(self):
-    return cq.Vertex.makeVertex(*self.toTuple())
-
-
-cq.Vector.toVertex = _toVertex
-
 logging.basicConfig(
     filename="cq_warehouse.log",
     encoding="utf-8",
     level=logging.DEBUG,
     format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)s - %(funcName)20s() ] - %(message)s",
 )
+
+
+def _toVertex(self):
+    return cq.Vertex.makeVertex(*self.toTuple())
+
+
+cq.Vector.toVertex = _toVertex
 
 
 def _getSignedAngle(self, v: "Vector", normal: "Vector" = None) -> float:
@@ -340,13 +340,15 @@ def _workplaneThicken(self, depth: float, direction: cq.Vector = None):
 cq.Workplane.thicken = _workplaneThicken
 
 
-def __makeNonPlanarFace(
+def makeNonPlanarFace(
     exterior: Union[cq.Wire, list[cq.Edge]],
-    surfacePoints: list[cq.Vector] = None,
+    surfacePoints: list[VectorLike] = None,
     interiorWires: list[cq.Wire] = None,
 ) -> cq.Face:
     """Create a potentially non-planar face bounded by exterior (wire or edges),
     optionally refined by surfacePoints with optional holes defined by interiorWires"""
+
+    surface_points = [cq.Vector(p) for p in surfacePoints]
 
     # First, create the non-planar surface
     surface = BRepOffsetAPI_MakeFilling(
@@ -375,8 +377,8 @@ def __makeNonPlanarFace(
         raise RuntimeError(
             "Error building non-planar face with provided exterior"
         ) from e
-    if surfacePoints:
-        for pt in surfacePoints:
+    if surface_points:
+        for pt in surface_points:
             surface.Add(gp_Pnt(*pt.toTuple()))
         try:
             surface.Build()
@@ -400,7 +402,7 @@ def __makeNonPlanarFace(
 
     surface_face = surface_face.fix()
     if not surface_face.isValid():
-        raise RuntimeError("embossed face is invalid")
+        raise RuntimeError("non planar face is invalid")
 
     return surface_face
 
@@ -410,7 +412,7 @@ def _makeNonPlanarFace(
     surfacePoints: list[cq.Vector] = None,
     interiorWires: list[cq.Wire] = None,
 ) -> cq.Face:
-    return __makeNonPlanarFace(self, surfacePoints, interiorWires)
+    return makeNonPlanarFace(self, surfacePoints, interiorWires)
 
 
 cq.Wire.makeNonPlanarFace = _makeNonPlanarFace
@@ -465,6 +467,8 @@ def _projectWireToShape(
             output_wires.append(cq.Wire(projected_wire.Reversed()))
         projection_object.Next()
 
+    logging.debug(f"wire generated {len(output_wires)} projected wires")
+
     # BRepProj_Projection is inconsistent in the order that it returns projected
     # wires, sometimes front first and sometimes back - so sort this out by sorting
     # by distance from the original planar wire
@@ -477,7 +481,7 @@ def _projectWireToShape(
                 output_wire_direction = (
                     output_wire_center - planar_wire_center
                 ).normalized()
-                if output_wire_direction.dot(direction_vector) > 0:
+                if output_wire_direction.dot(direction_vector) >= 0:
                     output_wires_distances.append(
                         (
                             output_wire,
@@ -490,6 +494,9 @@ def _projectWireToShape(
                 )
 
         output_wires_distances.sort(key=lambda x: x[1])
+        logging.debug(
+            f"projected, filtered and sorted wire list is of length {len(output_wires_distances)}"
+        )
         output_wires = [w[0] for w in output_wires_distances]
 
     return output_wires
@@ -532,7 +539,9 @@ def _projectFaceToShape(
     projected_outer_wires = planar_outer_wire.projectToShape(
         targetObject, direction_vector, center_point
     )
-
+    logging.debug(
+        f"projecting outerwire resulted in {len(projected_outer_wires)} wires"
+    )
     # Phase 2 - inner wires
     planar_inner_wire_list = [
         w
@@ -540,11 +549,18 @@ def _projectFaceToShape(
         else cq.Wire(w.wrapped.Reversed())
         for w in self.innerWires()
     ]
-    # A list of list of projected wires
+    # Project inner wires on to potentially multiple surfaces
     projected_inner_wire_list = [
         w.projectToShape(targetObject, direction_vector, center_point)
         for w in planar_inner_wire_list
     ]
+    # Need to transpose this list so it's organized by surface then inner wires
+    projected_inner_wire_list = [list(x) for x in zip(*projected_inner_wire_list)]
+
+    for i in range(len(planar_inner_wire_list)):
+        logging.debug(
+            f"projecting innerwire resulted in {len(projected_inner_wire_list[i])} wires"
+        )
     # Ensure the length of the list is the same as that of the outer wires
     projected_inner_wire_list.extend(
         [[] for _ in range(len(projected_outer_wires) - len(projected_inner_wire_list))]
@@ -575,11 +591,7 @@ def _projectFaceToShape(
             [cq.Vector(*v.toTuple()) for v in grid.Vertices()]
             for grid in projected_grids
         ]
-
-    # Ensure the length of the list is the same as that of the outer wires
-    projected_grid_points.extend(
-        [[] for _ in range(len(projected_outer_wires) - len(projected_grid_points))]
-    )
+    logging.debug(f"projecting grid resulted in {len(projected_grid_points)} points")
 
     # Phase 4 - Build the faces
     projected_faces = [
@@ -650,7 +662,9 @@ def _projectText(
             surface_normal_plane.rG
         )
         logging.debug(f"projecting face at {relative_position_on_wire=:0.2f}")
-        projected_faces.append(projection_face.projectToShape(self, surface_normal)[0])
+        projected_faces.append(
+            projection_face.projectToShape(self, surface_normal * -1)[0]
+        )
 
     # Assume that the user just want faces if depth is zero
     if depth == 0:
@@ -922,9 +936,6 @@ def _embossWireToShape(
     # Set the tolerance of edge connection to more than the worst case edge separation
     # max_edge_separation = max(edge_separatons)
     closure_gap = (last_end_point - first_start_point).Length
-    # logging.debug(
-    #     f"embossed wire maximum edge gap {max_edge_separation:0.3f}, closure gap {closure_gap:0.3f}"
-    # )
     logging.debug(f"embossed wire closure gap {closure_gap:0.3f}")
     if planar_closed and closure_gap > tolerance:
         logging.debug(f"closing gap in embossed wire of size {closure_gap}")

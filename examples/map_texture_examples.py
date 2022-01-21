@@ -6,7 +6,7 @@ name: map_texture_examples.py
 by:   Gumyr
 date: January 10th 2022
 
-desc: Examples face projection, thickening and textOnPath methods.
+desc: Projection, emboss and textOnPath examples.
 
 license:
 
@@ -25,7 +25,6 @@ license:
     limitations under the License.
 
 """
-from math import tan
 import timeit
 import random
 import cadquery as cq
@@ -33,15 +32,14 @@ from cq_warehouse.map_texture import *
 
 FLAT_PROJECTION = 1
 CONICAL_PROJECTION = 2
-FACE_ON_SPHERE = 4
-CANADIAN_FLAG = 5
-TEXT_ON_PATH = 6
-TEXT_ON_SHAPE = 7
-EMBOSS_TEXT = 8
-PROJECT_TEXT = 9
-EMBOSS_WIRE = 10
+FACE_ON_SPHERE = 3
+CANADIAN_FLAG = 4
+TEXT_ON_PATH = 5
+EMBOSS_TEXT = 6
+PROJECT_TEXT = 7
+EMBOSS_WIRE = 8
 
-example = FLAT_PROJECTION
+example = EMBOSS_WIRE
 
 # A sphere used as a projection target
 sphere = cq.Solid.makeSphere(50, angleDegrees1=-90)
@@ -142,16 +140,33 @@ elif example == FACE_ON_SPHERE:
     starttime = timeit.default_timer()
     projection_direction = cq.Vector(0, 0, 1)
 
-    square = cq.Workplane("XY").rect(20, 20).extrude(1).faces("<Z").val()
+    square = (
+        cq.Workplane("XY", origin=(0, 0, -60)).rect(20, 20).extrude(1).faces("<Z").val()
+    )
     square_projected = square.projectToShape(sphere, projection_direction)
     square_solids = cq.Compound.makeCompound([f.thicken(2) for f in square_projected])
+    projection_beams = [
+        cq.Solid.makeLoft(
+            [
+                square.outerWire(),
+                square.outerWire().translate(cq.Vector(0, 0, 120)),
+            ]
+        )
+    ]
     print(f"Example #{example} time: {timeit.default_timer() - starttime:0.2f}s")
     if "show_object" in locals():
         show_object(sphere, name="sphere_solid", options={"alpha": 0.8})
+        show_object(square, name="square")
         show_object(square_solids, name="square_solids")
+        show_object(
+            projection_beams,
+            name="projection_beams",
+            options={"alpha": 0.9, "color": (170 / 255, 170 / 255, 255 / 255)},
+        )
 
 elif example == CANADIAN_FLAG:
-    """Example 5 - A Canadian Flag blowing in the wind"""
+    """Create a Canadian Flag blowing in the wind"""
+
     starttime = timeit.default_timer()
 
     # Canadian Flags have a 2:1 aspect ratio
@@ -224,7 +239,7 @@ elif example == CANADIAN_FLAG:
         .val()
         .scale(height)
     )
-    # To help build a good projection, provide a couple points in the face
+    # To help build a good face, provide a couple points in the face
     west_vertices = cq.Edge.makeLine(
         cq.Vector(27 * width / 32, height / 2, 30),
         cq.Vector(29 * width / 32, height / 2, 30),
@@ -280,6 +295,9 @@ elif example == CANADIAN_FLAG:
         )
 
 elif example == TEXT_ON_PATH:
+    """Create 2D text on a path on many planes"""
+    starttime = timeit.default_timer()
+
     for base_plane in [
         "XY",
         "YZ",
@@ -334,21 +352,17 @@ elif example == TEXT_ON_PATH:
             distance=1,
         )
     )
+    print(f"Example #{example} time: {timeit.default_timer() - starttime:0.2f}s")
 
     if "show_object" in locals():
         show_object(clover, name="clover")
         show_object(order, name="order")
 
 
-elif example == TEXT_ON_SHAPE:
-    text_on_sphere = sphere.textOnShape(
-        txt="ω", fontsize=25, depth=5, center=cq.Vector(0, 0, 0)
-    )
-    if "show_object" in locals():
-        show_object(text_on_sphere, name="text_on_sphere")
-        show_object(sphere, name="sphere_solid", options={"alpha": 0.8})
-
 elif example == EMBOSS_TEXT:
+    """Emboss a text string onto a shape"""
+
+    starttime = timeit.default_timer()
 
     arch_path = (
         cq.Workplane(sphere)
@@ -361,8 +375,6 @@ elif example == EMBOSS_TEXT:
         .val()
     )
     projected_text = sphere.embossText(
-        # txt="Α to Ω",
-        # txt="o-" * 26,
         txt="emboss - 'the quick brown fox jumped over the lazy dog'",
         fontsize=14,
         font="Serif",
@@ -371,12 +383,16 @@ elif example == EMBOSS_TEXT:
         path=arch_path,
     )
 
+    print(f"Example #{example} time: {timeit.default_timer() - starttime:0.2f}s")
+
     if "show_object" in locals():
         show_object(sphere, name="sphere_solid", options={"alpha": 0.8})
         show_object(arch_path, name="arch_path", options={"alpha": 0.8})
         show_object(projected_text, name="embossed_text")
 
 elif example == PROJECT_TEXT:
+    """Project a text string onto a shape"""
+    starttime = timeit.default_timer()
 
     arch_path = (
         cq.Workplane(sphere)
@@ -390,8 +406,6 @@ elif example == PROJECT_TEXT:
     )
     arch_path_start = cq.Vertex.makeVertex(*arch_path.positionAt(0).toTuple())
     projected_text = sphere.projectText(
-        # txt="Α to Ω",
-        # txt="o-" * 26,
         txt="project - 'the quick brown fox jumped over the lazy dog'",
         fontsize=14,
         font="Serif",
@@ -399,6 +413,7 @@ elif example == PROJECT_TEXT:
         depth=3,
         path=arch_path,
     )
+    print(f"Example #{example} time: {timeit.default_timer() - starttime:0.2f}s")
 
     if "show_object" in locals():
         show_object(sphere, name="sphere_solid", options={"alpha": 0.8})
@@ -407,7 +422,9 @@ elif example == PROJECT_TEXT:
         show_object(projected_text, name="projected_text")
 
 elif example == EMBOSS_WIRE:
+    """Emboss a wire and use it to create a feature"""
 
+    starttime = timeit.default_timer()
     target_object = cq.Solid.makeCylinder(
         50, 100, pnt=cq.Vector(0, 0, -50), dir=cq.Vector(0, 0, 1)
     )
@@ -427,32 +444,18 @@ elif example == EMBOSS_WIRE:
             f"Edge lengths: target {target}, actual {actual}, difference {abs(target-actual)}"
         )
 
+    feature_cross_section = cq.Wire.makeCircle(
+        radius=2.5,
+        center=embossed_slot_wire.positionAt(0),
+        normal=embossed_slot_wire.tangentAt(0),
+    )
+    feature = cq.Solid.sweep(feature_cross_section, [], embossed_slot_wire)
+
+    print(f"Example #{example} time: {timeit.default_timer() - starttime:0.2f}s")
+
     if "show_object" in locals():
         show_object(target_object, name="target_object", options={"alpha": 0.8})
         show_object(path, name="path")
         show_object(slot_wire, name="slot_wire")
         show_object(embossed_slot_wire, name="embossed_slot_wire")
-
-
-else:
-    """Example 10 - Compound Solid - under construction"""
-    compound_solid = (
-        cq.Workplane("XY")
-        .rect(100, 50)
-        .rect(50, 100)
-        .extrude(50, both=True)
-        .edges("|Z")
-        .fillet(10)
-    )
-
-    compound_solid_faces = compound_solid.faces().vals()
-    print(f"{len(compound_solid_faces)=}")
-    text_path = compound_solid.section().wires().val()
-    for i, f in enumerate(compound_solid_faces):
-        print(f"{i}:{f.isInside(text_path.positionAt(0))}")
-    print(type(text_path))
-
-    if "show_object" in locals():
-        show_object(compound_solid, name="compound_solid", options={"alpha": 0.8})
-        show_object(text_path, name="text_path")
-        show_object(text_on_compound, name="text_on_compound")
+        show_object(feature, name="feature")
