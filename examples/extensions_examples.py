@@ -28,7 +28,7 @@ license:
 import timeit
 import random
 import cadquery as cq
-from cq_warehouse.map_texture import *
+from cq_warehouse.extensions import *
 
 FLAT_PROJECTION = 1
 CONICAL_PROJECTION = 2
@@ -39,7 +39,7 @@ EMBOSS_TEXT = 6
 PROJECT_TEXT = 7
 EMBOSS_WIRE = 8
 
-example = EMBOSS_WIRE
+example = EMBOSS_TEXT
 
 # A sphere used as a projection target
 sphere = cq.Solid.makeSphere(50, angleDegrees1=-90)

@@ -112,8 +112,8 @@ Plane extensions: toLocalCoords()
 def _toLocalCoords(self, obj):
     """Project the provided coordinates onto this plane
 
-    :param obj: an object or vector to convert
-    :type vector: a vector or shape
+    :param obj: an object, vector, or bounding box to convert
+    :type Vector, Shape, or BoundBox
     :return: an object of the same type, but converted to local coordinates
 
     Most of the time, the z-coordinate returned will be zero, because most
@@ -304,6 +304,8 @@ cq.Vertex.toVector = _vertex_to_vector
 Workplane extensions: textOnPath(), hexArray(), thicken()
 
 """
+
+cq.Workplane.text
 
 
 def textOnPath(
@@ -560,7 +562,7 @@ def _projectFaceToShape(
     internalFacePoints: list[cq.Vector] = [],
 ) -> list[cq.Face]:
     """
-    Project a Face onto a Solid generating new Face on the surfaces of the object
+    Project a Face onto a Shape generating new Face(s) on the surfaces of the object
     one and only one of `direction` or `center` must be provided.
 
     There are four phase to creation of the projected face:
@@ -662,7 +664,7 @@ def _embossFaceToShape(
     internalFacePoints: list[cq.Vector] = [],
 ) -> cq.Face:
     """
-    Wrap a Face onto a Shape
+    Emboss a Face onto a Shape
 
     There are four phase to creation of the projected face:
     1- extract the outer wire and project
@@ -725,9 +727,11 @@ def _embossFaceToShape(
 
 
 cq.Face.embossToShape = _embossFaceToShape
+
+
 """
 
-Wire extensions:
+Wire extensions: makeNonPlanarFace(), projectToShape(), embossToShape()
 
 """
 
@@ -809,12 +813,6 @@ def _makeNonPlanarFace(
 
 cq.Wire.makeNonPlanarFace = _makeNonPlanarFace
 
-"""
-
-Wire extensions: projectToShape(), embossToShape()
-
-"""
-
 
 def _projectWireToShape(
     self: Union[cq.Wire, cq.Edge],
@@ -823,7 +821,7 @@ def _projectWireToShape(
     center: VectorLike = None,
 ) -> list[cq.Wire]:
     """
-    Project a Wire onto a Solid generating new Wires on the surfaces of the object
+    Project a Wire onto a Shape generating new Wires on the surfaces of the object
     one and only one of `direction` or `center` must be provided. Note that one more
     more wires may be generated depending on the topology of the target object and
     location/direction of projection.
@@ -904,11 +902,11 @@ cq.Wire.projectToShape = _projectWireToShape
 
 
 def _embossWireToShape(
-    self: cq.Edge,
+    self: cq.Wire,
     targetObject: cq.Shape,
     surfacePoint: VectorLike,
     surfaceXDirection: VectorLike,
-    tolerance: float = 0.001,
+    tolerance: float = 0.01,
 ) -> cq.Wire:
     """Emboss a planar Wire to targetObject maintaining the length while doing so"""
 
