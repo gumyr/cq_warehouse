@@ -25,6 +25,7 @@ license:
     limitations under the License.
 
 """
+import re
 from abc import ABC, abstractmethod
 from typing import Literal, Optional, Tuple, List
 from math import sin, cos, tan, radians, pi
@@ -109,6 +110,7 @@ class Thread:
         root_width: float,
         pitch: float,
         length: float,
+        apex_offset: float = 0.0,
         hand: Literal["right", "left"] = "right",
         taper_angle: Optional[float] = None,
         end_finishes: Tuple[
@@ -133,6 +135,7 @@ class Thread:
         self.root_width = root_width
         self.pitch = pitch
         self.length = length
+        self.apex_offset = apex_offset
         self.right_hand = hand == "right"
         self.end_finishes = end_finishes
         self.tooth_height = abs(self.apex_radius - self.root_radius)
@@ -176,7 +179,7 @@ class Thread:
         faded ends faces"""
         (thread_faces, end_faces) = self.make_thread_faces(cylindrical_thread_length)
 
-        # Need to operator on each face below
+        # Need to operate on each face below
         thread_faces = [
             f.translate((0, 0, cylindrical_thread_displacement)) for f in thread_faces
         ]
@@ -193,9 +196,19 @@ class Thread:
             fade_faces = [f.mirror("XZ") for f in fade_faces]
 
         if self.end_finishes[0] == "fade":
+            # If the thread is asymmetric the bottom fade end needs to be recreated as
+            # no amount of flipping or rotating can generate the shape
+            if self.apex_offset != 0:
+                (fade_faces_bottom, _fade_ends) = self.make_thread_faces(
+                    self.pitch / 4, fade_helix=True, asymmetric_flip=True
+                )
+                if not self.right_hand:
+                    fade_faces_bottom = [f.mirror("XZ") for f in fade_faces_bottom]
+            else:
+                fade_faces_bottom = fade_faces
             fade_faces_bottom = [
                 f.mirror("XZ").mirror("XY").translate(cq.Vector(0, 0, self.pitch / 2))
-                for f in fade_faces
+                for f in fade_faces_bottom
             ]
         if self.end_finishes[1] == "fade":
             fade_faces_top = [
@@ -263,9 +276,7 @@ class Thread:
             self._cq_object = self._cq_object.intersect(cutter.val())
 
     def make_thread_faces(
-        self,
-        length: float,
-        fade_helix: bool = False,
+        self, length: float, fade_helix: bool = False, asymmetric_flip: bool = False
     ) -> Tuple[List[cq.Face]]:
         """Create the thread object from basic CadQuery objects
 
@@ -281,13 +292,14 @@ class Thread:
         c. create a shell from the faces
         d. create a solid from the shell
         """
+        local_apex_offset = -self.apex_offset if asymmetric_flip else self.apex_offset
         apex_helix_wires = [
             cq.Workplane("XY")
             .parametricCurve(
                 lambda t: self.fade_helix(t, apex=True, vertical_displacement=0)
             )
             .val()
-            .translate((0, 0, i * self.apex_width))
+            .translate((0, 0, i * self.apex_width + local_apex_offset))
             if fade_helix
             else cq.Wire.makeHelix(
                 pitch=self.pitch,
@@ -295,7 +307,7 @@ class Thread:
                 radius=self.apex_radius,
                 angle=self.taper,
                 lefthand=not self.right_hand,
-            ).translate((0, 0, i * self.apex_width))
+            ).translate((0, 0, i * self.apex_width + local_apex_offset))
             for i in [-0.5, 0.5]
         ]
         root_helix_wires = [
@@ -593,3 +605,185 @@ class MetricTrapezoidalThread(TrapezoidalThread):
             )
         (diameter, pitch) = (float(part) for part in size.split("x"))
         return (diameter, pitch)
+
+
+class PlasticBottleThread:
+    """ASTM D2911 Plastic Bottle Thread
+
+    size: [L|M][diameter(mm)]SP[100|103|110|200|400|410|415:425|444]
+          e.g.  M15SP425
+
+    L Style: All-Purpose Thread - trapezoidal shape with 30° shoulders, metal or platsic closures
+    M Style: Modified Buttress Thread - asymmetric shape with 10° and 40/45/50° shoulders, plastic closures
+
+    example:
+        thread = PlasticBottleThread(
+            size="M38SP444", external=False, manufacturingCompensation=0.2 * MM
+        )
+    """
+
+    # {TPI: [root_width,thread_height]}
+    l_style_thread_dimensions = {
+        4: [3.18, 1.57],
+        5: [3.05, 1.52],
+        6: [2.39, 1.19],
+        8: [2.13, 1.07],
+        12: [1.14, 0.76],
+    }
+    m_style_thread_dimensions = {
+        4: [3.18, 1.57],
+        5: [3.05, 1.52],
+        6: [2.39, 1.19],
+        8: [2.13, 1.07],
+        12: [1.29, 0.76],
+    }
+
+    thread_angles = {
+        "L100": [30, 30],
+        "M100": [10, 40],
+        "L103": [30, 30],
+        "M103": [10, 40],
+        "L110": [30, 30],
+        "M110": [10, 50],
+        "L200": [30, 30],
+        "M200": [10, 40],
+        "L400": [30, 30],
+        "M400": [10, 45],
+        "L410": [30, 30],
+        "M410": [10, 45],
+        "L415": [30, 30],
+        "M415": [10, 45],
+        "L425": [30, 30],
+        "M425": [10, 45],
+        "L444": [30, 30],
+        "M444": [10, 45],
+    }
+
+    # {finish:[min turns,[diameters,...]]}
+    # fmt: off
+    finish_data = {
+        100: [1.125,[22,24,28,30,33,35,38]],
+        103: [1.125,[26]],
+        110: [1.125,[28]],
+        200: [1.5,[24.28]],
+        400: [1.0,[18,20,22,24,28,30,33,35,38,40,43,45,48,51,53,58,60,63,66,70,75,77,83,89,100,110,120]],
+        410: [1.5,[18,20,22,24,28]],
+        415: [2.0,[13,15,18,20,22,24,28,30,33]],
+        425: [2.0,[13,15]],
+        444: [1.125,[24,28,30,33,35,38,40,43,45,48,51,53,58,60,63,66,70,75,77,83]]
+    }
+    # fmt: on
+
+    # {thread_size:[max,min,TPI]}
+    thread_dimensions = {
+        13: [13.06, 12.75, 12],
+        15: [14.76, 14.45, 12],
+        18: [17.88, 17.47, 8],
+        20: [19.89, 19.48, 8],
+        22: [21.89, 21.49, 8],
+        24: [23.88, 23.47, 8],
+        26: [25.63, 25.12, 8],
+        28: [27.64, 27.13, 6],
+        30: [28.62, 28.12, 6],
+        33: [32.13, 31.52, 6],
+        35: [34.64, 34.04, 6],
+        38: [37.49, 36.88, 6],
+        40: [40.13, 39.37, 6],
+        43: [42.01, 41.25, 6],
+        45: [44.20, 43.43, 6],
+        48: [47.50, 46.74, 6],
+        51: [49.99, 49.10, 6],
+        53: [52.50, 51.61, 6],
+        58: [56.49, 55.60, 6],
+        60: [59.49, 58.60, 6],
+        63: [62.51, 61.62, 6],
+        66: [65.51, 64.62, 6],
+        70: [69.49, 68.60, 6],
+        75: [73.99, 73.10, 6],
+        77: [77.09, 76.20, 6],
+        83: [83.01, 82.12, 5],
+        89: [89.18, 88.29, 5],
+        100: [100.00, 99.11, 5],
+        110: [110.01, 109.12, 5],
+        120: [119.99, 119.10, 5],
+    }
+
+    @property
+    def cq_object(self) -> cq.Solid:
+        """A cadquery Solid thread as defined by class attributes"""
+        return self._cq_object
+
+    def __init__(
+        self,
+        size: str,
+        external: bool = True,
+        hand: Literal["right", "left"] = "right",
+        manufacturingCompensation: float = 0.0,
+    ):
+        self.size = size
+        self.external = external
+        if hand not in ["right", "left"]:
+            raise ValueError(f'hand must be one of "right" or "left" not {hand}')
+        self.hand = hand
+        size_match = re.match(r"([LM])(\d+)SP(\d+)", size)
+        if not size_match:
+            raise ValueError(
+                "size invalid, must match [L|M][diameter(mm)]SP[100|103|110|200|400|410|415:425|444]"
+            )
+        self.style = size_match.group(1)
+        self.diameter = int(size_match.group(2))
+        self.finish = int(size_match.group(3))
+        if not self.finish in PlasticBottleThread.finish_data.keys():
+            raise ValueError(
+                f"finish ({self.finish}) invalid, must be one of {list(PlasticBottleThread.finish_data.keys())}"
+            )
+        if not self.diameter in PlasticBottleThread.finish_data[self.finish][1]:
+            raise ValueError(
+                f"diameter ({self.diameter}) invalid, must be one of {PlasticBottleThread.finish_data[self.finish][1]}"
+            )
+        (diameter_max, diameter_min, self.tpi) = PlasticBottleThread.thread_dimensions[
+            self.diameter
+        ]
+        if self.style == "L":
+            (
+                self.root_width,
+                thread_height,
+            ) = PlasticBottleThread.l_style_thread_dimensions[self.tpi]
+        else:
+            (
+                self.root_width,
+                thread_height,
+            ) = PlasticBottleThread.m_style_thread_dimensions[self.tpi]
+        if self.external:
+            self.apex_radius = diameter_min / 2 - manufacturingCompensation
+            self.root_radius = (
+                diameter_min / 2 - thread_height - manufacturingCompensation
+            )
+        else:
+            self.root_radius = diameter_max / 2 + manufacturingCompensation
+            self.apex_radius = (
+                diameter_max / 2 - thread_height + manufacturingCompensation
+            )
+        self.thread_angles = PlasticBottleThread.thread_angles[
+            self.style + str(self.finish)
+        ]
+        shoulders = [thread_height * tan(radians(a)) for a in self.thread_angles]
+        self.apex_width = self.root_width - sum(shoulders)
+        self.apex_offset = shoulders[0] + self.apex_width / 2 - self.root_width / 2
+        if not self.external:
+            self.apex_offset = -self.apex_offset
+        self.pitch = 25.4 * MM / self.tpi
+        self.length = (
+            PlasticBottleThread.finish_data[self.finish][0] + 0.75
+        ) * self.pitch
+        self._cq_object = Thread(
+            apex_radius=self.apex_radius,
+            apex_width=self.apex_width,
+            root_radius=self.root_radius,
+            root_width=self.root_width,
+            pitch=self.pitch,
+            length=self.length,
+            apex_offset=self.apex_offset,
+            hand=self.hand,
+            end_finishes=("fade", "fade"),
+        ).cq_object

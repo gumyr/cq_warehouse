@@ -167,5 +167,43 @@ class TestMetricTrapezoidalThread(unittest.TestCase):
         self.assertGreater(len(MetricTrapezoidalThread.sizes()), 0)
 
 
+class TestPlasticBottleThread(unittest.TestCase):
+    def test_exterior_thread(self):
+        """Simple validity check for an exterior thread"""
+
+        bottle_thread = PlasticBottleThread(
+            size="M38SP444",
+            external=True,
+        )
+        self.assertTrue(bottle_thread.cq_object.isValid())
+
+    def test_exterior_left_thread(self):
+        """Simple validity check for an exterior thread"""
+
+        bottle_thread = PlasticBottleThread(size="M38SP444", external=True, hand="left")
+        self.assertTrue(bottle_thread.cq_object.isValid())
+
+    def test_interior_thread(self):
+        """Simple validity check for an interior thread"""
+
+        bottle_thread = PlasticBottleThread(
+            size="L18SP400", external=False, manufacturingCompensation=0.2
+        )
+        self.assertTrue(bottle_thread.cq_object.isValid())
+
+    def test_parsing(self):
+        """Validate sizes"""
+        with self.assertRaises(ValueError):
+            PlasticBottleThread(size="Q12SP100")
+        with self.assertRaises(ValueError):
+            PlasticBottleThread(size="M37SP444")
+        with self.assertRaises(ValueError):
+            PlasticBottleThread(size="L12XX100")
+        with self.assertRaises(ValueError):
+            PlasticBottleThread(size="L12SP12")
+        with self.assertRaises(ValueError):
+            PlasticBottleThread(size="M38SP444", hand="righty")
+
+
 if __name__ == "__main__":
     unittest.main()
