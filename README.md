@@ -29,6 +29,7 @@ or CAM systems.
     - [AcmeThread](#acmethread)
     - [MetricTrapezoidalThread](#metrictrapezoidalthread)
     - [TrapezoidalThread](#trapezoidalthread)
+    - [PlasticBottleThread](#plasticbottlethread)
   - [fastener sub-package](#fastener-sub-package)
     - [Nut](#nut)
       - [Nut Selection](#nut-selection)
@@ -519,6 +520,35 @@ This class exposes instance variables for the input parameters as well as:
 
 ### TrapezoidalThread
 The base class of the AcmeThread and MetricTrapezoidalThread classes.
+
+### PlasticBottleThread
+The [ASTM D2911 Standard](https://www.astm.org/d2911-10.html) Plastic Bottle Thread.
+
+![AcmeThread](doc/plasticThread.png)
+
+The parameters are:
+- `size` (str) : see below
+- `external` (bool=True) : external or internal thread selector
+- `hand` (Literal["right", "left"] = "right") : twist direction
+- `manufacturingCompensation` (float=0.0) : a radius compensation for manufacturing errors
+
+`size` as defined by the ASTM is specified as:
+- [L|M][diameter(mm)]SP[100|103|110|200|400|410|415:425|444]
+- e.g.  M15SP425
+
+where:
+- L Style: All-Purpose Thread - trapezoidal shape with 30° shoulders, metal or platsic closures
+- M Style: Modified Buttress Thread - asymmetric shape with 10° and 40/45/50° shoulders, plastic closures
+- the three digit "Finish" encodes the number of turns, pitch, angles etc.
+
+`manufacturingCompensation` can be used to compensate for over-extrusion of 3D printers. A value of 0.2mm will reduce the radius of an external thread by 0.2mm (and increase the radius of an internal thread) such that the resulting 3D printed part matches the target dimensions.
+
+For example:
+```python
+thread = PlasticBottleThread(
+    size="M38SP444", external=False, manufacturingCompensation=0.2 * MM
+)
+```
 
 ## fastener sub-package
 Many mechanical designs will contain threaded fasteners of some kind, either in a threaded hole or threaded screws or bolts holding two or more parts together. The fastener sub-package provides a set of classes with which raw threads can be created such that they can be integrated into other parts as well as a set of classes that create many different types of nuts, screws and washers - as follows:
