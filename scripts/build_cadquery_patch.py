@@ -23,7 +23,7 @@ desc:
     with the patch command.
 
     Usage:
-        > python3 build_cadquery_patch <path_to_cadquery_installation>
+        > python build_cadquery_patch <path_to_cadquery_installation>
 
 todo: Add support for extension methods with decorators
 
@@ -262,8 +262,23 @@ def main(argv):
         print(f"{cadquery_path} is invalid - cq.py should be in this directory")
         sys.exit(2)
 
-    # Read the extensions.py file
-    with open("../src/cq_warehouse/extensions.py") as f:
+    # Find the cq_warehouse extensions.py file and read it
+    command = subprocess.run(
+        ["python", "-m", "pip", "show", "cq_warehouse"], capture_output=True
+    )
+    # print(command.stdout.decode("utf-8").split("\n"))
+    pip_command_dictionary = dict(
+        entry.split(": ", 1)
+        for entry in command.stdout.decode("utf-8").split("\n")
+        if ":" in entry
+    )
+    # print(pip_command_dictionary["Location"])
+    extensions_path = os.path.join(
+        pip_command_dictionary["Location"], "cq_warehouse/extensions.py"
+    )
+    print(extensions_path)
+    # with open("../src/cq_warehouse/extensions.py") as f:
+    with open(extensions_path) as f:
         extensions_python_code = f.readlines()
 
     # Organize the extensions monkeypatched code into class(s), method(s)
