@@ -54,21 +54,58 @@ def imperial_str_to_float(measure: str) -> float:
 
 
 class Thread:
-    """Create a helical thread
-    Each end of the thread can finished as follows:
-    - "raw"     unfinished which typically results in the thread extended below
-                z=0 or above z=length
-    - "fade"    the thread height drops to zero over 90° of arc (or 1/4 pitch)
-    - "square"  clipped by the z=0 or z=length plane
-    - "chamfer" conical ends which facilitates alignment of a bolt into a nut
+    """Helical thread
+
+    Creates right or left hand helical thread with the given
+    root and apex radii.
+
+    Args:
+        apex_radius: Radius at the narrow tip of the thread.
+        apex_width: Radius at the wide base of the thread.
+        root_radius: Radius at the wide base of the thread.
+        root_width: Thread base width.
+        pitch: Length of 360° of thread rotation.
+        length: End to end length of the thread.
+        apex_offset: Asymmetric thread apex offset from center.
+            Defaults to 0.0.
+        hand: Twist direction. Defaults to "right".
+        taper_angle: Cone angle for tapered thread. Defaults to None.
+        end_finishes: Profile of each end, one of:
+
+            raw
+                unfinished which typically results in the thread
+                extended below z=0 or above z=length
+            fade
+                the thread height drops to zero over 90° of arc
+                (or 1/4 pitch)
+            square
+                clipped by the z=0 or z=length plane
+            chamfer
+                conical ends which facilitates alignment of a bolt
+                into a nut
+
+            Defaults to ("raw","raw").
+
+    Attributes:
+        cq_object: cadquery Solid object
+
+    Raises:
+        ValueError: if end_finishes not in ["raw", "square", "fade", "chamfer"]:
+
 
     Note that the performance of this Thread class varies significantly by end
     finish. Here are some sample measurements (both ends finished) to illustate
     how the time required to create the thread varies:
-    - "raw"     0.018s
-    - "fade"    0.087s
-    - "square"  0.370s
-    - "chamfer" 1.641s
+
+    +-----------+--------+
+    | "raw"     | 0.018s |
+    +-----------+--------+
+    | "fade"    | 0.087s |
+    +-----------+--------+
+    | "square"  | 0.370s |
+    +-----------+--------+
+    | "chamfer" | 1.641s |
+    +-----------+--------+
 
     """
 
@@ -120,7 +157,7 @@ class Thread:
     ):
         """Store the parameters and create the thread object"""
         for finish in end_finishes:
-            if not finish in ["raw", "square", "fade", "chamfer"]:
+            if finish not in ["raw", "square", "fade", "chamfer"]:
                 raise ValueError(
                     'end_finishes invalid, must be tuple() of "raw, square, taper, or chamfer"'
                 )
@@ -369,9 +406,43 @@ class Thread:
 
 
 class IsoThread:
-    """
-    ISO standard threads as shown in the following diagram:
-        https://en.wikipedia.org/wiki/ISO_metric_screw_thread#/media/File:ISO_and_UTS_Thread_Dimensions.svg
+    """ISO Standard Thread
+
+    Both external and internal ISO standard 60° threads as shown in
+    the following diagram (from https://en.wikipedia.org/wiki/ISO_metric_screw_thread):
+
+    Args:
+        major_diameter (float): Primary thread diameter
+        pitch (float): Length of 360° of thread rotation
+        length (float): End to end length of the thread
+        external (bool, optional): External or internal thread selector. Defaults to True.
+        hand (Literal[, optional): Twist direction. Defaults to "right".
+        end_finishes (Tuple[ Literal[, optional): Profile of each end, one of:
+
+            raw
+                unfinished which typically results in the thread
+                extended below z=0 or above z=length
+            fade
+                the thread height drops to zero over 90° of arc
+                (or 1/4 pitch)
+            square
+                clipped by the z=0 or z=length plane
+            chamfer
+                conical ends which facilitates alignment of a bolt
+                into a nut
+
+            Defaults to ("fade", "square").
+
+    Attributes:
+        thread_angle (int): 60 degrees
+        h_parameter (float): Value of `h` as shown in the thread diagram
+        min_radius (float): Inside radius of the thread diagram
+        cq_object (Solid): The generated cadquery Solid thread object
+
+    Raises:
+        ValueError: if hand not in ["right", "left"]:
+        ValueError: end_finishes not in ["raw", "square", "fade", "chamfer"]
+
     """
 
     @property
@@ -411,7 +482,7 @@ class IsoThread:
             raise ValueError(f'hand must be one of "right" or "left" not {hand}')
         self.hand = hand
         for finish in end_finishes:
-            if not finish in ["raw", "square", "fade", "chamfer"]:
+            if finish not in ["raw", "square", "fade", "chamfer"]:
                 raise ValueError(
                     'end_finishes invalid, must be tuple() of "raw, square, taper, or chamfer"'
                 )
