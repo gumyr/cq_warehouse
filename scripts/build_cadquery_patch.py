@@ -25,7 +25,10 @@ desc:
     Usage:
         > python build_cadquery_patch <path_to_cadquery_installation>
 
+    Note: this code assumes black formatting of the python files
+
 todo: Add support for extension methods with decorators
+todo: Add an option to save the extended files
 
 license:
 
@@ -54,6 +57,7 @@ import tempfile
 import shutil
 
 # Which CadQuery files define the Class
+# Note: Module defines where python functions go
 class_files = {
     "occ_impl/shapes.py": ["Shape", "Vertex", "Edge", "Wire", "Face", "Module"],
     "assembly.py": ["Assembly"],
@@ -177,7 +181,7 @@ def prepare_extensions(python_code: list[str]) -> dict[list[dict]]:
 
     Return a data structure with the python code separated by class and method
     with the monkeypatched method name replacing the function name.
-    dict[class:list[dict[method:code]]]
+    dict[class:list[dict[method:list[str]]]]
 
     Args:
         python_code (list[str]): original python code
@@ -263,21 +267,17 @@ def main(argv):
         sys.exit(2)
 
     # Find the cq_warehouse extensions.py file and read it
-    command = subprocess.run(
+    pip_command = subprocess.run(
         ["python", "-m", "pip", "show", "cq_warehouse"], capture_output=True
     )
-    # print(command.stdout.decode("utf-8").split("\n"))
     pip_command_dictionary = dict(
         entry.split(": ", 1)
-        for entry in command.stdout.decode("utf-8").split("\n")
+        for entry in pip_command.stdout.decode("utf-8").split("\n")
         if ":" in entry
     )
-    # print(pip_command_dictionary["Location"])
     extensions_path = os.path.join(
         pip_command_dictionary["Location"], "cq_warehouse/extensions.py"
     )
-    print(extensions_path)
-    # with open("../src/cq_warehouse/extensions.py") as f:
     with open(extensions_path) as f:
         extensions_python_code = f.readlines()
 
@@ -293,12 +293,12 @@ def main(argv):
     shutil.copytree(cadquery_path, extended_directory_path)
 
     # Update existing methods and add new ones for each of the source files
-    for file_name in class_files.keys():
-        source_file_location = os.path.join(cadquery_path, file_name)
+    for source_file_name in class_files.keys():
+        source_file_location = os.path.join(cadquery_path, source_file_name)
         with open(source_file_location) as f:
             source_code = f.readlines()
 
-        for class_name in class_files[file_name]:
+        for class_name in class_files[source_file_name]:
             method_dictionaries = code_dictionary[class_name]
             extension_methods = []
             for method_dictionary in method_dictionaries:
@@ -349,7 +349,7 @@ def main(argv):
 
         # Write extended source file
         extended_file_name = (
-            os.path.basename(file_name).split(".py")[0] + "_extended.py"
+            os.path.basename(source_file_name).split(".py")[0] + "_extended.py"
         )
         f = open(extended_file_name, "w")
         f.writelines(source_code)
@@ -361,11 +361,14 @@ def main(argv):
 
         # Replace the original files in the extensions temp directory
         shutil.copyfile(
-            extended_file_name, os.path.join(extended_directory_path, file_name)
+            extended_file_name, os.path.join(extended_directory_path, source_file_name)
         )
 
     # Create the patch file
-    with open("cadquery_extensions.patch", "w") as patch_file:
+    patch_file_name = (
+        "cadquery_extensions" + pip_command_dictionary["Version"] + ".patch"
+    )
+    with open(patch_file_name, "w") as patch_file:
         subprocess.run(
             [
                 "diff",
@@ -379,16 +382,18 @@ def main(argv):
         )
     # Copy the patch to the cadquery original source directory
     shutil.copyfile(
-        "cadquery_extensions.patch",
-        os.path.join(cadquery_path, "cadquery_extensions.patch"),
+        patch_file_name,
+        os.path.join(cadquery_path, patch_file_name),
     )
 
     print(
         "Created the cadquery_extensions.patch file and copied it to cadquery source directory"
     )
     print("To apply the patch:")
-    print(f"cd {cadquery_path}")
-    print("patch -s -p0 < cadquery_extensions.patch")
+    print(f"    cd {cadquery_path}")
+    print(f"    patch -s -p0 < {patch_file_name}")
+    print("To reverse the patch:")
+    print(f"    patch -R -p0 < {patch_file_name}")
 
 
 if __name__ == "__main__":
