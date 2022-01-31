@@ -1,13 +1,13 @@
-diff -rN -U 5 /tmp/tmp8580ajfu/original/assembly.py /tmp/tmp8580ajfu/extensions/assembly.py
---- /tmp/tmp8580ajfu/original/assembly.py	2021-12-10 10:30:04.000000000 -0500
-+++ /tmp/tmp8580ajfu/extensions/assembly.py	2022-01-30 14:39:38.766176549 -0500
+diff -rN -U 5 /tmp/tmpf8l8svdx/original/assembly.py /tmp/tmpf8l8svdx/extensions/assembly.py
+--- /tmp/tmpf8l8svdx/original/assembly.py	2022-01-31 13:26:56.619029059 -0500
++++ /tmp/tmpf8l8svdx/extensions/assembly.py	2022-01-31 13:28:43.527401880 -0500
 @@ -570,5 +570,44 @@
          """
  
          from .occ_impl.jupyter_tools import display
  
          return display(self)._repr_javascript_()
-+    def translate(self, vec: VectorLike):
++    def translate(self, vec: "VectorLike") -> "Assembly":
 +        """
 +        Moves the current assembly (without making a copy) by the specified translation vector
 +    
@@ -26,7 +26,7 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/assembly.py /tmp/tmp8580ajfu/extensions/
 +    
 +    
 +    
-+    def rotate(self, axis: VectorLike, angle: float) -> Assembly:
++    def rotate(self, axis: "VectorLike", angle: float) -> "Assembly":
 +        """Rotate Assembly
 +    
 +        Rotates the current assembly (without making a copy) around the axis of rotation
@@ -46,10 +46,10 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/assembly.py /tmp/tmp8580ajfu/extensions/
 +        return self
 +    
 +    
-diff -rN -U 5 /tmp/tmp8580ajfu/original/cq.py /tmp/tmp8580ajfu/extensions/cq.py
---- /tmp/tmp8580ajfu/original/cq.py	2021-12-10 10:30:04.000000000 -0500
-+++ /tmp/tmp8580ajfu/extensions/cq.py	2022-01-30 14:39:38.778177269 -0500
-@@ -4298,7 +4298,220 @@
+diff -rN -U 5 /tmp/tmpf8l8svdx/original/cq.py /tmp/tmpf8l8svdx/extensions/cq.py
+--- /tmp/tmpf8l8svdx/original/cq.py	2022-01-31 13:26:56.619029059 -0500
++++ /tmp/tmpf8l8svdx/extensions/cq.py	2022-01-31 13:28:43.539401922 -0500
+@@ -4298,7 +4298,225 @@
              return Compound.makeCompound(
                  _selectShapes(self.objects)
              )._repr_javascript_()
@@ -130,7 +130,9 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/cq.py /tmp/tmp8580ajfu/extensions/cq.py
 +            )
 +        """
 +    
-+        def position_face(orig_face: Face) -> Face:
++        from .selectors import DirectionMinMaxSelector
++    
++        def position_face(orig_face: "Face") -> "Face":
 +            """
 +            Reposition a face to the provided path
 +    
@@ -141,9 +143,12 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/cq.py /tmp/tmp8580ajfu/extensions/cq.py
 +            face_bottom_center = Vector((bbox.xmin + bbox.xmax) / 2, 0, 0)
 +            relative_position_on_wire = start + face_bottom_center.x / path_length
 +            wire_tangent = path.tangentAt(relative_position_on_wire)
-+            wire_angle = degrees(
-+                self.plane.xDir.getSignedAngle(wire_tangent, self.plane.zDir)
++            wire_angle = (
++                180
++                * self.plane.xDir.getSignedAngle(wire_tangent, self.plane.zDir)
++                / math.pi
 +            )
++    
 +            wire_position = path.positionAt(relative_position_on_wire)
 +            global_face_bottom_center = self.plane.toWorldCoords(face_bottom_center)
 +            return orig_face.translate(wire_position - global_face_bottom_center).rotate(
@@ -178,7 +183,7 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/cq.py /tmp/tmp8580ajfu/extensions/cq.py
 +        # Extract just the faces on the workplane
 +        text_faces = (
 +            Workplane(raw_text)
-+            .faces(cq.DirectionMinMaxSelector(self.plane.zDir, False))
++            .faces(DirectionMinMaxSelector(self.plane.zDir, False))
 +            .vals()
 +        )
 +        path_length = path.Length()
@@ -221,7 +226,7 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/cq.py /tmp/tmp8580ajfu/extensions/cq.py
 +          centering along each axis.
 +        """
 +        xSpacing = 3 * diagonal / 4
-+        ySpacing = diagonal * sqrt(3) / 2
++        ySpacing = diagonal * math.sqrt(3) / 2
 +        if xSpacing <= 0 or ySpacing <= 0 or xCount < 1 or yCount < 1:
 +            raise ValueError("Spacing and count must be > 0 ")
 +    
@@ -248,7 +253,7 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/cq.py /tmp/tmp8580ajfu/extensions/cq.py
 +    
 +    
 +    
-+    def thicken(self, depth: float, direction: Vector = None):
++    def thicken(self, depth: float, direction: "Vector" = None):
 +        """Thicken Face
 +    
 +        Find all of the faces on the stack and make them Solid objects by thickening
@@ -270,9 +275,9 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/cq.py /tmp/tmp8580ajfu/extensions/cq.py
 +    
  # alias for backward compatibility
  CQ = Workplane
-diff -rN -U 5 /tmp/tmp8580ajfu/original/occ_impl/geom.py /tmp/tmp8580ajfu/extensions/occ_impl/geom.py
---- /tmp/tmp8580ajfu/original/occ_impl/geom.py	2021-12-10 10:30:04.000000000 -0500
-+++ /tmp/tmp8580ajfu/extensions/occ_impl/geom.py	2022-01-30 14:39:38.786177748 -0500
+diff -rN -U 5 /tmp/tmpf8l8svdx/original/occ_impl/geom.py /tmp/tmpf8l8svdx/extensions/occ_impl/geom.py
+--- /tmp/tmpf8l8svdx/original/occ_impl/geom.py	2022-01-31 13:26:56.619029059 -0500
++++ /tmp/tmpf8l8svdx/extensions/occ_impl/geom.py	2022-01-31 13:28:43.547401950 -0500
 @@ -173,12 +173,31 @@
          return self
  
@@ -307,23 +312,41 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/occ_impl/geom.py /tmp/tmp8580ajfu/extens
          raise NotImplementedError("Have not needed this yet, but OCCT supports it!")
  
      def projectToLine(self, line: "Vector") -> "Vector":
-@@ -240,10 +259,64 @@
+@@ -240,10 +259,74 @@
          pnt_t = pnt.Transformed(T.wrapped.Trsf())
  
          return Vector(gp_Vec(pnt_t.XYZ()))
  
  
-+    def rotateX(self, angle: float) -> cq.Vector:
-+        """cq.Vector rotate angle in degrees about x-axis"""
-+        return cq.Vector(
-+            self.x,
-+            self.y * cos(radians(angle)) - self.z * sin(radians(angle)),
-+            self.y * sin(radians(angle)) + self.z * cos(radians(angle)),
-+        )
++    def _rotate(self, direction: gp_Ax1, angle: float):
++        """Rotate Vector about axis
++    
++        Rotate a Vector angle degrees about axis defined by direction
++    
++        Args:
++            direction (gp_Ax1): rotation axis
++            angle (float): rotation angle in degrees
++        """
++        new = gp_Trsf()
++        new.SetRotation(direction, math.pi * angle / 180)
++        self.wrapped = self.wrapped * gp_GTrsf(new)
 +    
 +    
 +    
-+    def rotateY(self, angle: float) -> Vector:
++    def rotateX(self, angle: float) -> "Vector":
++        """Rotate Vector about X-Axis
++    
++        Args:
++            angle (float): Angle in degrees
++    
++        Returns:
++            Vector: Rotated Vector
++        """
++        self._rotate(gp.OX_s(), angle)
++    
++    
++    
++    def rotateY(self, angle: float) -> "Vector":
 +        """Rotate Vector about Y-Axis
 +    
 +        Args:
@@ -332,15 +355,11 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/occ_impl/geom.py /tmp/tmp8580ajfu/extens
 +        Returns:
 +            Vector: Rotated Vector
 +        """
-+        return Vector(
-+            self.x * cos(radians(angle)) + self.z * sin(radians(angle)),
-+            self.y,
-+            -self.x * sin(radians(angle)) + self.z * cos(radians(angle)),
-+        )
++        self._rotate(gp.OY_s(), angle)
 +    
 +    
 +    
-+    def rotateZ(self, angle: float) -> Vector:
++    def rotateZ(self, angle: float) -> "Vector":
 +        """Rotate Vector about Z-Axis
 +    
 +        Args:
@@ -349,15 +368,11 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/occ_impl/geom.py /tmp/tmp8580ajfu/extens
 +        Returns:
 +            Vector: Rotated Vector
 +        """
-+        return Vector(
-+            self.x * cos(radians(angle)) - self.y * sin(radians(angle)),
-+            self.x * sin(radians(angle)) + self.y * cos(radians(angle)),
-+            self.z,
-+        )
++        self._rotate(gp.OZ_s(), angle)
 +    
 +    
 +    
-+    def toVertex(self) -> Vertex:
++    def toVertex(self) -> "Vertex":
 +        """Convert to Vector to Vertex
 +    
 +        Returns:
@@ -372,7 +387,7 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/occ_impl/geom.py /tmp/tmp8580ajfu/extens
  
      Used to move geometry in space.
  
-@@ -615,35 +688,44 @@
+@@ -615,35 +698,44 @@
          """
          self.origin = self.toWorldCoords((x, y))
  
@@ -427,9 +442,9 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/occ_impl/geom.py /tmp/tmp8580ajfu/extens
          """Convert a point in local coordinates to global coordinates
  
          :param tuplePoint: point in local coordinates to convert.
-diff -rN -U 5 /tmp/tmp8580ajfu/original/occ_impl/shapes.py /tmp/tmp8580ajfu/extensions/occ_impl/shapes.py
---- /tmp/tmp8580ajfu/original/occ_impl/shapes.py	2021-12-10 10:30:04.000000000 -0500
-+++ /tmp/tmp8580ajfu/extensions/occ_impl/shapes.py	2022-01-30 14:39:38.766176549 -0500
+diff -rN -U 5 /tmp/tmpf8l8svdx/original/occ_impl/shapes.py /tmp/tmpf8l8svdx/extensions/occ_impl/shapes.py
+--- /tmp/tmpf8l8svdx/original/occ_impl/shapes.py	2022-01-31 13:26:56.619029059 -0500
++++ /tmp/tmpf8l8svdx/extensions/occ_impl/shapes.py	2022-01-31 13:28:43.527401880 -0500
 @@ -1224,10 +1224,232 @@
          from .jupyter_tools import display
  
@@ -437,19 +452,19 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/occ_impl/shapes.py /tmp/tmp8580ajfu/exte
  
  
 +    def findIntersection(
-+        self: cq.Shape, point: cq.Vector, direction: cq.Vector
-+    ) -> list[tuple[cq.Vector, cq.Vector]]:
++        self, point: "Vector", direction: "Vector"
++    ) -> list[tuple["Vector", "Vector"]]:
 +        """Find point and normal at intersection
 +    
 +        Return both the point(s) and normal(s) of the intersection of the line and the shape
 +    
 +        Args:
-+            self (cq.Shape): shape to intersect
-+            point (cq.Vector): point on intersecting line
-+            direction (cq.Vector): direction of intersecting line
++            self (Shape): shape to intersect
++            point (Vector): point on intersecting line
++            direction (Vector): direction of intersecting line
 +    
 +        Returns:
-+            list[tuple[cq.Vector, cq.Vector]]: point and normal of intersection
++            list[tuple[Vector, Vector]]: point and normal of intersection
 +        """
 +        oc_point = gp_Pnt(*point.toTuple())
 +        oc_axis = gp_Dir(*direction.toTuple())
@@ -486,13 +501,13 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/occ_impl/shapes.py /tmp/tmp8580ajfu/exte
 +        txt: str,
 +        fontsize: float,
 +        depth: float,
-+        path: Union[Wire, Edge],
++        path: Union["Wire", "Edge"],
 +        font: str = "Arial",
 +        fontPath: Optional[str] = None,
 +        kind: Literal["regular", "bold", "italic"] = "regular",
 +        valign: Literal["center", "top", "bottom"] = "center",
 +        start: float = 0,
-+    ) -> Compound:
++    ) -> "Compound":
 +        """Projected 3D text following the given path on Shape
 +    
 +        Create 3D text using projection by positioning each face of
@@ -581,13 +596,13 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/occ_impl/shapes.py /tmp/tmp8580ajfu/exte
 +        txt: str,
 +        fontsize: float,
 +        depth: float,
-+        path: Union[Wire, Edge],
++        path: Union["Wire", "Edge"],
 +        font: str = "Arial",
 +        fontPath: Optional[str] = None,
 +        kind: Literal["regular", "bold", "italic"] = "regular",
 +        valign: Literal["center", "top", "bottom"] = "center",
 +        start: float = 0,
-+    ) -> Compound:
++    ) -> "Compound":
 +        """Embossed 3D text following the given path on Shape
 +    
 +        Create 3D text by embossing each face of the planar text onto
@@ -670,8 +685,8 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/occ_impl/shapes.py /tmp/tmp8580ajfu/exte
  
  
 +    def __add__(
-+        self, other: Union[Vertex, Vector, Tuple[float, float, float]]
-+    ) -> Vertex:
++        self, other: Union["Vertex", "Vector", Tuple[float, float, float]]
++    ) -> "Vertex":
 +        """Add
 +    
 +        Add to a Vertex with a Vertex, Vector or Tuple
@@ -710,7 +725,7 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/occ_impl/shapes.py /tmp/tmp8580ajfu/exte
 +    
 +    
 +    
-+    def __sub__(self, other: Union[Vertex, Vector, tuple]) -> Vertex:
++    def __sub__(self, other: Union["Vertex", "Vector", tuple]) -> "Vertex":
 +        """Subtract
 +    
 +        Substract a Vertex with a Vertex, Vector or Tuple from self
@@ -756,7 +771,7 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/occ_impl/shapes.py /tmp/tmp8580ajfu/exte
 +    
 +    
 +    
-+    def toVector(self) -> Vector:
++    def toVector(self) -> "Vector":
 +        """To Vector
 +    
 +        Convert a Vertex to Vector
@@ -780,11 +795,11 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/occ_impl/shapes.py /tmp/tmp8580ajfu/exte
  
  
 +    def projectToShape(
-+        self: Edge,
-+        targetObject: Shape,
-+        direction: VectorLike = None,
-+        center: VectorLike = None,
-+    ) -> list[Edge]:
++        self,
++        targetObject: "Shape",
++        direction: "VectorLike" = None,
++        center: "VectorLike" = None,
++    ) -> list["Edge"]:
 +        """Project Edge
 +    
 +        Project an Edge onto a Shape generating new Wires on the surfaces of the object
@@ -811,12 +826,12 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/occ_impl/shapes.py /tmp/tmp8580ajfu/exte
 +    
 +    
 +    def embossToShape(
-+        self: Edge,
-+        targetObject: Shape,
-+        surfacePoint: VectorLike,
-+        surfaceXDirection: VectorLike,
++        self,
++        targetObject: "Shape",
++        surfacePoint: "VectorLike",
++        surfaceXDirection: "VectorLike",
 +        tolerance: float = 0.01,
-+    ) -> Edge:
++    ) -> "Edge":
 +        """Emboss Edge on target object
 +    
 +        Emboss an Edge on the XY plane onto a Shape while maintaining
@@ -929,9 +944,9 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/occ_impl/shapes.py /tmp/tmp8580ajfu/exte
  
 +    def makeNonPlanarFace(
 +        self,
-+        surfacePoints: list[Vector] = None,
-+        interiorWires: list[Wire] = None,
-+    ) -> Face:
++        surfacePoints: list["Vector"] = None,
++        interiorWires: list["Wire"] = None,
++    ) -> "Face":
 +        """Create Non-Planar Face with perimeter Wire
 +    
 +        Create a potentially non-planar face bounded by exterior Wire,
@@ -958,11 +973,11 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/occ_impl/shapes.py /tmp/tmp8580ajfu/exte
 +    
 +    
 +    def projectToShape(
-+        self: Wire,
-+        targetObject: Shape,
-+        direction: VectorLike = None,
-+        center: VectorLike = None,
-+    ) -> list[Wire]:
++        self,
++        targetObject: "Shape",
++        direction: "VectorLike" = None,
++        center: "VectorLike" = None,
++    ) -> list["Wire"]:
 +        """Project Wire
 +    
 +        Project a Wire onto a Shape generating new Wires on the surfaces of the object
@@ -1055,12 +1070,12 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/occ_impl/shapes.py /tmp/tmp8580ajfu/exte
 +    
 +    
 +    def embossToShape(
-+        self: Wire,
-+        targetObject: Shape,
-+        surfacePoint: VectorLike,
-+        surfaceXDirection: VectorLike,
++        self,
++        targetObject: "Shape",
++        surfacePoint: "VectorLike",
++        surfaceXDirection: "VectorLike",
 +        tolerance: float = 0.01,
-+    ) -> Wire:
++    ) -> "Wire":
 +        """Emboss Wire on target object
 +    
 +        Emboss an Wire on the XY plane onto a Shape while maintaining
@@ -1171,7 +1186,7 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/occ_impl/shapes.py /tmp/tmp8580ajfu/exte
          return adaptor.Plane()
  
  
-+    def thicken(self, depth: float, direction: Vector = None) -> Solid:
++    def thicken(self, depth: float, direction: "Vector" = None) -> "Solid":
 +        """Thicken Face
 +    
 +        Create a solid from a potentially non planar face by thickening along the normals.
@@ -1223,12 +1238,12 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/occ_impl/shapes.py /tmp/tmp8580ajfu/exte
 +    
 +    
 +    def projectToShape(
-+        self: Face,
-+        targetObject: Shape,
-+        direction: VectorLike = None,
-+        center: VectorLike = None,
-+        internalFacePoints: list[Vector] = [],
-+    ) -> list[Face]:
++        self,
++        targetObject: "Shape",
++        direction: "VectorLike" = None,
++        center: "VectorLike" = None,
++        internalFacePoints: list["Vector"] = [],
++    ) -> list["Face"]:
 +        """Project Face to target Object
 +    
 +        Project a Face onto a Shape generating new Face(s) on the surfaces of the object
@@ -1352,12 +1367,12 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/occ_impl/shapes.py /tmp/tmp8580ajfu/exte
 +    
 +    
 +    def embossToShape(
-+        self: Face,
-+        targetObject: Shape,
-+        surfacePoint: VectorLike,
-+        surfaceXDirection: VectorLike,
-+        internalFacePoints: list[Vector] = [],
-+    ) -> Face:
++        self,
++        targetObject: "Shape",
++        surfacePoint: "VectorLike",
++        surfaceXDirection: "VectorLike",
++        internalFacePoints: list["Vector"] = [],
++    ) -> "Face":
 +        """Emboss Face on target object
 +    
 +        Emboss a Face on the XY plane onto a Shape while maintaining
@@ -1444,10 +1459,10 @@ diff -rN -U 5 /tmp/tmp8580ajfu/original/occ_impl/shapes.py /tmp/tmp8580ajfu/exte
  
      return [Wire(el) for el in wires_out]
 +def makeNonPlanarFace(
-+    exterior: Union[Wire, list[Edge]],
-+    surfacePoints: list[VectorLike] = None,
-+    interiorWires: list[Wire] = None,
-+) -> Face:
++    exterior: Union["Wire", list["Edge"]],
++    surfacePoints: list["VectorLike"] = None,
++    interiorWires: list["Wire"] = None,
++) -> "Face":
 +    """Create Non-Planar Face
 +
 +    Create a potentially non-planar face bounded by exterior (wire or edges),

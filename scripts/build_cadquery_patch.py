@@ -226,6 +226,24 @@ def prepare_extensions(python_code: list[str]) -> dict[list[dict]]:
         method_code[method_name][0] = method_code[method_name][0].replace(
             function_name, method_name
         )
+        # Due to differences in imports, these lines need to uncommented
+        if method_name == "toLocalCoords":
+            method_code[method_name] = [
+                line.replace(
+                    "# from .shapes import Shape",
+                    "from .shapes import Shape",
+                )
+                for line in method_code[method_name]
+            ]
+        if method_name == "textOnPath":
+            method_code[method_name] = [
+                line.replace(
+                    "# from .selectors import DirectionMinMaxSelector",
+                    "from .selectors import DirectionMinMaxSelector",
+                )
+                for line in method_code[method_name]
+            ]
+        # Now that the code has been modified, add it code dictionary
         if class_name in code_dictionary:
             code_dictionary[class_name].append(method_code)
         else:
@@ -282,7 +300,7 @@ def main(argv):
         extensions_python_code = f.readlines()
 
     # Organize the extensions monkeypatched code into class(s), method(s)
-    code_dictionary = prepare_extensions(extensions_python_code)
+    extensions_code_dictionary = prepare_extensions(extensions_python_code)
 
     # Prepare a location to diff the original and extended versions
     temp_directory = tempfile.TemporaryDirectory()
@@ -299,19 +317,10 @@ def main(argv):
             source_code = f.readlines()
 
         for class_name in class_files[source_file_name]:
-            method_dictionaries = code_dictionary[class_name]
+            method_dictionaries = extensions_code_dictionary[class_name]
             extension_methods = []
             for method_dictionary in method_dictionaries:
                 for method_name, method_code in method_dictionary.items():
-                    # One weird fix - need to uncomment out this line
-                    if class_name == "Plane" and method_name == "toLocalCoords":
-                        method_code = [
-                            line.replace(
-                                "# from .shapes import Shape",
-                                "from .shapes import Shape",
-                            )
-                            for line in method_code
-                        ]
                     if class_name == "Module":
                         code_range = code_location(method_name, "function", source_code)
                     else:
@@ -391,9 +400,9 @@ def main(argv):
     )
     print("To apply the patch:")
     print(f"    cd {cadquery_path}")
-    print(f"    patch -s -p0 < {patch_file_name}")
+    print(f"    patch -s -p4 < {patch_file_name}")
     print("To reverse the patch:")
-    print(f"    patch -R -p0 < {patch_file_name}")
+    print(f"    patch -R -p4 < {patch_file_name}")
 
 
 if __name__ == "__main__":

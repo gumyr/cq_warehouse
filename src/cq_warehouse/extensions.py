@@ -33,7 +33,7 @@ license:
 """
 import sys
 import logging
-from math import pi, sin, cos, radians, sqrt, degrees
+import math
 from typing import Optional, Literal, Union, Tuple
 import cadquery as cq
 from cadquery.occ_impl.shapes import VectorLike
@@ -52,6 +52,7 @@ from cadquery import (
     Vertex,
     Wire,
     Workplane,
+    DirectionMinMaxSelector,
 )
 
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace
@@ -59,7 +60,6 @@ from OCP.ShapeAnalysis import ShapeAnalysis_FreeBounds
 from OCP.TopTools import TopTools_HSequenceOfShape
 from OCP.BRepOffset import BRepOffset_MakeOffset, BRepOffset_Skin, BRepOffset_RectoVerso
 from OCP.BRepProj import BRepProj_Projection
-from OCP.gp import gp_Pnt, gp_Dir
 from OCP.gce import gce_MakeLin
 from OCP.GeomAbs import (
     GeomAbs_C0,
@@ -73,6 +73,7 @@ from OCP.Bnd import Bnd_Box
 from OCP.StdFail import StdFail_NotDone
 from OCP.Standard import Standard_NoSuchObject
 from OCP.BRepIntCurveSurface import BRepIntCurveSurface_Inter
+from OCP.gp import gp_Vec, gp_Pnt, gp_Ax1, gp_Dir, gp_Trsf, gp, gp_GTrsf
 
 # Logging configuration - uncomment to enable logs
 # logging.basicConfig(
@@ -89,7 +90,7 @@ Assembly extensions: rotate(), translate()
 """
 
 
-def _assembly_translate(self, vec: VectorLike):
+def _assembly_translate(self, vec: "VectorLike") -> "Assembly":
     """
     Moves the current assembly (without making a copy) by the specified translation vector
 
@@ -110,7 +111,7 @@ def _assembly_translate(self, vec: VectorLike):
 Assembly.translate = _assembly_translate
 
 
-def _assembly_rotate(self, axis: VectorLike, angle: float) -> Assembly:
+def _assembly_rotate(self, axis: "VectorLike", angle: float) -> "Assembly":
     """Rotate Assembly
 
     Rotates the current assembly (without making a copy) around the axis of rotation
@@ -184,19 +185,39 @@ Vector extensions: rotateX(), rotateY(), rotateZ(), pointToVector(), toVertex(),
 """
 
 
-def _vector_rotate_x(self, angle: float) -> cq.Vector:
-    """cq.Vector rotate angle in degrees about x-axis"""
-    return cq.Vector(
-        self.x,
-        self.y * cos(radians(angle)) - self.z * sin(radians(angle)),
-        self.y * sin(radians(angle)) + self.z * cos(radians(angle)),
-    )
+def _rotate(self, direction: gp_Ax1, angle: float):
+    """Rotate Vector about axis
+
+    Rotate a Vector angle degrees about axis defined by direction
+
+    Args:
+        direction (gp_Ax1): rotation axis
+        angle (float): rotation angle in degrees
+    """
+    new = gp_Trsf()
+    new.SetRotation(direction, math.pi * angle / 180)
+    self.wrapped = self.wrapped * gp_GTrsf(new)
+
+
+Vector._rotate = _rotate
+
+
+def _vector_rotate_x(self, angle: float) -> "Vector":
+    """Rotate Vector about X-Axis
+
+    Args:
+        angle (float): Angle in degrees
+
+    Returns:
+        Vector: Rotated Vector
+    """
+    self._rotate(gp.OX_s(), angle)
 
 
 Vector.rotateX = _vector_rotate_x
 
 
-def _vector_rotate_y(self, angle: float) -> Vector:
+def _vector_rotate_y(self, angle: float) -> "Vector":
     """Rotate Vector about Y-Axis
 
     Args:
@@ -205,17 +226,13 @@ def _vector_rotate_y(self, angle: float) -> Vector:
     Returns:
         Vector: Rotated Vector
     """
-    return Vector(
-        self.x * cos(radians(angle)) + self.z * sin(radians(angle)),
-        self.y,
-        -self.x * sin(radians(angle)) + self.z * cos(radians(angle)),
-    )
+    self._rotate(gp.OY_s(), angle)
 
 
 Vector.rotateY = _vector_rotate_y
 
 
-def _vector_rotate_z(self, angle: float) -> Vector:
+def _vector_rotate_z(self, angle: float) -> "Vector":
     """Rotate Vector about Z-Axis
 
     Args:
@@ -224,17 +241,13 @@ def _vector_rotate_z(self, angle: float) -> Vector:
     Returns:
         Vector: Rotated Vector
     """
-    return Vector(
-        self.x * cos(radians(angle)) - self.y * sin(radians(angle)),
-        self.x * sin(radians(angle)) + self.y * cos(radians(angle)),
-        self.z,
-    )
+    self._rotate(gp.OZ_s(), angle)
 
 
 Vector.rotateZ = _vector_rotate_z
 
 
-def _vector_to_vertex(self) -> Vertex:
+def _vector_to_vertex(self) -> "Vertex":
     """Convert to Vector to Vertex
 
     Returns:
@@ -277,8 +290,8 @@ Vertex extensions: __add__(), __sub__(), __str__()
 
 
 def _vertex_add__(
-    self, other: Union[Vertex, Vector, Tuple[float, float, float]]
-) -> Vertex:
+    self, other: Union["Vertex", "Vector", Tuple[float, float, float]]
+) -> "Vertex":
     """Add
 
     Add to a Vertex with a Vertex, Vector or Tuple
@@ -319,7 +332,7 @@ def _vertex_add__(
 Vertex.__add__ = _vertex_add__
 
 
-def _vertex_sub__(self, other: Union[Vertex, Vector, tuple]) -> Vertex:
+def _vertex_sub__(self, other: Union["Vertex", "Vector", tuple]) -> "Vertex":
     """Subtract
 
     Substract a Vertex with a Vertex, Vector or Tuple from self
@@ -369,7 +382,7 @@ def _vertex_str__(self) -> str:
 Vertex.__str__ = _vertex_str__
 
 
-def _vertex_to_vector(self) -> Vector:
+def _vertex_to_vector(self) -> "Vector":
     """To Vector
 
     Convert a Vertex to Vector
@@ -465,7 +478,9 @@ def _textOnPath(
         )
     """
 
-    def position_face(orig_face: Face) -> Face:
+    # from .selectors import DirectionMinMaxSelector
+
+    def position_face(orig_face: "Face") -> "Face":
         """
         Reposition a face to the provided path
 
@@ -476,9 +491,12 @@ def _textOnPath(
         face_bottom_center = Vector((bbox.xmin + bbox.xmax) / 2, 0, 0)
         relative_position_on_wire = start + face_bottom_center.x / path_length
         wire_tangent = path.tangentAt(relative_position_on_wire)
-        wire_angle = degrees(
-            self.plane.xDir.getSignedAngle(wire_tangent, self.plane.zDir)
+        wire_angle = (
+            180
+            * self.plane.xDir.getSignedAngle(wire_tangent, self.plane.zDir)
+            / math.pi
         )
+
         wire_position = path.positionAt(relative_position_on_wire)
         global_face_bottom_center = self.plane.toWorldCoords(face_bottom_center)
         return orig_face.translate(wire_position - global_face_bottom_center).rotate(
@@ -513,7 +531,7 @@ def _textOnPath(
     # Extract just the faces on the workplane
     text_faces = (
         Workplane(raw_text)
-        .faces(cq.DirectionMinMaxSelector(self.plane.zDir, False))
+        .faces(DirectionMinMaxSelector(self.plane.zDir, False))
         .vals()
     )
     path_length = path.Length()
@@ -558,7 +576,7 @@ def _hexArray(
       centering along each axis.
     """
     xSpacing = 3 * diagonal / 4
-    ySpacing = diagonal * sqrt(3) / 2
+    ySpacing = diagonal * math.sqrt(3) / 2
     if xSpacing <= 0 or ySpacing <= 0 or xCount < 1 or yCount < 1:
         raise ValueError("Spacing and count must be > 0 ")
 
@@ -587,7 +605,7 @@ def _hexArray(
 Workplane.hexArray = _hexArray
 
 
-def _workplane_thicken(self, depth: float, direction: Vector = None):
+def _workplane_thicken(self, depth: float, direction: "Vector" = None):
     """Thicken Face
 
     Find all of the faces on the stack and make them Solid objects by thickening
@@ -616,7 +634,7 @@ Face extensions: thicken(), projectToShape(), embossToShape()
 """
 
 
-def _face_thicken(self, depth: float, direction: Vector = None) -> Solid:
+def _face_thicken(self, depth: float, direction: "Vector" = None) -> "Solid":
     """Thicken Face
 
     Create a solid from a potentially non planar face by thickening along the normals.
@@ -670,12 +688,12 @@ Face.thicken = _face_thicken
 
 
 def _face_projectToShape(
-    self: Face,
-    targetObject: Shape,
-    direction: VectorLike = None,
-    center: VectorLike = None,
-    internalFacePoints: list[Vector] = [],
-) -> list[Face]:
+    self,
+    targetObject: "Shape",
+    direction: "VectorLike" = None,
+    center: "VectorLike" = None,
+    internalFacePoints: list["Vector"] = [],
+) -> list["Face"]:
     """Project Face to target Object
 
     Project a Face onto a Shape generating new Face(s) on the surfaces of the object
@@ -801,12 +819,12 @@ Face.projectToShape = _face_projectToShape
 
 
 def _face_embossToShape(
-    self: Face,
-    targetObject: Shape,
-    surfacePoint: VectorLike,
-    surfaceXDirection: VectorLike,
-    internalFacePoints: list[Vector] = [],
-) -> Face:
+    self,
+    targetObject: "Shape",
+    surfacePoint: "VectorLike",
+    surfaceXDirection: "VectorLike",
+    internalFacePoints: list["Vector"] = [],
+) -> "Face":
     """Emboss Face on target object
 
     Emboss a Face on the XY plane onto a Shape while maintaining
@@ -891,10 +909,10 @@ Wire extensions: makeNonPlanarFace(), projectToShape(), embossToShape()
 
 
 def makeNonPlanarFace(
-    exterior: Union[Wire, list[Edge]],
-    surfacePoints: list[VectorLike] = None,
-    interiorWires: list[Wire] = None,
-) -> Face:
+    exterior: Union["Wire", list["Edge"]],
+    surfacePoints: list["VectorLike"] = None,
+    interiorWires: list["Wire"] = None,
+) -> "Face":
     """Create Non-Planar Face
 
     Create a potentially non-planar face bounded by exterior (wire or edges),
@@ -974,9 +992,9 @@ def makeNonPlanarFace(
 
 def _wire_makeNonPlanarFace(
     self,
-    surfacePoints: list[Vector] = None,
-    interiorWires: list[Wire] = None,
-) -> Face:
+    surfacePoints: list["Vector"] = None,
+    interiorWires: list["Wire"] = None,
+) -> "Face":
     """Create Non-Planar Face with perimeter Wire
 
     Create a potentially non-planar face bounded by exterior Wire,
@@ -1005,11 +1023,11 @@ Wire.makeNonPlanarFace = _wire_makeNonPlanarFace
 
 
 def _projectWireToShape(
-    self: Wire,
-    targetObject: Shape,
-    direction: VectorLike = None,
-    center: VectorLike = None,
-) -> list[Wire]:
+    self,
+    targetObject: "Shape",
+    direction: "VectorLike" = None,
+    center: "VectorLike" = None,
+) -> list["Wire"]:
     """Project Wire
 
     Project a Wire onto a Shape generating new Wires on the surfaces of the object
@@ -1104,12 +1122,12 @@ Wire.projectToShape = _projectWireToShape
 
 
 def _embossWireToShape(
-    self: Wire,
-    targetObject: Shape,
-    surfacePoint: VectorLike,
-    surfaceXDirection: VectorLike,
+    self,
+    targetObject: "Shape",
+    surfacePoint: "VectorLike",
+    surfaceXDirection: "VectorLike",
     tolerance: float = 0.01,
-) -> Wire:
+) -> "Wire":
     """Emboss Wire on target object
 
     Emboss an Wire on the XY plane onto a Shape while maintaining
@@ -1219,11 +1237,11 @@ Edge extensions: projectToShape(), embossToShape()
 
 
 def _projectEdgeToShape(
-    self: Edge,
-    targetObject: Shape,
-    direction: VectorLike = None,
-    center: VectorLike = None,
-) -> list[Edge]:
+    self,
+    targetObject: "Shape",
+    direction: "VectorLike" = None,
+    center: "VectorLike" = None,
+) -> list["Edge"]:
     """Project Edge
 
     Project an Edge onto a Shape generating new Wires on the surfaces of the object
@@ -1252,12 +1270,12 @@ Edge.projectToShape = _projectEdgeToShape
 
 
 def _embossEdgeToShape(
-    self: Edge,
-    targetObject: Shape,
-    surfacePoint: VectorLike,
-    surfaceXDirection: VectorLike,
+    self,
+    targetObject: "Shape",
+    surfacePoint: "VectorLike",
+    surfaceXDirection: "VectorLike",
     tolerance: float = 0.01,
-) -> Edge:
+) -> "Edge":
     """Emboss Edge on target object
 
     Emboss an Edge on the XY plane onto a Shape while maintaining
@@ -1367,19 +1385,19 @@ Shape extensions: findIntersection(), projectText(), embossText()
 
 
 def _findIntersection(
-    self: cq.Shape, point: cq.Vector, direction: cq.Vector
-) -> list[tuple[cq.Vector, cq.Vector]]:
+    self, point: "Vector", direction: "Vector"
+) -> list[tuple["Vector", "Vector"]]:
     """Find point and normal at intersection
 
     Return both the point(s) and normal(s) of the intersection of the line and the shape
 
     Args:
-        self (cq.Shape): shape to intersect
-        point (cq.Vector): point on intersecting line
-        direction (cq.Vector): direction of intersecting line
+        self (Shape): shape to intersect
+        point (Vector): point on intersecting line
+        direction (Vector): direction of intersecting line
 
     Returns:
-        list[tuple[cq.Vector, cq.Vector]]: point and normal of intersection
+        list[tuple[Vector, Vector]]: point and normal of intersection
     """
     oc_point = gp_Pnt(*point.toTuple())
     oc_axis = gp_Dir(*direction.toTuple())
@@ -1418,13 +1436,13 @@ def _projectText(
     txt: str,
     fontsize: float,
     depth: float,
-    path: Union[Wire, Edge],
+    path: Union["Wire", "Edge"],
     font: str = "Arial",
     fontPath: Optional[str] = None,
     kind: Literal["regular", "bold", "italic"] = "regular",
     valign: Literal["center", "top", "bottom"] = "center",
     start: float = 0,
-) -> Compound:
+) -> "Compound":
     """Projected 3D text following the given path on Shape
 
     Create 3D text using projection by positioning each face of
@@ -1515,13 +1533,13 @@ def _embossText(
     txt: str,
     fontsize: float,
     depth: float,
-    path: Union[Wire, Edge],
+    path: Union["Wire", "Edge"],
     font: str = "Arial",
     fontPath: Optional[str] = None,
     kind: Literal["regular", "bold", "italic"] = "regular",
     valign: Literal["center", "top", "bottom"] = "center",
     start: float = 0,
-) -> Compound:
+) -> "Compound":
     """Embossed 3D text following the given path on Shape
 
     Create 3D text by embossing each face of the planar text onto
