@@ -1,0 +1,96 @@
+# Configuration file for the Sphinx documentation builder.
+#
+# This file only contains a selection of the most common options. For a full
+# list see the documentation:
+# https://www.sphinx-doc.org/en/master/usage/configuration.html
+
+# -- Path setup --------------------------------------------------------------
+
+# If extensions (or modules to document with autodoc) are in another directory,
+# add these directories to sys.path here. If the directory is relative to the
+# documentation root, use os.path.abspath to make it absolute, like shown here.
+#
+import os
+import sys
+import subprocess
+
+# Read project information from the pip install
+# pip_command = subprocess.run(
+#     ["python", "-m", "pip", "show", "cq_warehouse"], capture_output=True
+# )
+# pip_command_dictionary = dict(
+#     entry.split(": ", 1)
+#     for entry in pip_command.stdout.decode("utf-8").split("\n")
+#     if ":" in entry
+# )
+# cq_warehouse_path = os.path.dirname(pip_command_dictionary["Location"])
+cq_warehouse_path = "/home/roger/Documents/cq_warehouse"
+source_files_path = os.path.join(cq_warehouse_path, "src/cq_warehouse")
+sys.path.insert(0, source_files_path)
+
+# -- Project information -----------------------------------------------------
+
+project = "cq_warehouse"
+copyright = "2022, Gumyr"
+author = "Gumyr"
+
+# The full version, including alpha/beta/rc tags
+# release = pip_command_dictionary["Version"]
+release = "0.5.1"
+
+
+# -- General configuration ---------------------------------------------------
+
+# Add any Sphinx extension module names here, as strings. They can be
+# extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
+# ones.
+extensions = [
+    "sphinx.ext.napoleon",
+    "sphinx.ext.autodoc",
+    "sphinx_autodoc_typehints",
+    "sphinx.ext.doctest",
+]
+
+# Napoleon settings
+napoleon_google_docstring = True
+napoleon_numpy_docstring = True
+napoleon_include_init_with_doc = False
+napoleon_include_private_with_doc = False
+napoleon_include_special_with_doc = False
+napoleon_use_admonition_for_examples = False
+napoleon_use_admonition_for_notes = False
+napoleon_use_admonition_for_references = False
+napoleon_use_ivar = True
+napoleon_use_param = True
+napoleon_use_rtype = True
+napoleon_use_keyword = True
+napoleon_custom_sections = None
+
+
+autodoc_typehints = ["description"]
+# autodoc_typehints = ["both"]
+
+# Sphinx settings
+add_module_names = False
+python_use_unqualified_type_names = True
+
+# Add any paths that contain templates here, relative to this directory.
+templates_path = ["_templates"]
+
+# List of patterns, relative to source directory, that match files and
+# directories to ignore when looking for source files.
+# This pattern also affects html_static_path and html_extra_path.
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+
+
+# -- Options for HTML output -------------------------------------------------
+
+# The theme to use for HTML and HTML Help pages.  See the documentation for
+# a list of builtin themes.
+#
+html_theme = "alabaster"
+
+# Add any paths that contain custom static files (such as style sheets) here,
+# relative to this directory. They are copied after the builtin static files,
+# so a file named "default.css" will overwrite the builtin "default.css".
+html_static_path = ["_static"]

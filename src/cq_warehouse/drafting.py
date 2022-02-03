@@ -41,74 +41,47 @@ INCH = 25.4 * MM
 
 VectorLike = Union[Tuple[float, float, float], cq.Vector]
 PathDescriptor = Union[
-    cq.Wire, cq.Edge, List[Union[cq.Vector, cq.Vertex, Tuple[float, float, float]]],
+    cq.Wire,
+    cq.Edge,
+    List[Union[cq.Vector, cq.Vertex, Tuple[float, float, float]]],
 ]
 PointDescriptor = Union[cq.Vector, cq.Vertex, Tuple[float, float, float]]
 
 
 class Draft(BaseModel):
-    """
+    """Draft
+
     Documenting cadquery designs with dimension and extension lines as well as callouts.
 
-    Usage:
-        metric_drawing = Draft(decimal_precision=1)
-        length_dimension_line = metric_drawing.extension_line(
-            object_edge=mystery_object.faces("<Z").vertices("<Y").vals(),
-            offset=10.0,
-            tolerance=(+0.2, -0.1),
-        )
 
-    Attributes
-    ----------
-    font_size: float = 5.0
-        size of the text in dimension lines and callouts
-    color: Optional[cq.Color] = cq.Color(0.25, 0.25, 0.25)
-        color of text, extension lines and arrows
-    arrow_diameter: float = 1.0
-        maximum diameter of arrow heads
-    arrow_length: float = 3.0
-        arrow head length
-    label_normal: Optional[VectorLike] = cq.Vector(0, 0, 1)
-        text and extension line plane normal - default to XY plane
-    units: Literal["metric", "imperial"] = "metric"
-        unit of measurement
-    number_display: Literal["decimal", "fraction"] = "decimal"
-        display numbers as decimals or fractions
-    display_units: bool = True
-        control the display of units with numbers
-    decimal_precision: int = 2
-        number of decimal places when displaying numbers
-    fractional_precision: int = 64
-        maximum fraction denominator - must be a factor of 2
+    Args:
+        font_size (float): size of the text in dimension lines and callouts. Defaults to 5.0.
+        color (Color, optional): color of text, extension lines and arrows. Defaults to Color(0.25, 0.25, 0.25).
+        arrow_diameter (float): maximum diameter of arrow heads. Defaults to 1.0.
+        arrow_length (float): arrow head length. Defaults to 3.0.
+        label_normal (VectorLike, optional): text and extension line plane normal. Defaults to XY plane.
+        units (Literal["metric", "imperial"]): unit of measurement. Defaults to "metric".
+        number_display (Literal["decimal", "fraction"]): display numbers as decimals or fractions. Defaults to "decimal".
+        display_units (bool): control the display of units with numbers. Defaults to True.
+        decimal_precision (int): number of decimal places when displaying numbers. Defaults to 2.
+        fractional_precision (int): maximum fraction denominator - must be a factor of 2. Defaults to 64.
 
-    Methods
-    -------
-    dimension_line(
-        path: PathDescriptor,
-        label: str = None,
-        arrows: Tuple[bool, bool] = (True, True),
-        tolerance: Optional[Union[float, Tuple[float, float]]] = None,
-        label_angle: bool = False,
-    ) -> cq.Assembly:
-        Create a dimension line between points or along path
+    Example:
 
-    extension_line(
-        object_edge: PathDescriptor,
-        offset: float,
-        label: str = None,
-        tolerance: Optional[Union[float, Tuple[float, float]]] = None,
-        label_angle: bool = False,
-    )-> cq.Assembly:
-        Create an extension line - a dimension line offset from the object
-        with lines extending from the object - between points or along path
+        .. code-block:: python
 
-    callout(
-        label: str,
-        tail: Optional[PathDescriptor] = None,
-        origin: Optional[PointDescriptor] = None,
-        justify: Literal["left", "center", "right"] = "left",
-    ) -> cq.Assembly:
-        Create a callout at the origin with no tail, or at the root of the given tail
+            metric_drawing = Draft(decimal_precision=1)
+            length_dimension_line = metric_drawing.extension_line(
+                object_edge=mystery_object.faces("<Z").vertices("<Y").vals(),
+                offset=10.0,
+                tolerance=(+0.2, -0.1),
+            )
+
+    The three public methods that the Draft class defines are described below. Note that both
+    dimension_line ane extension_line support arcs as well as linear measurements - to be exact, the
+    shown measurement is the length of the input path or object edge which could be an arbitrary shape
+    like a spline. If this path or object_edge is part of a circle the size of the arc in degrees may
+    be displayed instead of the length.
 
     """
 
@@ -153,14 +126,14 @@ class Draft(BaseModel):
 
     # pylint: disable=too-few-public-methods
     class Config:
-        """ Configurate pydantic to allow cadquery native types """
+        """Configurate pydantic to allow cadquery native types"""
 
         arbitrary_types_allowed = True
 
     @validator("fractional_precision")
     @classmethod
     def fractional_precision_power_two(cls, fractional_precision):
-        """ Fraction denominator must be a power of two """
+        """Fraction denominator must be a power of two"""
         if not log2(fractional_precision).is_integer():
             raise ValueError(
                 f"fractional_precision values must be a factor of 2; provided {fractional_precision}"
@@ -168,7 +141,7 @@ class Draft(BaseModel):
         return fractional_precision
 
     def round_to_str(self, number: float) -> str:
-        """ Round a float but remove decimal if appropriate and convert to str """
+        """Round a float but remove decimal if appropriate and convert to str"""
         return (
             f"{round(number, self.decimal_precision):.{self.decimal_precision}f}"
             if self.decimal_precision > 0
@@ -182,10 +155,10 @@ class Draft(BaseModel):
         tolerance: Union[float, Tuple[float, float]] = None,
         display_units: Optional[bool] = None,
     ) -> str:
-        """ Convert a raw number to a unit of measurement string based on the class settings """
+        """Convert a raw number to a unit of measurement string based on the class settings"""
 
         def simplify_fraction(numerator: int, denominator: int) -> Tuple[int, int]:
-            """ Mathematically simplify a fraction given a numerator and demoninator """
+            """Mathematically simplify a fraction given a numerator and demoninator"""
             greatest_common_demoninator = gcd(numerator, denominator)
             return (
                 int(numerator / greatest_common_demoninator),
@@ -231,7 +204,7 @@ class Draft(BaseModel):
     def _make_arrow(
         self, path: Union[cq.Edge, cq.Wire], tip_pos: Literal["start", "end"] = "start"
     ) -> cq.Solid:
-        """ Create an arrow head which follows the provided path """
+        """Create an arrow head which follows the provided path"""
 
         # Calculate the position along the path to create the arrow cross-sections
         loft_pos = [0.0 if tip_pos == "start" else 1.0]
@@ -257,7 +230,8 @@ class Draft(BaseModel):
         ]
         arrow = cq.Assembly(None, name="arrow")
         arrow.add(
-            cq.Solid.makeLoft(arrow_cross_sections), name="arrow_and_shaft",
+            cq.Solid.makeLoft(arrow_cross_sections),
+            name="arrow_and_shaft",
         )
         arrow.add(path, name="arrow_shaft")
         return arrow
@@ -266,7 +240,7 @@ class Draft(BaseModel):
     def _segment_line(
         path: Union[cq.Edge, cq.Wire], tip_pos: float, tail_pos: float
     ) -> cq.Edge:
-        """ Create a segment of a path between tip and tail (inclusive) """
+        """Create a segment of a path between tip and tail (inclusive)"""
 
         if not 0.0 <= tip_pos <= 1.0:
             raise ValueError(f"tip_pos value of {tip_pos} is not between 0.0 and 1.0")
@@ -284,7 +258,7 @@ class Draft(BaseModel):
 
     @staticmethod
     def _path_to_wire(path: PathDescriptor) -> cq.Wire:
-        """ Convert a PathDescriptor into a cq.Wire """
+        """Convert a PathDescriptor into a cq.Wire"""
         if isinstance(path, (cq.Edge, cq.Wire)):
             path_as_wire = cq.Wire.assembleEdges([path])
         else:
@@ -303,7 +277,7 @@ class Draft(BaseModel):
         return path_as_wire
 
     def _label_size(self, label_str: str) -> float:
-        """ Return the length of a text string given class parameters """
+        """Return the length of a text string given class parameters"""
         label_xy_object = cq.Workplane("XY").text(
             txt=label_str,
             fontsize=self.font_size,
@@ -316,7 +290,7 @@ class Draft(BaseModel):
 
     @staticmethod
     def _find_center_of_arc(arc: cq.Edge) -> cq.Vector:
-        """ Given an arc find the center of the circle """
+        """Given an arc find the center of the circle"""
         arc_radius = arc.radius()
         arc_pnt = arc.positionAt(0.25)
         chord_end_points = [arc.positionAt(t) for t in [0.0, 0.5]]
@@ -333,7 +307,7 @@ class Draft(BaseModel):
         label_angle: bool,
         tolerance: Optional[Union[float, Tuple[float, float]]],
     ) -> str:
-        """ Create the str to use as the label text """
+        """Create the str to use as the label text"""
         line_length = line_wire.Length()
         if label is not None:
             label_str = label
@@ -451,14 +425,39 @@ class Draft(BaseModel):
         tolerance: Optional[Union[float, Tuple[float, float]]] = None,
         label_angle: bool = False,
     ) -> cq.Assembly:
-        """
-        Create a dimension line typically for internal measurements
+        """Dimension Line
+
+        Create a dimension line typically for internal measurements.
+        Typically used for (but not restricted to) inside dimensions, a dimension line often
+        as arrows on either side of a dimension or label.
 
         There are three options depending on the size of the text and length
         of the dimension line:
         Type 1) The label and arrows fit within the length of the path
         Type 2) The text fit within the path and the arrows go outside
         Type 3) Neither the text nor the arrows fit within the path
+
+        Args:
+            path (PathDescriptor): a very general type of input used to describe the path the
+                dimension line will follow .
+            label (Optional[str], optional): a text string which will replace the length (or
+                arc length) that would otherwise be extracted from the provided path. Providing
+                a label is useful when illustrating a parameterized input where the name of an
+                argument is desired not an actual measurement. Defaults to None.
+            arrows (Tuple[bool, bool], optional): a pair of boolean values controlling the placement
+                of the start and end arrows. Defaults to (True, True).
+            tolerance (Optional[Union[float, Tuple[float, float]]], optional): an optional tolerance
+                value to add to the extracted length value. If a single tolerance value is provided
+                it is shown as ± the provided value while a pair of values are shown as
+                separate + and - values. Defaults to None.
+            label_angle (bool, optional): a flag indicating that instead of an extracted length value,
+                the size of the circular arc extracted from the path should be displayed in degrees.
+
+        Raises:
+            ValueError: No output - insufficient space for labels and no arrows selected
+
+        Returns:
+            cq.Assembly: the dimension line
         """
 
         # Create a wire modelling the path of the dimension lines from a variety of input types
@@ -515,7 +514,34 @@ class Draft(BaseModel):
         tolerance: Optional[Union[float, Tuple[float, float]]] = None,
         label_angle: bool = False,
     ) -> cq.Assembly:
-        """ Create a dimension line with two lines extending outward from the part to dimension """
+        """Extension Line
+
+        Create a dimension line with two lines extending outward from the part to dimension.
+        Typically used for (but not restricted to) outside dimensions, with a pair of lines
+        extending from the edge of a part to a dimension line.
+
+        Args:
+            object_edge (PathDescriptor): a very general type of input defining the object to
+                be dimensioned. Typically this value would be extracted from the part but is
+                not restricted to this use.
+            offset (float): a distance to displace the dimension line from the edge of the object
+            label (str, optional): a text string which will replace the length (or arc length)
+                that would otherwise be extracted from the provided path. Providing a label is
+                useful when illustrating a parameterized input where the name of an argument
+                is desired not an actual measurement. Defaults to None.
+            arrows (Tuple[bool, bool], optional): a pair of boolean values controlling the placement
+                of the start and end arrows. Defaults to (True, True).
+            tolerance (Optional[Union[float, Tuple[float, float]]], optional): an optional tolerance
+                value to add to the extracted length value. If a single tolerance value is provided
+                it is shown as ± the provided value while a pair of values are shown as
+                separate + and - values. Defaults to None.
+            label_angle (bool, optional): a flag indicating that instead of an extracted length
+                value, the size of the circular arc extracted from the path should be displayed
+                in degrees. Defaults to False.
+
+        Returns:
+            cq.Assembly: the extension line
+        """
 
         # Create a wire modelling the path of the dimension lines from a variety of input types
         object_path = Draft._path_to_wire(object_edge)
@@ -595,7 +621,30 @@ class Draft(BaseModel):
         origin: Optional[PointDescriptor] = None,
         justify: Literal["left", "center", "right"] = "left",
     ) -> cq.Assembly:
-        """ Create a text box that optionally points at something """
+        """Callout
+
+        A text box with or without a tail pointing to another object used to provide
+        extra information to the reader.
+
+        Args:
+            label (str): the text to place within the callout - note that including a ``\\n``
+                in the text string will split the text over multiple lines.
+            tail (Optional[PathDescriptor], optional): an optional tail defined as above -
+                note that if provided the text origin will be the start of the tail.
+                Defaults to None.
+            origin (Optional[PointDescriptor], optional): a very general definition of anchor
+                point of the text defined as
+                ``PointDescriptor = Union[Vector, Vertex, Tuple[float, float, float]]``
+                Defaults to None.
+            justify (Literal[, optional): text alignment. Defaults to "left".
+
+        Raises:
+            ValueError: Either origin or tail must be provided
+
+        Returns:
+            cq.Assembly: the callout
+
+        """
 
         if origin is not None:
             text_origin = (
@@ -624,7 +673,8 @@ class Draft(BaseModel):
         t_box.add(label_text, name="callout_label")
         if tail is not None:
             t_box.add(
-                self._make_arrow(line_wire, tip_pos="end"), name="callout_tail",
+                self._make_arrow(line_wire, tip_pos="end"),
+                name="callout_tail",
             )
 
         return t_box

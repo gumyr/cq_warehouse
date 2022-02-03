@@ -49,51 +49,40 @@ class Sprocket(BaseModel):
     Create a new sprocket object as defined by the given parameters. The input parameter
     defaults are appropriate for a standard bicycle chain.
 
-    Usage:
-        s = Sprocket(num_teeth=32)
-        print(s.pitch_radius)                   # 64.78458745735234
-        s.cq_object.rotate((0,0,0),(0,0,1),10)
+    Args:
+        num_teeth (int): number of teeth on the perimeter of the sprocket
+        chain_pitch (float): distance between the centers of two adjacent rollers.
+            Defaults to 1/2 inch.
+        roller_diameter (float): size of the cylindrical rollers within the chain.
+            Defaults to 5/16 inch.
+        clearance (float): size of the gap between the chain's rollers and the sprocket's teeth.
+            Defaults to 0.
+        thickness (float): thickness of the sprocket.
+            Defaults to 0.084 inch.
+        bolt_circle_diameter (float): diameter of the mounting bolt hole pattern.
+            Defaults to 0.
+        num_mount_bolts (int): number of bolt holes (default 0) - if 0, no bolt holes
+            are added to the sprocket
+        mount_bolt_diameter (float): size of the bolt holes use to mount the sprocket.
+            Defaults to 0.
+        bore_diameter (float): size of the central hole in the sprocket (default 0) - if 0,
+            no bore hole is added to the sprocket
 
-    Attributes
-    ----------
-    num_teeth : int
-        the number of teeth on the perimeter of the sprocket
-    chain_pitch : float
-        the distance between the centers of two adjacent rollers (default 1/2 INCH)
-    roller_diameter : float
-        the size of the cylindrical rollers within the chain (default 5/16 INCH)
-    clearance : float
-        the size of the gap between the chain's rollers and the sprocket's teeth (default 0)
-    thickness : float
-        the thickness of the sprocket (default 0.084 INCH)
-    bolt_circle_diameter : float
-        the diameter of the mounting bolt hole pattern (default 0)
-    num_mount_bolts : int
-        the number of bolt holes (default 0) - if 0, no bolt holes are added to the sprocket
-    mount_bolt_diameter : float
-        the size of the bolt holes use to mount the sprocket (default 0)
-    bore_diameter : float
-        the size of the central hole in the sprocket (default 0) - if 0, no bore hole is added
-        to the sprocket
-    pitch_radius : float
-        the radius of the circle formed by the center of the chain rollers
-    outer_radius : float
-        the size of the sprocket from center to tip of the teeth
-    pitch_circumference : float
-        the circumference of the sprocket at the pitch radius
-    cq_object : cq.Workplane
-        the cadquery sprocket object
+    **NOTE**: Default parameters are for standard single sprocket bicycle chains.
 
-    Methods
-    -------
+    Attributes:
+        pitch_radius (float): radius of the circle formed by the center of the chain rollers
+        outer_radius (float): size of the sprocket from center to tip of the teeth
+        pitch_circumference (float): circumference of the sprocket at the pitch radius
+        cq_object (Workplane): cadquery sprocket object
 
-    sprocket_pitch_radius(num_teeth,chain_pitch) -> float:
-        Calculate and return the pitch radius of a sprocket with the given number of teeth
-        and chain pitch
+    Example:
+        .. code-block:: python
 
-    sprocket_circumference(num_teeth,chain_pitch) -> float:
-        Calculate and return the pitch circumference of a sprocket with the given number
-        of teeth and chain pitch
+            s = Sprocket(num_teeth=32)
+            print(s.pitch_radius)                   # 64.78458745735234
+            s.cq_object.rotate((0,0,0),(0,0,1),10)
+
     """
 
     # Instance Attributes
@@ -115,7 +104,7 @@ class Sprocket(BaseModel):
     # pylint: disable=no-self-use
     @validator("roller_diameter")
     def is_roller_too_large(cls, i, values):
-        """ Ensure that the roller would fit in the chain """
+        """Ensure that the roller would fit in the chain"""
         if i >= values["chain_pitch"]:
             raise ValueError(
                 f"roller_diameter {i} is too large for chain_pitch {values['chain_pitch']}"
@@ -124,12 +113,12 @@ class Sprocket(BaseModel):
 
     @property
     def pitch_radius(self):
-        """ The radius of the circle formed by the center of the chain rollers """
+        """The radius of the circle formed by the center of the chain rollers"""
         return Sprocket.sprocket_pitch_radius(self.num_teeth, self.chain_pitch)
 
     @property
     def outer_radius(self):
-        """ The size of the sprocket from center to tip of the teeth """
+        """The size of the sprocket from center to tip of the teeth"""
         if self._flat_teeth:
             o_radius = self.pitch_radius + self.roller_diameter / 4
         else:
@@ -143,23 +132,23 @@ class Sprocket(BaseModel):
 
     @property
     def pitch_circumference(self):
-        """ The circumference of the sprocket at the pitch radius """
+        """The circumference of the sprocket at the pitch radius"""
         return Sprocket.sprocket_circumference(self.num_teeth, self.chain_pitch)
 
     @property
     def cq_object(self):
-        """ A cadquery Workplane sprocket as defined by class attributes """
+        """A cadquery Workplane sprocket as defined by class attributes"""
         return self._cq_object
 
     def __init__(self, **data):
-        """ Validate inputs and create the chain assembly object """
+        """Validate inputs and create the chain assembly object"""
         # Use the BaseModel initializer to validate the attributes
         super().__init__(**data)
         # Create the sprocket
         self._cq_object = self._make_sprocket()
 
     def _make_sprocket(self) -> cq.Workplane:
-        """ Create a new sprocket object as defined by the class attributes """
+        """Create a new sprocket object as defined by the class attributes"""
         sprocket = (
             cq.Workplane("XY")
             .polarArray(self.pitch_radius, 0, 360, self.num_teeth)
@@ -208,7 +197,7 @@ class Sprocket(BaseModel):
     def sprocket_pitch_radius(num_teeth: int, chain_pitch: float) -> float:
         """
         Calculate and return the pitch radius of a sprocket with the given number of teeth
-				and chain pitch
+                                and chain pitch
 
         Parameters
         ----------
@@ -224,7 +213,7 @@ class Sprocket(BaseModel):
     def sprocket_circumference(num_teeth: int, chain_pitch: float) -> float:
         """
         Calculate and return the pitch circumference of a sprocket with the given number of
-				teeth and chain pitch
+                                teeth and chain pitch
 
         Parameters
         ----------
@@ -366,7 +355,7 @@ def make_tooth_outline(
 def _tooth_outline(
     self, num_teeth, chain_pitch, roller_diameter, clearance
 ) -> cq.Workplane:
-    """ Wrap make_tooth_outline for use within cq.Workplane with multiple sprocket teeth """
+    """Wrap make_tooth_outline for use within cq.Workplane with multiple sprocket teeth"""
     # pylint: disable=unnecessary-lambda
     tooth = make_tooth_outline(num_teeth, chain_pitch, roller_diameter, clearance)
     return self.eachpoint(lambda loc: tooth.moved(loc), True)
@@ -377,7 +366,7 @@ cq.Workplane.tooth_outline = _tooth_outline
 #
 # Extensions to the Vector class
 def _vector_flip_y(self) -> cq.Vector:
-    """ cq.Vector reflect across the XZ plane """
+    """cq.Vector reflect across the XZ plane"""
     return cq.Vector(self.x, -self.y, self.z)
 
 

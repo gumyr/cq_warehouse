@@ -203,6 +203,17 @@ def lookup_nominal_screw_lengths() -> dict:
 
 
 def _fillet2D(self, radius: float, vertices: List[cq.Vertex]) -> cq.Wire:
+    """Fillet 2D
+
+    Fillet wires in a workplane
+
+    Args:
+        radius: fillet radius
+        vertices: vertices to fillet
+
+    Returns:
+        The filleted result
+    """
     return cq.Workplane(self.val().fillet2D(radius, vertices))
 
 
@@ -342,7 +353,37 @@ def select_by_size_fn(cls, size: str) -> dict:
 
 
 class Nut(ABC):
-    """Base Class used to create standard threaded nuts"""
+    """Parametric Nut
+
+    Base Class used to create standard threaded nuts
+
+    Args:
+        size (str): standard sizes - e.g. "M6-1"
+        fastener_type (str): type identifier - e.g. "iso4032"
+        hand (Literal["right","left"], optional): thread direction. Defaults to "right".
+        simple (bool, optional): simplify by not creating thread. Defaults to True.
+
+    Raises:
+        ValueError: invalid size, must be formatted as size-pitch or size-TPI
+        ValueError: invalid fastener_type
+        ValueError: invalid hand, must be one of 'left' or 'right'
+        ValueError: invalid size
+
+    Each nut instance creates a set of instance variables that provide the CAD object as well as valuable
+    parameters, as follows (values intended for internal use are not shown):
+
+    Attributes:
+        tap_drill_sizes (dict): dictionary of drill sizes for tapped holes
+        tap_hole_diameters (dict): dictionary of drill diameters for tapped holes
+        clearance_drill_sizes (dict): dictionary of drill sizes for clearance holes
+        clearance_hole_diameters (dict): dictionary of drill diameters for clearance holes
+        info (str): identifying information
+        nut_class (class): the derived class that created this nut
+        nut_thickness (float): maximum thickness of the nut
+        nut_diameter (float): maximum diameter of the nut
+        cq_object (Compound): cadquery Compound nut as defined by class attributes
+
+    """
 
     # Read clearance and tap hole dimesions tables
     # Close, Medium, Loose
@@ -454,7 +495,7 @@ class Nut(ABC):
 
     @property
     def cq_object(self):
-        """A cadquery Compound screw as defined by class attributes"""
+        """A cadquery Compound nut as defined by class attributes"""
         return self._cq_object
 
     def length_offset(self):
@@ -790,7 +831,42 @@ class SquareNut(Nut):
 
 
 class Screw(ABC):
-    """Base class for a set of threaded screws or bolts"""
+    """Parametric Screw
+
+    Base class for a set of threaded screws or bolts
+
+    Args:
+        size (str): standard sizes - e.g. "M6-1"
+        length (float): distance from base of head to tip of thread
+        fastener_type (str): type identifier - e.g. "iso4014"
+        hand (Literal["right","left"], optional): thread direction. Defaults to "right".
+        simple (bool, optional): simplify by not creating thread. Defaults to True.
+        socket_clearance (float, optional): gap around screw with no recess (e.g. hex head)
+            which allows a socket wrench to be inserted. Defaults to 6mm.
+
+    Raises:
+        ValueError: invalid size, must be formatted as size-pitch or size-TPI
+        ValueError: invalid fastener_type
+        ValueError: invalid hand, must be one of 'left' or 'right'
+        ValueError: invalid size
+
+    Each screw instance creates a set of properties that provide the Compound CAD object as
+    well as valuable parameters, as follows (values intended for internal use are not shown):
+
+    Attributes:
+        tap_drill_sizes (dict): dictionary of drill sizes for tapped holes
+        tap_hole_diameters (dict): dictionary of drill diameters for tapped holes
+        clearance_drill_sizes (dict): dictionary of drill sizes for clearance holes
+        clearance_hole_diameters (dict): dictionary of drill diameters for clearance holes
+        nominal_lengths (list[float]): list of nominal screw lengths
+        info (str): identifying information
+        screw_class (class): the derived class that created this screw
+        head_height (float): maximum height of the screw head
+        head_diameter (float): maximum diameter of the screw head
+        head (Solid): cadquery Solid screw head as defined by class attributes
+        cq_object (Compound): cadquery Compound nut as defined by class attributes
+
+    """
 
     # Read clearance and tap hole dimesions tables
     # Close, Medium, Loose
@@ -944,7 +1020,7 @@ class Screw(ABC):
 
     @property
     def head(self):
-        """A cadquery Solid thread as defined by class attributes"""
+        """cadquery Solid screw head as defined by class attributes"""
         return self._head
 
     @property
@@ -1667,7 +1743,32 @@ class SocketHeadCapScrew(Screw):
 
 
 class Washer(ABC):
-    """Base Class used to create standard washers"""
+    """Parametric Washer
+
+    Base class used to create standard washers
+
+    Args:
+        size (str): standard sizes - e.g. "M6-1"
+        fastener_type (str): type identifier - e.g. "iso4032"
+
+    Raises:
+        ValueError: invalid fastener_type
+        ValueError: invalid size
+
+    Each washer instance creates a set of properties that provide the Compound CAD object
+    as well as valuable parameters, as follows (values intended for internal use are not shown):
+
+    Attributes:
+        clearance_drill_sizes (dict): dictionary of drill sizes for clearance holes
+        clearance_hole_diameters (dict): dictionary of drill diameters for clearance holes
+        nominal_lengths (list[float]): list of nominal screw lengths
+        info (str): identifying information
+        washer_class (str): display friendly class name
+        washer_diameter (float): maximum diameter of the washer
+        washer_thickness (float): maximum thickness of the washer
+        cq_object (Compound): cadquery Compound washer as defined by class attributes
+
+    """
 
     # Read clearance and tap hole dimesions tables
     # Close, Normal, Loose

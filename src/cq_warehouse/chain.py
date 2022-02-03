@@ -63,61 +63,50 @@ EXIT = 1  # .. entry and exit angles
 #  =============================== CLASSES ===============================
 #
 class Chain(BaseModel):
-    """
+    """Roller Chain
+
     Create a new chain object as defined by the given parameters. The input parameter
     defaults are appropriate for a standard bicycle chain.
 
-    Usage:
-        c = Chain(
-            spkt_teeth=[32, 32],
-            spkt_locations=[(-300, 0), (300, 0)],
-            positive_chain_wrap=[True, True]
-        )
-        print(c.spkt_initial_rotation)       # [5.625, 193.82627377380086]
-        c.cq_object.save('chain.step')       # save the cadquery assembly as a STEP file
+    Args:
+        spkt_teeth (list[int]): list of the number of teeth on each sprocket the chain will wrap around
+        spkt_locations (list[VectorLike]): location of the sprocket centers
+        positive_chain_wrap (list[bool]): the direction chain wraps around the sprockets, True for counter
+            clockwise viewed from positive Z
+        chain_pitch (float): distance between two adjacent pins in a single link. Defaults to 1/2 inch.
+        roller_diameter (float): size of the cylindrical rollers within the chain. Defaults to 5/16 inch.
+        roller_length (float): distance between the inner links, i.e. the length of the link rollers.
+            Defaults to 3/32 inch.
+        link_plate_thickness (float): thickness of the link plates (both inner and outer link plates).
+            Defaults to 1 mm.
 
-    Attributes
-    ----------
-    spkt_teeth : list of int
-        a list of the number of teeth on each sprocket the chain will wrap around
-    spkt_locations : list of cq.Vector or tuple(x,y) or tuple(x,y,z)
-        the location of the sprocket centers
-    positive_chain_wrap : list Boolean
-        the direction chain wraps around the sprockets, True for counter clock wise viewed
-        from positive Z
-    chain_pitch : float
-        the distance between two adjacent pins in a single link (default 1/2 INCH)
-    roller_diameter : float
-        the size of the cylindrical rollers within the chain (default 5/16 INCH)
-    roller_length : float
-        the distance between the inner links, i.e. the length of the link rollers
-    link_plate_thickness : float
-        the thickness of the link plates (both inner and outer link plates)
-    pitch_radii : list of float
-        the radius of the circle formed by the center of the chain rollers on each sprocket
-    chain_links : float
-        the length of the chain in links
-    num_rollers : int
-        the number of link rollers in the entire chain
-    roller_loc : list[cq.Vector]
-        the location of each roller in the chain
-    chain_angles : list[(float,float)]
-        the chain entry and exit angles in degrees for each sprocket
-    spkt_initial_rotation : list of float
-        a in degrees to rotate each sprocket in-order to align the teeth with the gaps
-		in the chain
-    cq_object : cadquery.Assembly
-        the cadquery chain object
+    Attributes:
+        pitch_radii (float): radius of the circle formed by the center of the chain rollers on each sprocket
+        chain_links (int): length of the chain in links
+        num_rollers (int): number of link rollers in the entire chain
+        roller_loc (list[cq.Vector]): location of each roller in the chain
+        chain_angles (list[tuple[float,float]]): chain entry and exit angles in degrees for each sprocket
+        spkt_initial_rotation (list[float]): angle in degrees to rotate each sprocket in-order to align the teeth with the gaps in the chain
+        cq_object: cadquery chain object
 
-    Methods
-    -------
+    Raises:
+        ValueError: invalid roller diameter
+        ValueError: length of spkt_teeth, spkt_locations, positive_chain_wrap not equal
+        ValueError: sprockets in the same location
 
-    assemble_chain_transmission(spkts:list[cq.Solid or cq.Workplane],chain:Chain) -> cq.Assembly:
-        Create a cq.Assembly from an array of sprockets and a chain object
+    Examples:
 
-    make_link(chain_pitch:float,link_plate_thickness:float,inner:bool,roller_length:float,
-        roller_diameter:float) -> cq.Workplane:
-        Create either an internal or external chain link as a cq.Workplane object
+        .. code-block:: python
+
+            c = Chain(
+                spkt_teeth=[32, 32],
+                spkt_locations=[(-300, 0), (300, 0)],
+                positive_chain_wrap=[True, True]
+            )
+
+            print(c.spkt_initial_rotation)       # [5.625, 193.82627377380086]
+
+            c.cq_object.save('chain.step')       # save the cadquery assembly as a STEP file
 
     """
 
@@ -132,40 +121,40 @@ class Chain(BaseModel):
 
     @property
     def pitch_radii(self) -> List[float]:
-        """ The radius of the circle formed by the center of the chain rollers on each sprocket """
+        """The radius of the circle formed by the center of the chain rollers on each sprocket"""
         return [
             Sprocket.sprocket_pitch_radius(n, self.chain_pitch) for n in self.spkt_teeth
         ]
 
     @property
     def chain_links(self) -> float:
-        """ the length of the chain in links """
+        """the length of the chain in links"""
         return self._chain_links
 
     @property
     def num_rollers(self) -> int:
-        """ the number of link rollers in the entire chain """
+        """the number of link rollers in the entire chain"""
         return self._num_rollers
 
     @property
     def roller_loc(self) -> List[cq.Vector]:
-        """ the location of each roller in the chain """
+        """the location of each roller in the chain"""
         return self._roller_loc
 
     @property
     def chain_angles(self) -> "List[Tuple(float,float)]":
-        """ the chain entry and exit angles in degrees for each sprocket """
+        """the chain entry and exit angles in degrees for each sprocket"""
         return self._chain_angles
 
     @property
     def spkt_initial_rotation(self) -> List[float]:
-        """ a in degrees to rotate each sprocket in-order to align the teeth with the gaps
-		in the chain """
+        """a in degrees to rotate each sprocket in-order to align the teeth with the gaps
+        in the chain"""
         return self._spkt_initial_rotation
 
     @property
     def cq_object(self) -> cq.Assembly:
-        """ the cadquery chain object """
+        """the cadquery chain object"""
         return self._cq_object
 
     # Private Attributes
@@ -186,7 +175,7 @@ class Chain(BaseModel):
 
     # pylint: disable=too-few-public-methods
     class Config:
-        """ Configurate pydantic to allow cadquery native types """
+        """Configurate pydantic to allow cadquery native types"""
 
         arbitrary_types_allowed = True
 
@@ -194,7 +183,7 @@ class Chain(BaseModel):
     # pylint: disable=no-self-use
     @validator("roller_diameter")
     def is_roller_too_large(cls, v, values):
-        """ Ensure that the roller would fit in the chain """
+        """Ensure that the roller would fit in the chain"""
         if v >= values["chain_pitch"]:
             raise ValueError(
                 f"roller_diameter {v} is too large for chain_pitch {values['chain_pitch']}"
@@ -203,7 +192,7 @@ class Chain(BaseModel):
 
     @root_validator(pre=True)
     def equal_length_lists(cls, values):
-        """ Ensure equal length of sprockets, locations and wrap lists """
+        """Ensure equal length of sprockets, locations and wrap lists"""
         if (
             not len(values["spkt_teeth"])
             == len(values["spkt_locations"])
@@ -215,7 +204,7 @@ class Chain(BaseModel):
         return values
 
     def __init__(self, **data):
-        """ Validate inputs and create the chain assembly object """
+        """Validate inputs and create the chain assembly object"""
         # Use the BaseModel initializer to validate the attributes
         super().__init__(**data)
 
@@ -246,7 +235,7 @@ class Chain(BaseModel):
         self._assemble_chain()  # Build the cq.Assembly for the chain
 
     def _calc_spkt_separation(self) -> List[float]:
-        """ Determine the distance between sprockets """
+        """Determine the distance between sprockets"""
         return [
             (self._spkt_locs[(s + 1) % self._num_spkts] - self._spkt_locs[s]).Length
             for s in range(self._num_spkts)
@@ -355,7 +344,7 @@ class Chain(BaseModel):
         self._chain_angles = [*zip(entry_a, exit_a)]
 
     def _calc_segment_lengths(self):
-        """ Determine the length of the chain between and in contact with the sprockets """
+        """Determine the length of the chain between and in contact with the sprockets"""
 
         # Determine the distance between sprockets
         spkt_sep = self._calc_spkt_separation()
@@ -416,7 +405,7 @@ class Chain(BaseModel):
         self._num_rollers = floor(self._chain_length / self.chain_pitch)
 
     def _calc_roller_locations(self):
-        """ Determine the location of all the chain rollers """
+        """Determine the location of all the chain rollers"""
 
         # Calculate the 2D point where the chain enters and exits the sprockets
         spkt_entry_exit_loc = [
@@ -492,7 +481,7 @@ class Chain(BaseModel):
         ]
 
     def _assemble_chain(self):
-        """ Given the roller locations assemble the chain """
+        """Given the roller locations assemble the chain"""
         #
         # Initialize the chain assembly
         self._cq_object = cq.Assembly(None, name="chain_links")
@@ -524,8 +513,15 @@ class Chain(BaseModel):
     def assemble_chain_transmission(
         self, spkts: list[Union[cq.Solid, cq.Workplane]]
     ) -> cq.Assembly:
-        """
+        """Build Socket/Chain Assembly
+
         Create the transmission assembly from sprockets for a chain
+
+        Args:
+            spkts: sprockets to include in transmission
+
+        Returns:
+            Chain wrapped around sprockets
         """
         transmission = cq.Assembly(None, name="transmission")
 
@@ -550,13 +546,24 @@ class Chain(BaseModel):
         roller_length: float = (3 / 32) * INCH,
         roller_diameter: float = (5 / 16) * INCH,
     ) -> cq.Workplane:
-        """
+        """Create roller chain link pair
+
         Create either inner or outer link pairs.  Inner links include rollers while
         outer links include fake roller pins.
+
+        Args:
+            chain_pitch: distance between roller pin centers. Defaults to 0.5*INCH.
+            link_plate_thickness: thickness of single plate connecting rollers. Defaults to 1*MM.
+            inner: is this an inner (or outer) chain link?. Defaults to True.
+            roller_length: length of the internal roller. Defaults to (3 / 32)*INCH.
+            roller_diameter: diameter of the internal roller. Defaults to (5 / 16)*INCH.
+
+        Returns:
+            A single link pair
         """
 
         def link_plates(chain_pitch, thickness, inner=False):
-            """ Create a single chain link, either inner or outer """
+            """Create a single chain link, either inner or outer"""
             plate_scale = chain_pitch / (0.5 * INCH)
             neck = plate_scale * 4.5 * MM / 2
             plate_r = plate_scale * 8.5 * MM / 2

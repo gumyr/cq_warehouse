@@ -23,12 +23,7 @@ desc:
     with the patch command.
 
     Usage:
-        >>> python build_cadquery_patch
-        To apply the patch:
-            cd /home/gumyr/anaconda3/envs/cadquery-dev/lib/python3.9/site-packages/cadquery
-            patch -s -p4 < cadquery_extensions0.5.2.patch
-        To reverse the patch:
-            patch -R -p4 < cadquery_extensions0.5.2.patch
+        > python build_cadquery_patch <path_to_cadquery_installation>
 
     Note: this code assumes black formatting of the python files
 
@@ -56,20 +51,11 @@ import sys
 import getopt
 import os
 import re
+from tokenize import PlainToken
 from typing import Literal, Union
 import subprocess
 import tempfile
 import shutil
-import cadquery
-
-# Which CadQuery files define the Class
-# Note: Module defines where python functions go
-class_files = {
-    "occ_impl/shapes.py": ["Shape", "Vertex", "Edge", "Wire", "Face", "Module"],
-    "assembly.py": ["Assembly"],
-    "cq.py": ["Workplane"],
-    "occ_impl/geom.py": ["Plane", "Vector", "Location"],
-}
 
 
 def increase_indent(amount: int, python_code: list[str]) -> list[str]:
@@ -268,177 +254,66 @@ def prepare_extensions(python_code: list[str]) -> dict[list[dict]]:
     return code_dictionary
 
 
-def update_source_code(
-    extensions_code_dictionary: dict[list[dict]],
-    source_file_name: str,
-    source_file_location: str,
-):
-    """update_source_code
-
-    Insert the extensions source code into the cadquery source code
-
-    Args:
-        extensions_code_dictionary (dict[list[dict]]): extensions.py source code
-        source_file_name (str): name of source file
-        source_file_location (str): location of source file
-
-    Returns:
-        list(str): updated source code
-    """
-    with open(source_file_location) as f:
-        source_code = f.readlines()
-
-    for class_name in class_files[source_file_name]:
-        method_dictionaries = extensions_code_dictionary[class_name]
-        extension_methods = []
-        for method_dictionary in method_dictionaries:
-            for method_name, method_code in method_dictionary.items():
-                if class_name == "Module":
-                    code_range = code_location(method_name, "function", source_code)
-                else:
-                    code_range = code_location(
-                        class_name + "." + method_name, "method", source_code
-                    )
-                if code_range is None and class_name == "Module":
-                    source_size = len(source_code)
-                    source_code[source_size:source_size] = method_code
-                elif code_range is None:
-                    extension_methods.append(method_name)
-                else:
-                    # Delete the old code
-                    del source_code[code_range[0] : code_range[1]]
-                    # Insert the new code
-                    source_code[code_range[0] : code_range[0]] = increase_indent(
-                        4, method_code
-                    )
-
-        # Create the code block that needs to be inserted into this class
-        extension_code = []
-        for extension_method in extension_methods:
-            for method_dictionary in method_dictionaries:
-                if extension_method in method_dictionary.keys():
-                    extension_code.extend(method_dictionary[extension_method])
-        if class_name != "Module":
-            extension_code = increase_indent(4, extension_code)
-
-        if class_name == "Module":
-            class_end = len(source_code) - 1
-        else:
-            _class_start, class_end = code_location(class_name, "class", source_code)
-        source_code[class_end + 1 : class_end + 1] = extension_code
-    return source_code
-
-
-def versiontuple(v):
-    return tuple(map(int, (v.split("."))))
+def only_header(python_code: list[str]) -> list[str]:
+    docstring_count = 0
+    filtered_code = []
+    for line in python_code:
+        filtered_code.append(line)
+        if '"""' in line:
+            docstring_count += 1
+        if docstring_count == 2:
+            break
+    return filtered_code
 
 
 def main(argv):
-    # Find the location of cadquery
-    cadquery_path = os.path.dirname(cadquery.__file__)
 
-    # Does the cadquery path exist and point to cadquery
-    if not os.path.isfile(os.path.join(cadquery_path, "cq.py")):
-        print(f"{cadquery_path} is invalid - cq.py should be in this directory")
-        sys.exit(2)
-
-    # Find the location and version of cq_warehouse
+    # Find the cq_warehouse extensions.py file and read it
     pip_command = subprocess.run(
         ["python", "-m", "pip", "show", "cq_warehouse"], capture_output=True
     )
-    if pip_command.stderr:
-        raise RuntimeError(pip_command.stderr.decode("utf-8"))
-
     pip_command_dictionary = dict(
         entry.split(": ", 1)
         for entry in pip_command.stdout.decode("utf-8").split("\n")
         if ":" in entry
     )
-
-    # Verify cq_warehouse version
-    extensions_version = pip_command_dictionary["Version"]
-    if versiontuple(extensions_version) < versiontuple("0.5.2"):
-        raise RuntimeError(
-            f"Version error - cq_warehouse version {extensions_version} must be >= 0.5.2"
-        )
-
-    # Read the cq_warehouse extensions.py file
     extensions_path = os.path.join(
         pip_command_dictionary["Location"], "cq_warehouse/extensions.py"
     )
-    with open(extensions_path) as f:
-        extensions_python_code = f.readlines()
-
-    # Prepare a location to diff the original and extended versions
-    temp_directory = tempfile.TemporaryDirectory()
-    temp_directory_path = temp_directory.name
-    original_directory_path = os.path.join(temp_directory_path, "original")
-    extended_directory_path = os.path.join(temp_directory_path, "extensions")
-    shutil.copytree(cadquery_path, original_directory_path)
-    shutil.copytree(cadquery_path, extended_directory_path)
+    with open(extensions_path) as doc_file:
+        extensions_python_code = doc_file.readlines()
 
     # Organize the extensions monkeypatched code into class(s), method(s)
     extensions_code_dictionary = prepare_extensions(extensions_python_code)
 
-    # Update existing methods and add new ones for each of the source files
-    for source_file_name in class_files.keys():
-        source_file_location = os.path.join(cadquery_path, source_file_name)
-        source_code = update_source_code(
-            extensions_code_dictionary, source_file_name, source_file_location
-        )
-
-        # Write extended source file
-        extended_file_name = (
-            os.path.basename(source_file_name).split(".py")[0] + "_extended.py"
-        )
-        f = open(extended_file_name, "w")
-        f.writelines(source_code)
-        f.close()
-
-        # Run black on the resulting file to ensure formatting is correct
-        # .. danger of format changes polluting the patch
-        # subprocess.run(["black", output_file_name])
-
-        # Replace the original files in the extensions temp directory
-        shutil.copyfile(
-            extended_file_name, os.path.join(extended_directory_path, source_file_name)
-        )
-        # Copy the extended files into the cq_warehouse source directory for reference
-        shutil.copyfile(
-            extended_file_name,
-            os.path.join(
-                pip_command_dictionary["Location"], "cq_warehouse", extended_file_name
-            ),
-        )
-
-    # Create the patch file
-    patch_file_name = "cadquery_extensions" + extensions_version + ".patch"
-    with open(patch_file_name, "w") as patch_file:
-        subprocess.run(
-            [
-                "diff",
-                "-rN",
-                "-U",
-                "5",
-                original_directory_path,
-                extended_directory_path,
-            ],
-            stdout=patch_file,
-        )
-    # Copy the patch to the cadquery original source directory
-    shutil.copyfile(
-        patch_file_name,
-        os.path.join(cadquery_path, patch_file_name),
+    doc_file_path = os.path.join(
+        pip_command_dictionary["Location"], "cq_warehouse/extensions_doc.py"
     )
-
-    print(
-        f"Created the {patch_file_name} file and copied it to cadquery source directory"
+    print(f"Creating extensions documentation file: {doc_file_path}")
+    doc_file = open(doc_file_path, "w")
+    doc_file.writelines(
+        [
+            "from typing import Union, Tuple, Optional, Literal\n"
+            "from cq_warehouse.fastener import Screw, Nut, Washer\n"
+            "class gp_Ax1:\n    pass\n",
+            "class T:\n    pass\n",
+            "class VectorLike:\n    pass\n",
+            "class BoundBox:\n    pass\n",
+            "class Solid:\n    pass\n",
+            "class Compound:\n    pass\n",
+            "class Location:\n    pass\n",
+        ]
     )
-    print("To apply the patch:")
-    print(f"    cd {cadquery_path}")
-    print(f"    patch -s -p4 < {patch_file_name}")
-    print("To reverse the patch:")
-    print(f"    patch -R -p4 < {patch_file_name}")
+    for class_name, method_dictionaries in extensions_code_dictionary.items():
+        if class_name != "Module":
+            doc_file.writelines([f"class {class_name}(object):\n"])
+        for method_dictionary in method_dictionaries:
+            for method_name, method_code in method_dictionary.items():
+                if class_name == "Module":
+                    doc_file.writelines(only_header(method_code))
+                else:
+                    doc_file.writelines(only_header(increase_indent(4, method_code)))
+    doc_file.close()
 
 
 if __name__ == "__main__":

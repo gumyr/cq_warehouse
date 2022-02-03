@@ -55,6 +55,8 @@ from cadquery import (
     DirectionMinMaxSelector,
 )
 
+# from cq_warehouse.fastener import Screw, Nut, Washer
+
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace
 from OCP.ShapeAnalysis import ShapeAnalysis_FreeBounds
 from OCP.TopTools import TopTools_HSequenceOfShape
@@ -85,7 +87,7 @@ from OCP.gp import gp_Vec, gp_Pnt, gp_Ax1, gp_Dir, gp_Trsf, gp, gp_GTrsf
 
 """
 
-Assembly extensions: rotate(), translate()
+Assembly extensions: rotate(), translate(), fastenerQuantities(), fastenerLocations()
 
 """
 
@@ -95,14 +97,13 @@ def _assembly_translate(self, vec: "VectorLike") -> "Assembly":
     Moves the current assembly (without making a copy) by the specified translation vector
 
     Args:
-        vec (VectorLike): The translation vector
+        vec: The translation vector
 
     Returns:
-        Assembly: The translated Assembly
+        The translated Assembly
 
     Example:
         plain_assembly.translate((1,2,3))
-
     """
     self.loc = self.loc * Location(Vector(vec))
     return self
@@ -118,11 +119,11 @@ def _assembly_rotate(self, axis: "VectorLike", angle: float) -> "Assembly":
     by the specified angle
 
     Args:
-        axis (VectorLike): The axis of rotation (starting at the origin)
-        angle (float): The rotation angle, in degrees
+        axis: The axis of rotation (starting at the origin)
+        angle: The rotation angle, in degrees
 
     Returns:
-        Assembly: The rotated Assembly
+        The rotated Assembly
 
     Example:
         plain_assembly.rotate((0,0,1),90)
@@ -133,6 +134,89 @@ def _assembly_rotate(self, axis: "VectorLike", angle: float) -> "Assembly":
 
 Assembly.rotate = _assembly_rotate
 
+
+def _fastener_quantities(self, bom: bool = True, deep: bool = True) -> dict:
+    """Fastener Quantities
+
+    Generate a bill of materials of the fasteners in an assembly augmented by the hole methods
+    bom: returns fastener.info if True else counts fastener instances
+
+    Args:
+        bom (bool, optional): Select a Bill of Materials or raw fastener instance count. Defaults to True.
+        deep (bool, optional): Scan the entire Assembly. Defaults to True.
+
+    Returns:
+        fastener usage summary
+    """
+    assembly_list = []
+    if deep:
+        for _name, sub_assembly in self.traverse():
+            assembly_list.append(sub_assembly)
+    else:
+        assembly_list.append(self)
+
+    fasteners = []
+    for sub_assembly in assembly_list:
+        for value in sub_assembly.metadata.values():
+            if isinstance(value, (Screw, Nut, Washer)):
+                fasteners.append(value)
+
+    unique_fasteners = set(fasteners)
+    if bom:
+        quantities = {f.info: fasteners.count(f) for f in unique_fasteners}
+    else:
+        quantities = {f: fasteners.count(f) for f in unique_fasteners}
+    return quantities
+
+
+Assembly.fastenerQuantities = _fastener_quantities
+
+
+def _fastener_locations(self, fastener: Union["Nut", "Screw"]) -> list[Location]:
+    """Return location(s) of fastener
+
+    Generate a list of cadquery Locations for the given fastener relative to the Assembly
+
+    Args:
+        fastener: fastener to search for
+
+    Returns:
+        a list of cadquery Location objects for each fastener instance
+    """
+
+    name_to_fastener = {}
+    base_assembly_structure = {}
+    # Extract a list of only the fasteners from the metadata
+    for (name, a) in self.traverse():
+        base_assembly_structure[name] = a
+        if a.metadata is None:
+            continue
+
+        for key, value in a.metadata.items():
+            if value == fastener:
+                name_to_fastener[key] = value
+
+    fastener_path_locations = {}
+    base_assembly_path = self._flatten()
+    for assembly_name, _assembly_pointer in base_assembly_path.items():
+        for fastener_name in name_to_fastener.keys():
+            if fastener_name in assembly_name:
+                parents = assembly_name.split("/")
+                fastener_path_locations[fastener_name] = [
+                    base_assembly_structure[name].loc for name in parents
+                ]
+
+    fastener_locations = [
+        reduce(lambda l1, l2: l1 * l2, locs)
+        for locs in fastener_path_locations.values()
+    ]
+
+    return fastener_locations
+
+
+Assembly.fastenerLocations = _fastener_locations
+
+
 """
 
 Plane extensions: toLocalCoords()
@@ -140,19 +224,20 @@ Plane extensions: toLocalCoords()
 """
 
 
-def _toLocalCoords(self, obj):
+def _toLocalCoords(self, obj: Union["Vector", "Shape", "BoundBox"]):
     """Project the provided coordinates onto this plane
 
-    :param obj: an object, vector, or bounding box to convert
-    :type Vector, Shape, or BoundBox
-    :return: an object of the same type, but converted to local coordinates
+    Args:
+        obj: an object, vector, or bounding box to convert
+
+    Returns:
+        an object of the same type, but converted to local coordinates
 
     Most of the time, the z-coordinate returned will be zero, because most
     operations based on a plane are all 2D. Occasionally, though, 3D
     points outside of the current plane are transformed. One such example is
     :py:meth:`Workplane.box`, where 3D corners of a box are transformed to
     orient the box in space correctly.
-
     """
     # from .shapes import Shape
 
@@ -180,36 +265,39 @@ Plane.toLocalCoords = _toLocalCoords
 
 """
 
-Vector extensions: rotateX(), rotateY(), rotateZ(), pointToVector(), toVertex(), getSignedAngle()
+Vector extensions: rotateX(), rotateY(), rotateZ(), toVertex(), getSignedAngle()
 
 """
 
 
-def _rotate(self, direction: gp_Ax1, angle: float):
+def _vector_rotate(self, direction: gp_Ax1, angle: float):
     """Rotate Vector about axis
 
     Rotate a Vector angle degrees about axis defined by direction
 
     Args:
-        direction (gp_Ax1): rotation axis
-        angle (float): rotation angle in degrees
+        direction: rotation axis
+        angle: rotation angle in degrees
+
+    Returns:
+        Rotated Vector
     """
     new = gp_Trsf()
     new.SetRotation(direction, math.pi * angle / 180)
     self.wrapped = self.wrapped * gp_GTrsf(new)
 
 
-Vector._rotate = _rotate
+Vector._rotate = _vector_rotate
 
 
 def _vector_rotate_x(self, angle: float) -> "Vector":
     """Rotate Vector about X-Axis
 
     Args:
-        angle (float): Angle in degrees
+        angle: Angle in degrees
 
     Returns:
-        Vector: Rotated Vector
+        Rotated Vector
     """
     self._rotate(gp.OX_s(), angle)
 
@@ -221,10 +309,10 @@ def _vector_rotate_y(self, angle: float) -> "Vector":
     """Rotate Vector about Y-Axis
 
     Args:
-        angle (float): Angle in degrees
+        angle: Angle in degrees
 
     Returns:
-        Vector: Rotated Vector
+        Rotated Vector
     """
     self._rotate(gp.OY_s(), angle)
 
@@ -236,10 +324,10 @@ def _vector_rotate_z(self, angle: float) -> "Vector":
     """Rotate Vector about Z-Axis
 
     Args:
-        angle (float): Angle in degrees
+        angle: Angle in degrees
 
     Returns:
-        Vector: Rotated Vector
+        Rotated Vector
     """
     self._rotate(gp.OZ_s(), angle)
 
@@ -251,7 +339,7 @@ def _vector_to_vertex(self) -> "Vertex":
     """Convert to Vector to Vertex
 
     Returns:
-        Vertex: Vertex equivalent of Vector
+        Vertex equivalent of Vector
     """
     return Vertex.makeVertex(*self.toTuple())
 
@@ -263,14 +351,15 @@ def _getSignedAngle(self, v: "Vector", normal: "Vector" = None) -> float:
     """Signed Angle Between Vectors
 
     Return the signed angle in RADIANS between two vectors with the given normal
-    based on this math: angle = atan2((Va x Vb) . Vn, Va . Vb)
+    based on this math: angle = atan2((Va × Vb) ⋅ Vn, Va ⋅ Vb)
 
     Args:
-        v (Vector): Second Vector
-        normal (Vector, optional): Vector's Normal. Defaults to -Z Axis.
+        v: Second Vector.
+
+        normal: Vector's Normal. Defaults to -Z Axis.
 
     Returns:
-        float: Angle between vectors
+        Angle between vectors
     """
     if normal is None:
         gp_normal = gp_Vec(0, 0, -1)
@@ -284,7 +373,7 @@ Vector.getSignedAngle = _getSignedAngle
 
 """
 
-Vertex extensions: __add__(), __sub__(), __str__()
+Vertex extensions: __add__(), __sub__(), __str__(), toVector
 
 """
 
@@ -297,13 +386,13 @@ def _vertex_add__(
     Add to a Vertex with a Vertex, Vector or Tuple
 
     Args:
-        other (Union[Vertex, Vector, Tuple[float, float, float]]): Value to add
+        other: Value to add
 
     Raises:
         TypeError: other not in [Tuple,Vector,Vertex]
 
     Returns:
-        Vertex: Result
+        Result
 
     Example:
         part.faces(">Z").vertices("<Y and <X").val() + (0, 0, 15)
@@ -311,7 +400,6 @@ def _vertex_add__(
         which creates a new Vertex 15mm above one extracted from a part. One can add or
         subtract a cadquery ``Vertex``, ``Vector`` or ``tuple`` of float values to a
         Vertex with the provided extensions.
-
     """
     if isinstance(other, Vertex):
         new_vertex = Vertex.makeVertex(
@@ -338,13 +426,13 @@ def _vertex_sub__(self, other: Union["Vertex", "Vector", tuple]) -> "Vertex":
     Substract a Vertex with a Vertex, Vector or Tuple from self
 
     Args:
-        other (Union[Vertex, Vector, Tuple[float, float, float]]): Value to add
+        other: Value to add
 
     Raises:
         TypeError: other not in [Tuple,Vector,Vertex]
 
     Returns:
-        Vertex: Result
+        Result
 
     Example:
         part.faces(">Z").vertices("<Y and <X").val() - Vector(10, 0, 0)
@@ -374,7 +462,7 @@ def _vertex_str__(self) -> str:
     Convert Vertex to String for display
 
     Returns:
-        str: Vertex as String
+        Vertex as String
     """
     return f"Vertex: ({self.X}, {self.Y}, {self.Z})"
 
@@ -388,7 +476,7 @@ def _vertex_to_vector(self) -> "Vector":
     Convert a Vertex to Vector
 
     Returns:
-        Vector: Result
+        Vector representation of Vertex
     """
     return Vector(self.toTuple())
 
@@ -398,7 +486,8 @@ Vertex.toVector = _vertex_to_vector
 
 """
 
-Workplane extensions: textOnPath(), hexArray(), thicken()
+Workplane extensions: textOnPath(), hexArray(), thicken(), fastenerHole(), clearanceHole(),
+                      tapHole(), threadedHole(), pushFastenerLocations()
 
 """
 
@@ -428,19 +517,22 @@ def _textOnPath(
     Workplane stack. Path's defined outside of the Workplane can be used with the
     ``.add(path)`` method.
 
-    :param txt: text to be rendered
-    :param fontsize: size of the font in model units
-    :param distance: the distance to extrude or cut, normal to the workplane plane
-    :type distance: float, negative means opposite the normal direction
-    :param start: the relative location on path to start the text
-    :type start: float, values must be between 0.0 and 1.0
-    :param cut: True to cut the resulting solid from the parent solids if found
-    :param combine: True to combine the resulting solid with parent solids if found
-    :param clean: call :py:meth:`clean` afterwards to have a clean shape
-    :param font: font name
-    :param fontPath: path to font file
-    :param kind: font type
-    :return: a CQ object with the resulting solid selected
+    .. image:: textOnPath.png
+
+    Args:
+        txt: text to be rendered
+        fontsize: size of the font in model units
+        distance: the distance to extrude or cut, normal to the workplane plane, negative means opposite the normal direction
+        start: the relative location on path to start the text, values must be between 0.0 and 1.0
+        cut: True to cut the resulting solid from the parent solids if found
+        combine: True to combine the resulting solid with parent solids if found
+        clean: call :py:meth:`clean` afterwards to have a clean shape
+        font: font name
+        fontPath: path to font file
+        kind: font type
+
+    Returns:
+        a CQ object with the resulting solid selected
 
     The returned object is always a Workplane object, and depends on whether combine is True, and
     whether a context solid is already defined:
@@ -562,18 +654,23 @@ def _hexArray(
     yCount: int,
     center: Union[bool, tuple[bool, bool]] = True,
 ):
-    """
+    """Create Hex Array
+
     Creates a hexagon array of points and pushes them onto the stack.
     If you want to position the array at another point, create another workplane
     that is shifted to the position you would like to use as a reference
 
-    :param diagonal: tip to tip size of hexagon ( must be > 0)
-    :param xCount: number of points ( > 0 )
-    :param yCount: number of points ( > 0 )
-    :param center: If True, the array will be centered around the workplane center.
-      If False, the lower corner will be on the reference point and the array will
-      extend in the positive x and y directions. Can also use a 2-tuple to specify
-      centering along each axis.
+    Args:
+        diagonal: tip to tip size of hexagon ( must be > 0)
+        xCount: number of points ( > 0 )
+        yCount: number of points ( > 0 )
+        center: If True, the array will be centered around the workplane center.
+            If False, the lower corner will be on the reference point and the array will
+            extend in the positive x and y directions. Can also use a 2-tuple to specify
+            centering along each axis.
+
+    Returns:
+        Places points on the Workplane stack
     """
     xSpacing = 3 * diagonal / 4
     ySpacing = diagonal * math.sqrt(3) / 2
@@ -612,11 +709,11 @@ def _workplane_thicken(self, depth: float, direction: "Vector" = None):
     along the normals.
 
     Args:
-        depth (float): Amount to thicken face(s), can be positive or negative.
-        direction (Vector, optional): The direction vector can be used to
-        indicate which way is 'up', potentially flipping the face normal direction
-        such that many faces with different normals all go in the same direction
-        (direction need only be +/- 90 degrees from the face normal). Defaults to None.
+        depth: Amount to thicken face(s), can be positive or negative.
+        direction: The direction vector can be used to
+            indicate which way is 'up', potentially flipping the face normal direction
+            such that many faces with different normals all go in the same direction
+            (direction need only be +/- 90 degrees from the face normal). Defaults to None.
 
     Returns:
         A set of new objects on the Workplane stack
@@ -626,6 +723,310 @@ def _workplane_thicken(self, depth: float, direction: "Vector" = None):
 
 Workplane.thicken = _workplane_thicken
 
+
+def _fastenerHole(
+    self: T,
+    hole_diameters: dict,
+    fastener: Union["Nut", "Screw"],
+    depth: float,
+    washers: list["Washer"],
+    fit: Optional[Literal["Close", "Normal", "Loose"]] = None,
+    material: Optional[Literal["Soft", "Hard"]] = None,
+    counterSunk: Optional[bool] = True,
+    baseAssembly: Optional[Assembly] = None,
+    hand: Optional[Literal["right", "left"]] = None,
+    simple: Optional[bool] = False,
+    clean: Optional[bool] = True,
+) -> T:
+    """Fastener Specific Hole
+
+    Makes a counterbore clearance, tap or threaded hole for the given screw for each item
+    on the stack. The surface of the hole is at the current workplane.
+
+    Args:
+        hole_diameters: either clearance or tap hole diameter specifications
+        fastener: A nut or screw instance
+        depth: hole depth
+        washers: A list of washer instances, can be empty
+        fit: one of "Close", "Normal", "Loose" which determines clearance hole diameter. Defaults to None.
+        material: on of "Soft", "Hard" which determines tap hole size. Defaults to None.
+        counterSunk: Is the fastener countersunk into the part?. Defaults to True.
+        baseAssembly: Assembly to add faster to. Defaults to None.
+        hand: tap hole twist direction either "right" or "left". Defaults to None.
+        simple: tap hole thread complexity selector. Defaults to False.
+        clean: execute a clean operation remove extraneous internal features. Defaults to True.
+
+    Raises:
+        ValueError: fit or material not in hole_diameters dictionary
+
+    Returns:
+        the shape on the workplane stack with a new hole
+    """
+
+    # If there is a thread direction, this is a threaded hole
+    threaded_hole = not hand is None
+
+    bore_direction = Vector(0, 0, -1)
+    origin = Vector(0, 0, 0)
+
+    # Setscrews' countersink_profile is None so check if it exists
+    countersink_profile = fastener.countersink_profile(fit)
+    if counterSunk and not countersink_profile is None:
+        head_offset = countersink_profile.vertices(">Z").val().Z
+        countersink_cutter = (
+            countersink_profile.revolve().translate((0, 0, -head_offset)).val()
+        )
+    else:
+        head_offset = 0
+
+    if threaded_hole:
+        hole_radius = fastener.thread_diameter / 2
+    else:
+        key = fit if material is None else material
+        try:
+            hole_radius = hole_diameters[key] / 2
+        except KeyError as e:
+            raise ValueError(
+                f"{key} invalid, must be one of {list(hole_diameters.keys())}"
+            ) from e
+
+    shank_hole = Solid.makeCylinder(
+        radius=hole_radius,
+        height=depth,
+        pnt=origin,
+        dir=bore_direction,
+    )
+    if counterSunk and not countersink_profile is None:
+        fastener_hole = countersink_cutter.fuse(shank_hole)
+    else:
+        fastener_hole = shank_hole
+
+    cskAngle = 82  # Common tip angle
+    h = hole_radius / tan(radians(cskAngle / 2.0))
+    drill_tip = Solid.makeCone(
+        hole_radius, 0.0, h, bore_direction * depth, bore_direction
+    )
+    fastener_hole = fastener_hole.fuse(drill_tip)
+
+    # Record the location of each hole for use in the assembly
+    null_object = Solid.makeBox(1, 1, 1)
+    relocated_test_objects = self.eachpoint(lambda loc: null_object.moved(loc), True)
+    hole_locations = [loc.location() for loc in relocated_test_objects.vals()]
+
+    # Add fasteners and washers to the base assembly if it was provided
+    if baseAssembly is not None:
+        for hole_loc in hole_locations:
+            washer_thicknesses = 0
+            if not washers is None:
+                for washer in washers:
+                    baseAssembly.add(
+                        washer.cq_object,
+                        loc=hole_loc
+                        * Location(
+                            bore_direction
+                            * (
+                                head_offset
+                                - fastener.length_offset()
+                                - washer_thicknesses
+                            )
+                        ),
+                    )
+                    washer_thicknesses += washer.washer_thickness
+                    # Create a metadata entry associating the auto-generated name & fastener
+                    baseAssembly.metadata[baseAssembly.children[-1].name] = washer
+
+            baseAssembly.add(
+                fastener.cq_object,
+                loc=hole_loc
+                * Location(
+                    bore_direction
+                    * (head_offset - fastener.length_offset() - washer_thicknesses)
+                ),
+            )
+            # Create a metadata entry associating the auto-generated name & fastener
+            baseAssembly.metadata[baseAssembly.children[-1].name] = fastener
+
+    # Make holes in the stack solid object
+    part = self.cutEach(lambda loc: fastener_hole.moved(loc), True, False)
+
+    # Add threaded inserts
+    if threaded_hole and not simple:
+        thread = IsoThread(
+            major_diameter=fastener.thread_diameter,
+            pitch=fastener.thread_pitch,
+            length=depth - head_offset,
+            external=False,
+            hand=hand,
+        )
+        for hole_loc in hole_locations:
+            part = part.union(
+                thread.cq_object.moved(hole_loc * Location(bore_direction * depth))
+            )
+    if clean:
+        part = part.clean()
+    return part
+
+
+Workplane.fastenerHole = _fastenerHole
+
+
+def _clearanceHole(
+    self: T,
+    fastener: Union["Nut", "Screw"],
+    washers: Optional[list["Washer"]] = None,
+    fit: Optional[Literal["Close", "Normal", "Loose"]] = "Normal",
+    depth: Optional[float] = None,
+    counterSunk: Optional[bool] = True,
+    baseAssembly: Optional[Assembly] = None,
+    clean: Optional[bool] = True,
+) -> T:
+    """Clearance Hole
+
+    Put a clearance hole in a shape at the provided location
+
+    Args:
+        fastener: A nut or screw instance
+        washers: A list of washer instances, can be empty
+        fit: one of "Close", "Normal", "Loose" which determines clearance hole diameter. Defaults to None.
+        depth: hole depth. Defaults to through part.
+        counterSunk: Is the fastener countersunk into the part?. Defaults to True.
+        baseAssembly: Assembly to add faster to. Defaults to None.
+        clean: execute a clean operation remove extraneous internal features. Defaults to True.
+
+    Returns:
+        the shape on the workplane stack with a new clearance hole
+    """
+    if depth is None:
+        depth = self.largestDimension()
+
+    return self.fastenerHole(
+        hole_diameters=fastener.clearance_hole_diameters,
+        fastener=fastener,
+        washers=washers,
+        fit=fit,
+        depth=depth,
+        counterSunk=counterSunk,
+        baseAssembly=baseAssembly,
+        clean=clean,
+    )
+
+
+def _tapHole(
+    self: T,
+    fastener: Union["Nut", "Screw"],
+    washers: Optional[list["Washer"]] = None,
+    material: Optional[Literal["Soft", "Hard"]] = "Soft",
+    depth: Optional[float] = None,
+    counterSunk: Optional[bool] = True,
+    fit: Optional[Literal["Close", "Normal", "Loose"]] = "Normal",
+    baseAssembly: Optional[Assembly] = None,
+    clean: Optional[bool] = True,
+) -> T:
+    """Tap Hole
+
+    Put a tap hole in a shape at the provided location
+
+    Args:
+        fastener: A nut or screw instance
+        washers: A list of washer instances, can be empty
+        material: on of "Soft", "Hard" which determines tap hole size. Defaults to None.
+        depth: hole depth. Defaults to through part.
+        counterSunk: Is the fastener countersunk into the part?. Defaults to True.
+        fit: one of "Close", "Normal", "Loose" which determines clearance hole diameter. Defaults to None.
+        baseAssembly: Assembly to add faster to. Defaults to None.
+        clean: execute a clean operation remove extraneous internal features. Defaults to True.
+
+    Returns:
+        the shape on the workplane stack with a new tap hole
+    """
+    if depth is None:
+        depth = self.largestDimension()
+
+    return self.fastenerHole(
+        hole_diameters=fastener.tap_hole_diameters,
+        fastener=fastener,
+        washers=washers,
+        fit=fit,
+        material=material,
+        depth=depth,
+        counterSunk=counterSunk,
+        baseAssembly=baseAssembly,
+        clean=clean,
+    )
+
+
+def _threadedHole(
+    self: T,
+    fastener: "Screw",
+    depth: float,
+    washers: Optional[list["Washer"]] = None,
+    hand: Literal["right", "left"] = "right",
+    simple: Optional[bool] = False,
+    counterSunk: Optional[bool] = True,
+    fit: Optional[Literal["Close", "Normal", "Loose"]] = "Normal",
+    baseAssembly: Optional[Assembly] = None,
+    clean: Optional[bool] = True,
+) -> T:
+    """Threaded Hole
+
+    Put a threaded hole in a shape at the provided location
+
+    Args:
+        fastener: A nut or screw instance
+        depth: hole depth. Defaults to through part.
+        washers: A list of washer instances, can be empty
+        hand: tap hole twist direction either "right" or "left". Defaults to None.
+        simple (Optional[bool], optional): [description]. Defaults to False.
+        counterSunk: Is the fastener countersunk into the part?. Defaults to True.
+        fit: one of "Close", "Normal", "Loose" which determines clearance hole diameter. Defaults to None.
+        baseAssembly: Assembly to add faster to. Defaults to None.
+        clean: execute a clean operation remove extraneous internal features. Defaults to True.
+
+    Returns:
+        the shape on the workplane stack with a new threaded hole
+    """
+    return self.fastenerHole(
+        hole_diameters=fastener.clearance_hole_diameters,
+        fastener=fastener,
+        washers=washers,
+        fit=fit,
+        depth=depth,
+        counterSunk=counterSunk,
+        baseAssembly=baseAssembly,
+        hand=hand,
+        simple=simple,
+        clean=clean,
+    )
+
+
+Workplane.clearanceHole = _clearanceHole
+Workplane.tapHole = _tapHole
+Workplane.threadedHole = _threadedHole
+
+
+def _push_fastener_locations(
+    self: T,
+    fastener: Union["Nut", "Screw"],
+    baseAssembly: Assembly,
+):
+    """Push Fastener Locations
+
+    Push the Location(s) of the given fastener relative to the given Assembly onto the workplane stack.
+
+    Returns:
+        Location objects on the workplane stack
+    """
+
+    # The locations need to be pushed as global not local object locations
+    ns = self.__class__()
+    ns.plane = Plane(origin=(0, 0, 0), xDir=(1, 0, 0), normal=(0, 0, 1))
+    ns.parent = self
+    ns.objects = baseAssembly.fastenerLocations(fastener)
+    ns.ctx = self.ctx
+    return ns
+
+
+Workplane.pushFastenerLocations = _push_fastener_locations
 
 """
 
@@ -639,18 +1040,22 @@ def _face_thicken(self, depth: float, direction: "Vector" = None) -> "Solid":
 
     Create a solid from a potentially non planar face by thickening along the normals.
 
+    .. image:: thickenFace.png
+
+    Non-planar faces are thickened both towards and away from the center of the sphere.
+
     Args:
-        depth (float): Amount to thicken face(s), can be positive or negative.
-        direction (Vector, optional): The direction vector can be used to
-        indicate which way is 'up', potentially flipping the face normal direction
-        such that many faces with different normals all go in the same direction
-        (direction need only be +/- 90 degrees from the face normal). Defaults to None.
+        depth: Amount to thicken face(s), can be positive or negative.
+        direction: The direction vector can be used to
+            indicate which way is 'up', potentially flipping the face normal direction
+            such that many faces with different normals all go in the same direction
+            (direction need only be +/- 90 degrees from the face normal). Defaults to None.
 
     Raises:
         RuntimeError: Opencascade internal failures
 
     Returns:
-        Solid: The resulting Solid object
+        The resulting Solid object
     """
 
     # Check to see if the normal needs to be flipped
@@ -719,16 +1124,16 @@ def _face_projectToShape(
     this purpose.
 
     Args:
-        targetObject (Shape): Object to project onto
-        direction (VectorLike, optional): Parallel projection direction. Defaults to None.
-        center (VectorLike, optional): Conical center of projection. Defaults to None.
-        internalFacePoints (list[Vector], optional): Points refining shape. Defaults to [].
+        targetObject: Object to project onto
+        direction: Parallel projection direction. Defaults to None.
+        center: Conical center of projection. Defaults to None.
+        internalFacePoints: Points refining shape. Defaults to [].
 
     Raises:
         ValueError: Only one of direction or center must be provided
 
     Returns:
-        list[Face]: Face(s) projected on target object
+        Face(s) projected on target object
     """
 
     # There are four phase to creation of the projected face:
@@ -834,10 +1239,10 @@ def _face_embossToShape(
     parameter works as with projection.
 
     Args:
-        targetObject (Shape): Object to emboss onto
-        surfacePoint (VectorLike): Point on target object to start embossing
-        surfaceXDirection (VectorLike): Direction of X-Axis on target object
-        internalFacePoints (list[Vector], optional): Surface refinement points. Defaults to [].
+        targetObject: Object to emboss onto
+        surfacePoint: Point on target object to start embossing
+        surfaceXDirection: Direction of X-Axis on target object
+        internalFacePoints: Surface refinement points. Defaults to [].
 
     Returns:
         Face: Embossed face
@@ -920,15 +1325,15 @@ def makeNonPlanarFace(
     interiorWires.
 
     Args:
-        exterior (Union[Wire, list[Edge]]): Perimeter of face
-        surfacePoints (list[VectorLike], optional): Points on the surface that refine the shape. Defaults to None.
-        interiorWires (list[Wire], optional): Hole(s) in the face. Defaults to None.
+        exterior: Perimeter of face
+        surfacePoints: Points on the surface that refine the shape. Defaults to None.
+        interiorWires: Hole(s) in the face. Defaults to None.
 
     Raises:
         RuntimeError: Opencascade core exceptions building face
 
     Returns:
-        Face: Non planar face
+        Non planar face
     """
 
     surface_points = [Vector(p) for p in surfacePoints]
@@ -1006,15 +1411,14 @@ def _wire_makeNonPlanarFace(
     creation of a planar face.
 
     Args:
-        surfacePoints (list[VectorLike], optional): Points on the surface that refine the shape. Defaults to None.
-        interiorWires (list[Wire], optional): Hole(s) in the face. Defaults to None.
+        surfacePoints: Points on the surface that refine the shape. Defaults to None.
+        interiorWires: Hole(s) in the face. Defaults to None.
 
     Raises:
         RuntimeError: Opencascade core exceptions building face
 
     Returns:
-        Face: Non planar face
-
+        Non planar face
     """
     return makeNonPlanarFace(self, surfacePoints, interiorWires)
 
@@ -1039,15 +1443,15 @@ def _projectWireToShape(
     of the output wires are forced to be the same as self.
 
     Args:
-        targetObject (Shape): Object to project onto
-        direction (VectorLike, optional): Parallel projection direction. Defaults to None.
-        center (VectorLike, optional): Conical center of projection. Defaults to None.
+        targetObject: Object to project onto
+        direction: Parallel projection direction. Defaults to None.
+        center: Conical center of projection. Defaults to None.
 
     Raises:
         ValueError: Only one of direction or center must be provided
 
     Returns:
-        list[Wire]: Projected wire(s)
+        Projected wire(s)
     """
     if not (direction is None) ^ (center is None):
         raise ValueError("One of either direction or center must be provided")
@@ -1133,17 +1537,25 @@ def _embossWireToShape(
     Emboss an Wire on the XY plane onto a Shape while maintaining
     original wire dimensions where possible.
 
+    .. image:: embossWire.png
+
+    The embossed wire can be used to build features as:
+
+    .. image:: embossFeature.png
+
+    with the ``sweep`` method.
+
     Args:
-        targetObject (Shape): Object to emboss onto
-        surfacePoint (VectorLike): Point on target object to start embossing
-        surfaceXDirection (VectorLike): Direction of X-Axis on target object
-        tolerance (float, optional): maximum allowed error in embossed wire length. Defaults to 0.01.
+        targetObject: Object to emboss onto
+        surfacePoint: Point on target object to start embossing
+        surfaceXDirection: Direction of X-Axis on target object
+        tolerance: maximum allowed error in embossed wire length. Defaults to 0.01.
 
     Raises:
         RuntimeError: Embosses wire is invalid
 
     Returns:
-        Wire: Embossed wire
+        Embossed wire
     """
     planar_edges = self.Edges()
     planar_closed = self.IsClosed()
@@ -1253,15 +1665,15 @@ def _projectEdgeToShape(
     of the output wires are forced to be the same as self.
 
     Args:
-        targetObject (Shape): Object to project onto
-        direction (VectorLike, optional): Parallel projection direction. Defaults to None.
-        center (VectorLike, optional): Conical center of projection. Defaults to None.
+        targetObject: Object to project onto
+        direction: Parallel projection direction. Defaults to None.
+        center: Conical center of projection. Defaults to None.
 
     Raises:
         ValueError: Only one of direction or center must be provided
 
     Returns:
-        list[Edge]: Projected Edge(s)
+        Projected Edge(s)
     """
     return self._projectWireToShape(targetObject, direction, center)
 
@@ -1282,13 +1694,13 @@ def _embossEdgeToShape(
     original edge dimensions where possible.
 
     Args:
-        targetObject (Shape): Object to emboss onto
-        surfacePoint (VectorLike): Point on target object to start embossing
-        surfaceXDirection (VectorLike): Direction of X-Axis on target object
-        tolerance (float): maximum allowed error in embossed edge length
+        targetObject: Object to emboss onto
+        surfacePoint: Point on target object to start embossing
+        surfaceXDirection: Direction of X-Axis on target object
+        tolerance: maximum allowed error in embossed edge length
 
     Returns:
-        Edge: Embossed edge
+        Embossed edge
     """
 
     # Algorithm - piecewise approximation of points on surface -> generate spline:
@@ -1392,12 +1804,11 @@ def _findIntersection(
     Return both the point(s) and normal(s) of the intersection of the line and the shape
 
     Args:
-        self (Shape): shape to intersect
-        point (Vector): point on intersecting line
-        direction (Vector): direction of intersecting line
+        point: point on intersecting line
+        direction: direction of intersecting line
 
     Returns:
-        list[tuple[Vector, Vector]]: point and normal of intersection
+        Point and normal of intersection
     """
     oc_point = gp_Pnt(*point.toTuple())
     oc_axis = gp_Dir(*direction.toTuple())
@@ -1453,19 +1864,21 @@ def _projectText(
     Note that projection may result in text distortion depending on
     the shape at a position along the path.
 
+    .. image:: projectText.png
+
     Args:
-        txt (str): Text to be rendered
-        fontsize (float): Size of the font in model units
-        depth (float): Thickness of text, 0 returns a Face object
-        path (Union[Wire, Edge]): Path on the Shape to follow
-        font (str, optional): Font name. Defaults to "Arial".
-        fontPath (Optional[str], optional): Path to font file. Defaults to None.
-        kind (Literal[, optional): Font type - one of "regular", "bold", "italic". Defaults to "regular".
-        valign (Literal[, optional): Vertical Alignment - one of "center", "top", "bottom". Defaults to "center".
-        start (float, optional): Relative location on path to start the text. Defaults to 0.
+        txt: Text to be rendered
+        fontsize: Size of the font in model units
+        depth: Thickness of text, 0 returns a Face object
+        path: Path on the Shape to follow
+        font: Font name. Defaults to "Arial".
+        fontPath: Path to font file. Defaults to None.
+        kind: Font type - one of "regular", "bold", "italic". Defaults to "regular".
+        valign: Vertical Alignment - one of "center", "top", "bottom". Defaults to "center".
+        start: Relative location on path to start the text. Defaults to 0.
 
     Returns:
-        Compound: The projected text
+        The projected text
     """
 
     path_length = path.Length()
@@ -1546,19 +1959,21 @@ def _embossText(
     the shape along the path. If depth is not zero, the resulting
     face is thickened to the provided depth.
 
+    .. image:: embossText.png
+
     Args:
-        txt (str): Text to be rendered
-        fontsize (float): Size of the font in model units
-        depth (float): Thickness of text, 0 returns a Face object
-        path (Union[Wire, Edge]): Path on the Shape to follow
-        font (str, optional): Font name. Defaults to "Arial".
-        fontPath (Optional[str], optional): Path to font file. Defaults to None.
-        kind (Literal[, optional): Font type - one of "regular", "bold", "italic". Defaults to "regular".
-        valign (Literal[, optional): Vertical Alignment - one of "center", "top", "bottom". Defaults to "center".
-        start (float, optional): Relative location on path to start the text. Defaults to 0.
+        txt: Text to be rendered
+        fontsize: Size of the font in model units
+        depth: Thickness of text, 0 returns a Face object
+        path: Path on the Shape to follow
+        font: Font name. Defaults to "Arial".
+        fontPath: Path to font file. Defaults to None.
+        kind: Font type - one of "regular", "bold", "italic". Defaults to "regular".
+        valign: Vertical Alignment - one of "center", "top", "bottom". Defaults to "center".
+        start: Relative location on path to start the text. Defaults to 0.
 
     Returns:
-        Compound: The embossed text
+        The embossed text
     """
 
     path_length = path.Length()
@@ -1612,3 +2027,24 @@ def _embossText(
 
 
 Shape.embossText = _embossText
+
+"""
+
+Location extensions: __str__()
+
+"""
+
+
+def _location_str(self):
+    """To String
+
+    Convert Location to String for display
+
+    Returns:
+        Location as String
+    """
+    loc_tuple = self.toTuple()
+    return f"({str(loc_tuple[0])}, {str(loc_tuple[1])})"
+
+
+Location.__str__ = _location_str
