@@ -802,7 +802,7 @@ def _fastenerHole(
         fastener_hole = shank_hole
 
     cskAngle = 82  # Common tip angle
-    h = hole_radius / tan(radians(cskAngle / 2.0))
+    h = hole_radius / math.tan(math.radians(cskAngle / 2.0))
     drill_tip = Solid.makeCone(
         hole_radius, 0.0, h, bore_direction * depth, bore_direction
     )
@@ -884,6 +884,9 @@ def _clearanceHole(
 
     Put a clearance hole in a shape at the provided location
 
+    For more information on how to use clearanceHole() see
+    :ref:`Clearance, Tap and Threaded Holes <clearance holes>`.
+
     Args:
         fastener: A nut or screw instance
         washers: A list of washer instances, can be empty
@@ -925,6 +928,9 @@ def _tapHole(
     """Tap Hole
 
     Put a tap hole in a shape at the provided location
+
+    For more information on how to use tapHole() see
+    :ref:`Clearance, Tap and Threaded Holes <clearance holes>`.
 
     Args:
         fastener: A nut or screw instance
@@ -970,6 +976,9 @@ def _threadedHole(
     """Threaded Hole
 
     Put a threaded hole in a shape at the provided location
+
+    For more information on how to use threadedHole() see
+    :ref:`Clearance, Tap and Threaded Holes <clearance holes>`.
 
     Args:
         fastener: A nut or screw instance
