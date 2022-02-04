@@ -12,21 +12,12 @@
 #
 import os
 import sys
-import subprocess
 
-# Read project information from the pip install
-# pip_command = subprocess.run(
-#     ["python", "-m", "pip", "show", "cq_warehouse"], capture_output=True
-# )
-# pip_command_dictionary = dict(
-#     entry.split(": ", 1)
-#     for entry in pip_command.stdout.decode("utf-8").split("\n")
-#     if ":" in entry
-# )
-# cq_warehouse_path = os.path.dirname(pip_command_dictionary["Location"])
-cq_warehouse_path = "/home/roger/Documents/cq_warehouse"
+cq_warehouse_path = os.path.dirname(os.path.abspath(os.getcwd()))
 source_files_path = os.path.join(cq_warehouse_path, "src/cq_warehouse")
 sys.path.insert(0, source_files_path)
+sys.path.append(os.path.abspath("sphinxext"))
+
 
 # -- Project information -----------------------------------------------------
 
@@ -89,6 +80,7 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 # a list of builtin themes.
 #
 html_theme = "alabaster"
+# html_theme = "sphinx_rtd_theme"
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
