@@ -291,6 +291,8 @@ parameters. All derived washers inherit the same API as the base Washer class.
 Detailed information about any of the washer types can be readily found on the internet from manufacture's
 websites or from the standard document itself.
 
+.. _clearance holes:
+
 *********************************
 Clearance, Tap and Threaded Holes
 *********************************
@@ -387,7 +389,9 @@ The data used in the creation of these holes is available via three instance met
 	{'Soft': '5', 'Hard': '5.4'}
 
 Note that with imperial sized holes (e.g. 7/16), the drill sizes could be a fractional size (e.g. 25/64)
-or a numbered or lettered size (e.g. U). This information can be added to your designs with the `drafting - model-based definition`_.
+or a numbered or lettered size (e.g. U). This information can be added to your designs with the
+:ref:`drafting <drafting>` sub-package.
+
 
 ******************
 Fastener Locations
