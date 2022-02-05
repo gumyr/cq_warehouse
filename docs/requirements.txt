@@ -3,3 +3,4 @@ sphinx==4.2.0
 sphinx_rtd_theme==1.0.0
 readthedocs-sphinx-search==0.1.1
 sphinx_autodoc_typehints==1.12.0
+-e git+https://github.com/gumyr/cq_warehouse.git@2847710ff88561383b207b7252d27bb68508c650#egg=cq_warehouse
