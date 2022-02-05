@@ -37,7 +37,9 @@ from math import sin, cos, tan, radians, pi, degrees, sqrt
 import csv
 import importlib.resources as pkg_resources
 import cadquery as cq
-from cq_warehouse.thread import is_safe, imperial_str_to_float, IsoThread
+
+# from cq_warehouse.thread import is_safe, imperial_str_to_float, IsoThread
+from thread import is_safe, imperial_str_to_float, IsoThread
 import cq_warehouse
 
 # from functools import cache
