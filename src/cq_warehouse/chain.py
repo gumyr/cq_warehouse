@@ -51,8 +51,9 @@ from pydantic import (
 import cadquery as cq
 import cq_warehouse.extensions
 
-# from cq_warehouse.sprocket import Sprocket
-from sprocket import Sprocket
+from cq_warehouse.sprocket import Sprocket
+
+# from sprocket import Sprocket
 
 VectorLike = Union[Tuple[float, float], Tuple[float, float, float], cq.Vector]
 
