@@ -1,5 +1,5 @@
 from typing import Union, Tuple, Optional, Literal
-from cq_warehouse.fastener import Screw, Nut, Washer
+from fastener import Screw, Nut, Washer
 class gp_Ax1:
     pass
 class T:

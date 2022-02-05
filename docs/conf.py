@@ -26,8 +26,11 @@ copyright = "2022, Gumyr"
 author = "Gumyr"
 
 # The full version, including alpha/beta/rc tags
-# release = pip_command_dictionary["Version"]
-release = "0.5.2"
+with open(os.path.join(cq_warehouse_path, "setup.cfg")) as f:
+    setup_cfg = f.readlines()
+for line in setup_cfg:
+    if "version =" in line:
+        release = line.split("=")[1].strip()
 
 
 # -- General configuration ---------------------------------------------------
@@ -60,6 +63,7 @@ napoleon_custom_sections = None
 
 autodoc_typehints = ["description"]
 # autodoc_typehints = ["both"]
+autodoc_mock_imports = ["cadquery"]
 
 # Sphinx settings
 add_module_names = False

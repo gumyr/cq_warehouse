@@ -294,7 +294,7 @@ def main(argv):
     doc_file.writelines(
         [
             "from typing import Union, Tuple, Optional, Literal\n"
-            "from cq_warehouse.fastener import Screw, Nut, Washer\n"
+            "from fastener import Screw, Nut, Washer\n"
             "class gp_Ax1:\n    pass\n",
             "class T:\n    pass\n",
             "class VectorLike:\n    pass\n",
