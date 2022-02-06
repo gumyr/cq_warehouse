@@ -398,14 +398,11 @@ class IsoThread:
     Both external and internal ISO standard 60° threads as shown in
     the following diagram (from https://en.wikipedia.org/wiki/ISO_metric_screw_thread):
 
+    .. image:: https://upload.wikimedia.org/wikipedia/commons/4/4b/ISO_and_UTS_Thread_Dimensions.svg
+
     The following is an example of an internal thread with a chamfered end as might be found inside a nut:
 
     .. image:: internal_iso_thread.png
-
-    Both external and internal ISO standard 60° threads as shown in the following
-    diagram (from https://en.wikipedia.org/wiki/ISO_metric_screw_thread):
-
-    .. image:: https://upload.wikimedia.org/wikipedia/commons/4/4b/ISO_and_UTS_Thread_Dimensions.svg
 
     Args:
         major_diameter (float): Primary thread diameter

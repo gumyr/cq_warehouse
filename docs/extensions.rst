@@ -31,22 +31,18 @@ for the functionality of CadQuery to be extended, these extensions are not
 visible to the IDE which makes working with them more difficult.
 
 The `build_cadquery_patch.py <https://github.com/gumyr/cq_warehouse/blob/main/scripts/build_cadquery_patch.py>`_
-script takes the cq_warehouse extensions.py file (from your pip install), reformats it to fit into
-the CadQuery source code, applies changes to official Cadquery source files
-(the version found with the python ``import cadquery``)
-and generates extended versions of these files:
+script takes the cq_warehouse extensions.py file (from your pip install) and generates a patch file
+custom to the version of CadQuery that you're using (the version found with the python ``import cadquery``).
+The user needs to apply the patch for the changes to take effect. Reversing the patch will restore the four changed
+files. The patch command can also generate versioned backups of the changed files if
+the user wants even more security.
+
+Currently, cq_warehouse.extensions augments these four CadQuery source files:
 
 * assembly.py,
 * cq.py,
 * geom.py, and
 * shapes.py.
-
-Finally, a diff is generated between the originals and extended files for use
-with the patch command.
-
-.. warning::
-	This script is designed to work on all platforms that support the ``diff`` and ``patch``
-	commands but has only been tested on Ubuntu Linux.
 
 Usage:
 
@@ -59,12 +55,11 @@ Usage:
 	To reverse the patch:
 	    patch -R -p4 < cadquery_extensions0.5.2.patch
 
-This script does not make any changes to your CadQuery installation. The user needs to apply
-the patch for the changes to take effect. Reversing the patch will restore the four changed
-files. The Linux patch command can also generate versioned backups of the changed files if
-the user wants even more security.
+.. warning::
+	This script is designed to work on all platforms that support the ``diff`` and ``patch``
+	commands but has only been tested on Ubuntu Linux.
 
-Once the patch has been applied, Visual Studio Code will see all the cq_warehouse extensions
+Once the patch has been applied, IDE's like Visual Studio Code will see all the cq_warehouse extensions
 as native CadQuery functionality and will show all the type hints and code completion available
 with core CadQuery methods. It will look something like this:
 

@@ -85,18 +85,6 @@ class Plane(object):
         orient the box in space correctly.
         """
 class Vector(object):
-    def _rotate(self, direction: gp_Ax1, angle: float):
-        """Rotate Vector about axis
-    
-        Rotate a Vector angle degrees about axis defined by direction
-    
-        Args:
-            direction: rotation axis
-            angle: rotation angle in degrees
-    
-        Returns:
-            Rotated Vector
-        """
     def rotateX(self, angle: float) -> "Vector":
         """Rotate Vector about X-Axis
     

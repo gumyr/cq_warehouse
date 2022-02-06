@@ -1,17 +1,24 @@
-
 ########################################
 fastener - parametric threaded fasteners
 ########################################
-Many mechanical designs will contain threaded fasteners of some kind, either in a threaded hole or threaded screws or bolts holding two or more parts together. The fastener sub-package provides a set of classes with which raw threads can be created such that they can be integrated into other parts as well as a set of classes that create many different types of nuts, screws and washers - as follows:
+Many mechanical designs will contain threaded fasteners of some kind, either in a
+threaded hole or threaded screws or bolts holding two or more parts together. The
+fastener sub-package provides a set of classes with which raw threads can be created
+such that they can be integrated into other parts as well as a set of classes that
+create many different types of nuts, screws and washers - as follows:
 
 .. image:: fastener_disc.png
 	:alt: fastener_disc
 
-The holes for the screws in this figure were created with an extension of the Workplane class ``clearanceHole``, the nuts ``tapHole`` and the central hole ``threadedHole``. The washers were automatically placed and all components were add to an Assembly in their correct position and orientations - see [Clearance, Tap and Threaded Holes](#clearance-tap-and-threaded-holes) for details.
+The holes for the screws in this figure were created with an extension of the Workplane
+class ``clearanceHole``, the nuts ``tapHole`` and the central hole ``threadedHole``.
+The washers were automatically placed and all components were add to an Assembly in
+their correct position and orientations - see
+`Clearance, Tap and Threaded Holes <clearance holes>` for details.
 
 Here is a list of the classes (and fastener types) provided:
 
-* [Nut](#nut) - the base nut class
+* `Nut <nut>` - the base nut class
 
   * ``DomedCapNut``: din1587
   * ``HexNut``: iso4033, iso4035, iso4032
@@ -19,7 +26,7 @@ Here is a list of the classes (and fastener types) provided:
   * ``UnchamferedHexagonNut``: iso4036
   * ``SquareNut``: din557
 
-* [Screw](#screw) - the base screw class
+* `Screw <screw>` - the base screw class
 
   * ``ButtonHeadScrew``: iso7380_1
   * ``ButtonHeadWithCollarScrew``: iso7380_2
@@ -34,13 +41,14 @@ Here is a list of the classes (and fastener types) provided:
   * ``SetScrew``: iso4026
   * ``SocketHeadCapScrew``: iso4762, asme_b18.3
 
-* [Washer](#washer) - the base washer class
+* `Washer <washer>` - the base washer class
 
   * ``PlainWasher``: iso7094, iso7093, iso7089, iso7091
   * ``ChamferedWasher``: iso7090
   * ``CheeseHeadWasher``: iso7092
 
-See [Extending the fastener sub-package](#Extending-the-fastener-sub-package) for guidance on how to easily add new sizes or entirely new types of fasteners.
+See `Extending the fastener sub-package <Extending-the-fastener-sub-package>` for guidance on how to easily
+add new sizes or entirely new types of fasteners.
 
  The following example creates a variety of different sized fasteners:
 
@@ -81,6 +89,8 @@ All of the fastener classes provide a ``cq_object`` instance variable which cont
 object.
 
 The following sections describe each of the provided classes.
+
+.. _nut:
 
 ***
 Nut
@@ -142,6 +152,8 @@ parameters. All derived nuts inherit the same API as the base Nut class.
 
 Detailed information about any of the nut types can be readily found on the internet from manufacture's
 websites or from the standard document itself.
+
+.. _screw:
 
 *****
 Screw
@@ -233,6 +245,8 @@ screw parameters. All derived screws inherit the same API as the base Screw clas
 
 Detailed information about any of the screw types can be readily found on the internet from manufacture's
 websites or from the standard document itself.
+
+.. _washer:
 
 ******
 Washer
@@ -346,7 +360,6 @@ the `CadQuery Quickstart <https://cadquery.readthedocs.io/en/latest/quickstart.h
 	    .vertices()
 	    .clearanceHole(fastener=screw, baseAssembly=pillow_block)
 	    .edges("|Z")
-	    .fillet(2.0)
 	)
 	pillow_block.add(base)
 	# Render the assembly
@@ -429,6 +442,8 @@ For example, the values for the previous pillow block example are:
 
 Note that this method scans the given assembly and all its children for fasteners. To limit the
 scan to just the current Assembly, set the ``deep=False`` optional parameter).
+
+.. _Extending-the-fastener-sub-package:
 
 **********************************
 Extending the fastener sub-package
