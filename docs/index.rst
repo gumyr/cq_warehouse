@@ -19,8 +19,10 @@ Table Of Contents
     :maxdepth: 2
 
     installation.rst
+    chain.rst
     extensions.rst
     fastener.rst
+    sprocket.rst
     thread.rst
 
 ==================

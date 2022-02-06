@@ -270,26 +270,6 @@ Vector extensions: rotateX(), rotateY(), rotateZ(), toVertex(), getSignedAngle()
 """
 
 
-def _vector_rotate(self, direction: gp_Ax1, angle: float):
-    """Rotate Vector about axis
-
-    Rotate a Vector angle degrees about axis defined by direction
-
-    Args:
-        direction: rotation axis
-        angle: rotation angle in degrees
-
-    Returns:
-        Rotated Vector
-    """
-    new = gp_Trsf()
-    new.SetRotation(direction, math.pi * angle / 180)
-    self.wrapped = self.wrapped * gp_GTrsf(new)
-
-
-Vector._rotate = _vector_rotate
-
-
 def _vector_rotate_x(self, angle: float) -> "Vector":
     """Rotate Vector about X-Axis
 
@@ -299,7 +279,9 @@ def _vector_rotate_x(self, angle: float) -> "Vector":
     Returns:
         Rotated Vector
     """
-    self._rotate(gp.OX_s(), angle)
+    return Vector(
+        gp_Vec(self.x, self.y, self.z).Rotated(gp.OX_s(), math.pi * angle / 180)
+    )
 
 
 Vector.rotateX = _vector_rotate_x
@@ -314,7 +296,9 @@ def _vector_rotate_y(self, angle: float) -> "Vector":
     Returns:
         Rotated Vector
     """
-    self._rotate(gp.OY_s(), angle)
+    return Vector(
+        gp_Vec(self.x, self.y, self.z).Rotated(gp.OY_s(), math.pi * angle / 180)
+    )
 
 
 Vector.rotateY = _vector_rotate_y
@@ -329,7 +313,9 @@ def _vector_rotate_z(self, angle: float) -> "Vector":
     Returns:
         Rotated Vector
     """
-    self._rotate(gp.OZ_s(), angle)
+    return Vector(
+        gp_Vec(self.x, self.y, self.z).Rotated(gp.OZ_s(), math.pi * angle / 180)
+    )
 
 
 Vector.rotateZ = _vector_rotate_z

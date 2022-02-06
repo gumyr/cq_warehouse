@@ -30,21 +30,17 @@ license:
 
 """
 from math import sin, asin, cos, pi, radians, sqrt
-from typing import Union, Tuple
-from pydantic import BaseModel, PrivateAttr, validator, validate_arguments, Field
 import cadquery as cq
+from cadquery import Vector, Workplane, Wire
 import cq_warehouse.extensions
 
-VectorLike = Union[Tuple[float, float], Tuple[float, float, float], cq.Vector]
-
-VERSION = 1.0
 MM = 1
 INCH = 25.4 * MM
 
 #
 #  =============================== CLASSES ===============================
 #
-class Sprocket(BaseModel):
+class Sprocket:
     """
     Create a new sprocket object as defined by the given parameters. The input parameter
     defaults are appropriate for a standard bicycle chain.
@@ -85,32 +81,6 @@ class Sprocket(BaseModel):
 
     """
 
-    # Instance Attributes
-    num_teeth: int = Field(..., gt=2)
-    chain_pitch: float = (1 / 2) * INCH
-    roller_diameter: float = (5 / 16) * INCH
-    clearance: float = 0.0
-    thickness: float = 0.084 * INCH
-    bolt_circle_diameter: float = 0.0
-    num_mount_bolts: int = 0
-    mount_bolt_diameter: float = 0.0
-    bore_diameter: float = 0.0
-
-    # Private Attributes
-    _flat_teeth: bool = PrivateAttr()
-    _cq_object: cq.Workplane = PrivateAttr()
-
-    # pylint: disable=no-self-argument
-    # pylint: disable=no-self-use
-    @validator("roller_diameter")
-    def is_roller_too_large(cls, i, values):
-        """Ensure that the roller would fit in the chain"""
-        if i >= values["chain_pitch"]:
-            raise ValueError(
-                f"roller_diameter {i} is too large for chain_pitch {values['chain_pitch']}"
-            )
-        return i
-
     @property
     def pitch_radius(self):
         """The radius of the circle formed by the center of the chain rollers"""
@@ -140,17 +110,46 @@ class Sprocket(BaseModel):
         """A cadquery Workplane sprocket as defined by class attributes"""
         return self._cq_object
 
-    def __init__(self, **data):
+    def __init__(
+        self,
+        num_teeth: int,
+        chain_pitch: float = (1 / 2) * INCH,
+        roller_diameter: float = (5 / 16) * INCH,
+        clearance: float = 0.0,
+        thickness: float = 0.084 * INCH,
+        bolt_circle_diameter: float = 0.0,
+        num_mount_bolts: int = 0,
+        mount_bolt_diameter: float = 0.0,
+        bore_diameter: float = 0.0,
+    ):
         """Validate inputs and create the chain assembly object"""
-        # Use the BaseModel initializer to validate the attributes
-        super().__init__(**data)
+        self.num_teeth = num_teeth
+        self.chain_pitch = chain_pitch
+        self.roller_diameter = roller_diameter
+        self.clearance = clearance
+        self.thickness = thickness
+        self.bolt_circle_diameter = bolt_circle_diameter
+        self.num_mount_bolts = num_mount_bolts
+        self.mount_bolt_diameter = mount_bolt_diameter
+        self.bore_diameter = bore_diameter
+
+        # Validate inputs
+        """Ensure that the roller would fit in the chain"""
+        if self.roller_diameter >= self.chain_pitch:
+            raise ValueError(
+                f"roller_diameter {self.roller_diameter} is too large for chain_pitch {self.chain_pitch}"
+            )
+        if not isinstance(num_teeth, int) or num_teeth <= 2:
+            raise ValueError(
+                f"num_teeth must be an integer greater than 2 not {num_teeth}"
+            )
         # Create the sprocket
         self._cq_object = self._make_sprocket()
 
-    def _make_sprocket(self) -> cq.Workplane:
+    def _make_sprocket(self) -> Workplane:
         """Create a new sprocket object as defined by the class attributes"""
         sprocket = (
-            cq.Workplane("XY")
+            Workplane("XY")
             .polarArray(self.pitch_radius, 0, 360, self.num_teeth)
             .tooth_outline(
                 self.num_teeth, self.chain_pitch, self.roller_diameter, self.clearance
@@ -193,7 +192,6 @@ class Sprocket(BaseModel):
         return sprocket
 
     @staticmethod
-    @validate_arguments
     def sprocket_pitch_radius(num_teeth: int, chain_pitch: float) -> float:
         """
         Calculate and return the pitch radius of a sprocket with the given number of teeth
@@ -209,7 +207,6 @@ class Sprocket(BaseModel):
         return sqrt(chain_pitch * chain_pitch / (2 * (1 - cos(2 * pi / num_teeth))))
 
     @staticmethod
-    @validate_arguments
     def sprocket_circumference(num_teeth: int, chain_pitch: float) -> float:
         """
         Calculate and return the pitch circumference of a sprocket with the given number of
@@ -234,12 +231,11 @@ class Sprocket(BaseModel):
 #
 
 
-@validate_arguments
 def make_tooth_outline(
     num_teeth: int, chain_pitch: float, roller_diameter: float, clearance: float = 0.0
-) -> cq.Wire:
+) -> Wire:
     """
-    Create a cq.Wire in the shape of a single tooth of the sprocket defined by the input parameters
+    Create a Wire in the shape of a single tooth of the sprocket defined by the input parameters
 
     There are two different shapes that the tooth could take:
     1) "Spiky" teeth: given sufficiently large rollers, there is no circular top
@@ -307,17 +303,17 @@ def make_tooth_outline(
     )
 
     # Bottom of the roller arc
-    start_pt = cq.Vector(pitch_rad - roller_rad, 0).rotateZ(tooth_a_degrees / 2)
+    start_pt = Vector(pitch_rad - roller_rad, 0).rotateZ(tooth_a_degrees / 2)
     # Where the roller arc meets transitions to the top half of the tooth
-    tangent_pt = cq.Vector(0, -roller_rad).rotateZ(-tooth_a_degrees / 2) + cq.Vector(
+    tangent_pt = Vector(0, -roller_rad).rotateZ(-tooth_a_degrees / 2) + Vector(
         pitch_rad, 0
     ).rotateZ(tooth_a_degrees / 2)
     # The intersection point of the tooth and the outer rad
-    outer_pt = cq.Vector(
+    outer_pt = Vector(
         outer_rad * cos(outer_intersect_a_r), outer_rad * sin(outer_intersect_a_r)
     )
     # The location of the tip of the spike if there is no "flat" section
-    spike_pt = cq.Vector(
+    spike_pt = Vector(
         sqrt(pitch_rad ** 2 - (chain_pitch / 2) ** 2)
         + sqrt((chain_pitch - roller_rad) ** 2 - (chain_pitch / 2) ** 2),
         0,
@@ -326,7 +322,7 @@ def make_tooth_outline(
     # Generate the tooth outline
     if outer_pt.y > 0:  # "Flat" topped sprockets
         tooth = (
-            cq.Workplane("XY")
+            Workplane("XY")
             .moveTo(start_pt.x, start_pt.y)
             .radiusArc(tangent_pt.toTuple(), -roller_rad)
             .radiusArc(outer_pt.toTuple(), chain_pitch - roller_rad)
@@ -339,7 +335,7 @@ def make_tooth_outline(
         )
     else:  # "Spiky" sprockets
         tooth = (
-            cq.Workplane("XY")
+            Workplane("XY")
             .moveTo(start_pt.x, start_pt.y)
             .radiusArc(tangent_pt.toTuple(), -roller_rad)
             .radiusArc(spike_pt.toTuple(), chain_pitch - roller_rad)
@@ -354,20 +350,20 @@ def make_tooth_outline(
 
 def _tooth_outline(
     self, num_teeth, chain_pitch, roller_diameter, clearance
-) -> cq.Workplane:
-    """Wrap make_tooth_outline for use within cq.Workplane with multiple sprocket teeth"""
+) -> Workplane:
+    """Wrap make_tooth_outline for use within Workplane with multiple sprocket teeth"""
     # pylint: disable=unnecessary-lambda
     tooth = make_tooth_outline(num_teeth, chain_pitch, roller_diameter, clearance)
     return self.eachpoint(lambda loc: tooth.moved(loc), True)
 
 
-cq.Workplane.tooth_outline = _tooth_outline
+Workplane.tooth_outline = _tooth_outline
 
 #
 # Extensions to the Vector class
-def _vector_flip_y(self) -> cq.Vector:
-    """cq.Vector reflect across the XZ plane"""
-    return cq.Vector(self.x, -self.y, self.z)
+def _vector_flip_y(self) -> Vector:
+    """Vector reflect across the XZ plane"""
+    return Vector(self.x, -self.y, self.z)
 
 
-cq.Vector.flipY = _vector_flip_y
+Vector.flipY = _vector_flip_y
