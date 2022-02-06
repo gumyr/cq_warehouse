@@ -20,6 +20,7 @@ Table Of Contents
 
     installation.rst
     chain.rst
+    drafting.rst
     extensions.rst
     fastener.rst
     sprocket.rst

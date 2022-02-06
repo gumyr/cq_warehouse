@@ -27,28 +27,34 @@ license:
     limitations under the License.
 
 """
-from math import floor, log2, gcd, pi
-from typing import Union, Tuple, Literal, Optional, ClassVar, Any, List
-
-"""# pylint: disable=no-name-in-module"""
-from pydantic import BaseModel, PrivateAttr, validator, validate_arguments
-from numpy import arange, sign
-import cadquery as cq
+from math import floor, log2, gcd, pi, copysign
+from typing import Union, Tuple, Literal, Optional, ClassVar, List
+from cadquery import (
+    Wire,
+    Edge,
+    Vector,
+    Vertex,
+    Color,
+    Assembly,
+    Solid,
+    Workplane,
+    Plane,
+)
+from cadquery.occ_impl.shapes import VectorLike
 import cq_warehouse.extensions
 
 MM = 1
 INCH = 25.4 * MM
 
-VectorLike = Union[Tuple[float, float, float], cq.Vector]
 PathDescriptor = Union[
-    cq.Wire,
-    cq.Edge,
-    List[Union[cq.Vector, cq.Vertex, Tuple[float, float, float]]],
+    Wire,
+    Edge,
+    List[Union[Vector, Vertex, Tuple[float, float, float]]],
 ]
-PointDescriptor = Union[cq.Vector, cq.Vertex, Tuple[float, float, float]]
+PointDescriptor = Union[Vector, Vertex, Tuple[float, float, float]]
 
 
-class Draft(BaseModel):
+class Draft:
     """Draft
 
     Documenting cadquery designs with dimension and extension lines as well as callouts.
@@ -88,57 +94,55 @@ class Draft(BaseModel):
     # Class Attributes
     unit_LUT: ClassVar[dict] = {"metric": "mm", "imperial": '"'}
 
-    # Instance Attributes
-    font_size: float = 5.0
-    # font_name: str = "Arial",                                     Errors in makeText or shapes.py
-    # font_style: Literal["regular", "bold", "italic"] = "regular",
-    color: Optional[cq.Color] = None
-    arrow_diameter: float = 1.0
-    arrow_length: float = 3.0
-    label_normal: Optional[VectorLike] = None
-    units: Literal["metric", "imperial"] = "metric"
-    number_display: Literal["decimal", "fraction"] = "decimal"
-    display_units: bool = True
-    decimal_precision: int = 2
-    fractional_precision: int = 64
-
-    # Private Attributes
-    _label_normal: cq.Vector = PrivateAttr()
-    _label_x_dir: cq.Vector = PrivateAttr()
-
     # Override the __init__ method to set a default color as
-    # >>> color: cq.Color = cq.Color(0.25,0.25,0.25)
+    # >>> color: Color = Color(0.25,0.25,0.25)
     # results in
     # >>> TypeError: cannot pickle 'OCP.Quantity.Quantity_ColorRGBA' object
-    def __init__(self, **data: Any):
-        super().__init__(**data)
-        self._label_normal = (
-            cq.Vector(0, 0, 1)
-            if self.label_normal is None
-            else cq.Vector(self.label_normal).normalized()
-        )
-        self._label_x_dir = (
-            cq.Vector(0, 1, 0)
-            if self._label_normal == cq.Vector(1, 0, 0)
-            else cq.Vector(1, 0, 0)
-        )
-        self.color = cq.Color(0.25, 0.25, 0.25) if self.color is None else self.color
+    def __init__(
+        self,
+        font_size: float = 5.0,
+        color: Optional[Color] = Color(0.25, 0.25, 0.25),
+        arrow_diameter: float = 1.0,
+        arrow_length: float = 3.0,
+        label_normal: Optional[VectorLike] = None,
+        units: Literal["metric", "imperial"] = "metric",
+        number_display: Literal["decimal", "fraction"] = "decimal",
+        display_units: bool = True,
+        decimal_precision: int = 2,
+        fractional_precision: int = 64,
+    ):
+        self.font_size = font_size
+        self.color = color
+        self.arrow_diameter = arrow_diameter
+        self.arrow_length = arrow_length
+        self.label_normal = label_normal
+        self.units = units
+        self.number_display = number_display
+        self.display_units = display_units
+        self.decimal_precision = decimal_precision
+        self.fractional_precision = fractional_precision
 
-    # pylint: disable=too-few-public-methods
-    class Config:
-        """Configurate pydantic to allow cadquery native types"""
-
-        arbitrary_types_allowed = True
-
-    @validator("fractional_precision")
-    @classmethod
-    def fractional_precision_power_two(cls, fractional_precision):
-        """Fraction denominator must be a power of two"""
         if not log2(fractional_precision).is_integer():
             raise ValueError(
                 f"fractional_precision values must be a factor of 2; provided {fractional_precision}"
             )
-        return fractional_precision
+        if units not in ["metric", "imperial"]:
+            raise ValueError(f"units must be one of 'metric' or 'imperial' not {units}")
+        if number_display not in ["decimal", "fraction"]:
+            raise ValueError(
+                f"number_display must be one of 'decimal' or 'fraction' not {number_display}"
+            )
+        self._label_normal = (
+            Vector(0, 0, 1)
+            if self.label_normal is None
+            else Vector(self.label_normal).normalized()
+        )
+        self._label_x_dir = (
+            Vector(0, 1, 0)
+            if self._label_normal == Vector(1, 0, 0)
+            else Vector(1, 0, 0)
+        )
+        # self.color = Color(0.25, 0.25, 0.25) if self.color is None else self.color
 
     def round_to_str(self, number: float) -> str:
         """Round a float but remove decimal if appropriate and convert to str"""
@@ -148,7 +152,6 @@ class Draft(BaseModel):
             else str(int(round(number, self.decimal_precision)))
         )
 
-    @validate_arguments
     def _number_with_units(
         self,
         number: float,
@@ -200,26 +203,24 @@ class Draft(BaseModel):
 
         return return_value
 
-    @validate_arguments(config=dict(arbitrary_types_allowed=True))
     def _make_arrow(
-        self, path: Union[cq.Edge, cq.Wire], tip_pos: Literal["start", "end"] = "start"
-    ) -> cq.Solid:
+        self, path: Union[Edge, Wire], tip_pos: Literal["start", "end"] = "start"
+    ) -> Solid:
         """Create an arrow head which follows the provided path"""
 
         # Calculate the position along the path to create the arrow cross-sections
         loft_pos = [0.0 if tip_pos == "start" else 1.0]
         for i in [2, 1]:
             loft_pos.append(
-                self.arrow_length / (i * cq.Wire.assembleEdges([path]).Length())
+                self.arrow_length / (i * Wire.assembleEdges([path]).Length())
                 if tip_pos == "start"
-                else 1.0
-                - self.arrow_length / (i * cq.Wire.assembleEdges([path]).Length())
+                else 1.0 - self.arrow_length / (i * Wire.assembleEdges([path]).Length())
             )
         radius_lut = {0: 0.0001, 1: 0.2, 2: 0.5}
         arrow_cross_sections = [
-            cq.Wire.assembleEdges(
+            Wire.assembleEdges(
                 [
-                    cq.Edge.makeCircle(
+                    Edge.makeCircle(
                         radius=radius_lut[i] * self.arrow_diameter,
                         pnt=path.positionAt(loft_pos[i]),
                         dir=path.tangentAt(loft_pos[i]),
@@ -228,18 +229,16 @@ class Draft(BaseModel):
             )
             for i in range(3)
         ]
-        arrow = cq.Assembly(None, name="arrow")
+        arrow = Assembly(None, name="arrow")
         arrow.add(
-            cq.Solid.makeLoft(arrow_cross_sections),
+            Solid.makeLoft(arrow_cross_sections),
             name="arrow_and_shaft",
         )
         arrow.add(path, name="arrow_shaft")
         return arrow
 
     @staticmethod
-    def _segment_line(
-        path: Union[cq.Edge, cq.Wire], tip_pos: float, tail_pos: float
-    ) -> cq.Edge:
+    def _segment_line(path: Union[Edge, Wire], tip_pos: float, tail_pos: float) -> Edge:
         """Create a segment of a path between tip and tail (inclusive)"""
 
         if not 0.0 <= tip_pos <= 1.0:
@@ -247,28 +246,26 @@ class Draft(BaseModel):
         if not 0.0 <= tail_pos <= 1.0:
             raise ValueError(f"tail_pos value of {tail_pos} is not between 0.0 and 1.0")
 
-        sub_path = cq.Edge.makeSpline(
+        sub_path = Edge.makeSpline(
             listOfVector=[
-                path.positionAt(t)
-                for t in arange(tip_pos, tail_pos + 0.00001, (tail_pos - tip_pos) / 16)
+                path.positionAt(tip_pos + i * (tail_pos - tip_pos) / 16)
+                for i in range(17)
             ],
             tangents=[path.tangentAt(t) for t in [tip_pos, tail_pos]],
         )
         return sub_path
 
     @staticmethod
-    def _path_to_wire(path: PathDescriptor) -> cq.Wire:
-        """Convert a PathDescriptor into a cq.Wire"""
-        if isinstance(path, (cq.Edge, cq.Wire)):
-            path_as_wire = cq.Wire.assembleEdges([path])
+    def _path_to_wire(path: PathDescriptor) -> Wire:
+        """Convert a PathDescriptor into a Wire"""
+        if isinstance(path, (Edge, Wire)):
+            path_as_wire = Wire.assembleEdges([path])
         else:
-            path_as_wire = cq.Wire.assembleEdges(
-                cq.Workplane()
+            path_as_wire = Wire.assembleEdges(
+                Workplane()
                 .polyline(
                     [
-                        cq.Vector(p.toTuple())
-                        if isinstance(p, cq.Vertex)
-                        else cq.Vector(p)
+                        Vector(p.toTuple()) if isinstance(p, Vertex) else Vector(p)
                         for p in path
                     ]
                 )
@@ -278,7 +275,7 @@ class Draft(BaseModel):
 
     def _label_size(self, label_str: str) -> float:
         """Return the length of a text string given class parameters"""
-        label_xy_object = cq.Workplane("XY").text(
+        label_xy_object = Workplane("XY").text(
             txt=label_str,
             fontsize=self.font_size,
             distance=self.font_size / 20,
@@ -289,21 +286,21 @@ class Draft(BaseModel):
         return label_length
 
     @staticmethod
-    def _find_center_of_arc(arc: cq.Edge) -> cq.Vector:
+    def _find_center_of_arc(arc: Edge) -> Vector:
         """Given an arc find the center of the circle"""
         arc_radius = arc.radius()
         arc_pnt = arc.positionAt(0.25)
         chord_end_points = [arc.positionAt(t) for t in [0.0, 0.5]]
-        chord_line = cq.Edge.makeLine(*chord_end_points)
+        chord_line = Edge.makeLine(*chord_end_points)
         chord_center_pnt = chord_line.positionAt(0.5)
-        radial_tangent = cq.Edge.makeLine(arc_pnt, chord_center_pnt).tangentAt(0)
+        radial_tangent = Edge.makeLine(arc_pnt, chord_center_pnt).tangentAt(0)
         center = arc_pnt + radial_tangent * arc_radius
         return center
 
     def _label_to_str(
         self,
         label: str,
-        line_wire: cq.Wire,
+        line_wire: Wire,
         label_angle: bool,
         tolerance: Optional[Union[float, Tuple[float, float]]],
     ) -> str:
@@ -312,7 +309,7 @@ class Draft(BaseModel):
         if label is not None:
             label_str = label
         elif label_angle:
-            arc_edge = cq.Workplane(line_wire).edges("%circle").val()
+            arc_edge = Workplane(line_wire).edges("%circle").val()
             try:
                 arc_radius = arc_edge.radius()
             except AttributeError as not_an_arc_error:
@@ -328,10 +325,10 @@ class Draft(BaseModel):
     def _make_arrow_shaft(
         self,
         label_length: float,
-        line_wire: cq.Wire,
+        line_wire: Wire,
         internal: bool,
         arrow_pos: Literal["start", "end"],
-    ) -> cq.Edge:
+    ) -> Edge:
         line_length = line_wire.Length()
 
         # Calculate the relative positions along the dimension_line line of the key features
@@ -359,8 +356,8 @@ class Draft(BaseModel):
             )
         else:
             arrow_shaft = (
-                cq.Workplane(
-                    cq.Plane(
+                Workplane(
+                    Plane(
                         origin=line_wire.positionAt(line_wire_pos),
                         xDir=line_wire.tangentAt(line_wire_pos),
                         normal=self._label_normal,
@@ -377,38 +374,38 @@ class Draft(BaseModel):
         self,
         position: Literal["start", "center", "end"],
         label_str: str,
-        location_wire: cq.Wire,
-    ) -> cq.Solid:
+        location_wire: Wire,
+    ) -> Solid:
         if position == "center":
-            text_plane = cq.Plane(
+            text_plane = Plane(
                 origin=location_wire.positionAt(0.5),
                 xDir=location_wire.tangentAt(0.5),
                 normal=self._label_normal,
             )
-            label_object = cq.Workplane(text_plane).text(
+            label_object = Workplane(text_plane).text(
                 txt=label_str, fontsize=self.font_size, distance=self.font_size / 100
             )
         elif position == "end":
-            text_plane = cq.Plane(
+            text_plane = Plane(
                 origin=location_wire.tangentAt(0.0) * -1.5 * MM
                 + location_wire.positionAt(0.0),
                 xDir=location_wire.tangentAt(0.0) * -1,
                 normal=self._label_normal,
             )
-            label_object = cq.Workplane(text_plane).text(
+            label_object = Workplane(text_plane).text(
                 txt=label_str,
                 fontsize=self.font_size,
                 distance=self.font_size / 100,
                 halign="left",
             )
         else:  # position=="start"
-            text_plane = cq.Plane(
+            text_plane = Plane(
                 origin=location_wire.tangentAt(1.0) * 1.5 * MM
                 + location_wire.positionAt(1.0),
                 xDir=location_wire.tangentAt(1.0) * -1,
                 normal=self._label_normal,
             )
-            label_object = cq.Workplane(text_plane).text(
+            label_object = Workplane(text_plane).text(
                 txt=label_str,
                 fontsize=self.font_size,
                 distance=self.font_size / 100,
@@ -416,7 +413,6 @@ class Draft(BaseModel):
             )
         return label_object
 
-    @validate_arguments(config=dict(arbitrary_types_allowed=True))
     def dimension_line(
         self,
         path: PathDescriptor,
@@ -424,7 +420,7 @@ class Draft(BaseModel):
         arrows: Tuple[bool, bool] = (True, True),
         tolerance: Optional[Union[float, Tuple[float, float]]] = None,
         label_angle: bool = False,
-    ) -> cq.Assembly:
+    ) -> Assembly:
         """Dimension Line
 
         Create a dimension line typically for internal measurements.
@@ -457,7 +453,7 @@ class Draft(BaseModel):
             ValueError: No output - insufficient space for labels and no arrows selected
 
         Returns:
-            cq.Assembly: the dimension line
+            Assembly: the dimension line
         """
 
         # Create a wire modelling the path of the dimension lines from a variety of input types
@@ -481,7 +477,7 @@ class Draft(BaseModel):
             )
 
         # Compose an assembly with the component parts of the dimension_line line
-        d_line = cq.Assembly(None, name=label_str + "_dimension_line", color=self.color)
+        d_line = Assembly(None, name=label_str + "_dimension_line", color=self.color)
 
         # For the start and end arrow generate complete arrows from shafts and the label object
         for i, arrow_pos in enumerate(["start", "end"]):
@@ -504,7 +500,6 @@ class Draft(BaseModel):
 
         return d_line
 
-    @validate_arguments(config=dict(arbitrary_types_allowed=True))
     def extension_line(
         self,
         object_edge: PathDescriptor,
@@ -513,7 +508,7 @@ class Draft(BaseModel):
         arrows: Tuple[bool, bool] = (True, True),
         tolerance: Optional[Union[float, Tuple[float, float]]] = None,
         label_angle: bool = False,
-    ) -> cq.Assembly:
+    ) -> Assembly:
         """Extension Line
 
         Create a dimension line with two lines extending outward from the part to dimension.
@@ -540,7 +535,7 @@ class Draft(BaseModel):
                 in degrees. Defaults to False.
 
         Returns:
-            cq.Assembly: the extension line
+            Assembly: the extension line
         """
 
         # Create a wire modelling the path of the dimension lines from a variety of input types
@@ -548,7 +543,7 @@ class Draft(BaseModel):
         object_length = object_path.Length()
 
         # Determine if the provided object edge is a circular arc and if so extract its radius
-        arc_edge = cq.Workplane(object_path).edges("%circle").val()
+        arc_edge = Workplane(object_path).edges("%circle").val()
         try:
             arc_radius = arc_edge.radius()
         except AttributeError:
@@ -560,36 +555,37 @@ class Draft(BaseModel):
             # Create a new arc for the dimension line offset from the given one
             arc_center = Draft._find_center_of_arc(arc_edge)
             radial_directions = [
-                cq.Edge.makeLine(arc_center, object_path.positionAt(i)).tangentAt(1.0)
+                Edge.makeLine(arc_center, object_path.positionAt(i)).tangentAt(1.0)
                 for i in [0.0, 0.5, 1.0]
             ]
             offset_arc_pts = [
                 arc_center + radial_directions[i] * (arc_radius + offset)
                 for i in range(3)
             ]
-            extension_path = cq.Edge.makeThreePointArc(*offset_arc_pts)
+            extension_path = Edge.makeThreePointArc(*offset_arc_pts)
             # Create radial extension lines
             ext_line = [
-                cq.Edge.makeLine(
+                Edge.makeLine(
                     object_path.positionAt(i)
-                    + radial_directions[i * 2] * sign(offset) * 1.5 * MM,
+                    + radial_directions[i * 2] * copysign(1, offset) * 1.5 * MM,
                     object_path.positionAt(i)
-                    + radial_directions[i * 2] * (offset + sign(offset) * 3.0 * MM),
+                    + radial_directions[i * 2]
+                    * (offset + copysign(1, offset) * 3.0 * MM),
                 )
                 for i in range(2)
             ]
         else:
             extension_tangent = object_path.tangentAt(0).cross(self._label_normal)
-            dimension_plane = cq.Plane(
+            dimension_plane = Plane(
                 origin=object_path.positionAt(0),
                 xDir=extension_tangent,
                 normal=self._label_normal,
             )
             ext_line = [
                 (
-                    cq.Workplane(dimension_plane)
-                    .moveTo(sign(offset) * 1.5 * MM, l)
-                    .lineTo(offset + sign(offset) * 3 * MM, l)
+                    Workplane(dimension_plane)
+                    .moveTo(copysign(1, offset) * 1.5 * MM, l)
+                    .lineTo(offset + copysign(1, offset) * 3 * MM, l)
                 )
                 for l in [0, object_length]
             ]
@@ -605,7 +601,7 @@ class Draft(BaseModel):
             tolerance=tolerance,
             label_angle=label_angle,
         )
-        e_line = cq.Assembly(
+        e_line = Assembly(
             None, name=d_line.name.replace("dimension", "extension"), color=self.color
         )
         e_line.add(ext_line[0], name="extension_line0")
@@ -613,14 +609,13 @@ class Draft(BaseModel):
         e_line.add(d_line, name="dimension_line")
         return e_line
 
-    @validate_arguments(config=dict(arbitrary_types_allowed=True))
     def callout(
         self,
         label: str,
         tail: Optional[PathDescriptor] = None,
         origin: Optional[PointDescriptor] = None,
         justify: Literal["left", "center", "right"] = "left",
-    ) -> cq.Assembly:
+    ) -> Assembly:
         """Callout
 
         A text box with or without a tail pointing to another object used to provide
@@ -642,15 +637,15 @@ class Draft(BaseModel):
             ValueError: Either origin or tail must be provided
 
         Returns:
-            cq.Assembly: the callout
+            Assembly: the callout
 
         """
 
         if origin is not None:
             text_origin = (
-                cq.Vector(origin)
-                if isinstance(origin, (cq.Vector, tuple))
-                else cq.Vector(origin.toTuple())
+                Vector(origin)
+                if isinstance(origin, (Vector, tuple))
+                else Vector(origin.toTuple())
             )
         elif tail is not None:
             line_wire = Draft._path_to_wire(tail)
@@ -658,11 +653,11 @@ class Draft(BaseModel):
         else:
             raise ValueError("Either origin or tail must be provided")
 
-        text_plane = cq.Plane(
+        text_plane = Plane(
             origin=text_origin, xDir=self._label_x_dir, normal=self._label_normal
         )
-        t_box = cq.Assembly(None, name=label + "_callout", color=self.color)
-        label_text = cq.Workplane(text_plane).text(
+        t_box = Assembly(None, name=label + "_callout", color=self.color)
+        label_text = Workplane(text_plane).text(
             txt=label,
             fontsize=self.font_size,
             distance=self.font_size / 100,

@@ -48,7 +48,7 @@ class TestClassInstantiation(unittest.TestCase):
     """Test Draft class instantiation"""
 
     def test_draft_instantiation(self):
-        """Parameter parsing is mostly covered by pydantic, except these"""
+        """Parameter parsing"""
         with self.assertRaises(ValueError):
             Draft(units="normal")
         with self.assertRaises(ValueError):
@@ -218,7 +218,7 @@ class TestFunctionality(unittest.TestCase):
         with self.assertRaises(ValueError):
             metric_drawing.callout(label="error")
 
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TypeError):
             metric_drawing.callout(label="test", location=(0, 0, 0), justify="centre")
 
 

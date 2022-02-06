@@ -64,7 +64,7 @@ napoleon_custom_sections = None
 
 autodoc_typehints = ["description"]
 # autodoc_typehints = ["both"]
-autodoc_mock_imports = ["cadquery", "pkg_resources", "pydantic", "OCP", "numpy"]
+autodoc_mock_imports = ["cadquery", "pkg_resources", "OCP"]
 
 # Sphinx settings
 add_module_names = False
