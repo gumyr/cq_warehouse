@@ -1670,7 +1670,10 @@ def _projectEdgeToShape(
     Returns:
         Projected Edge(s)
     """
-    return self._projectWireToShape(targetObject, direction, center)
+    wire = cq.Wire.assembleEdges([self])
+    projected_wires = wire.projectToShape(targetObject, direction, center)
+    projected_edges = [w.Edges()[0] for w in projected_wires]
+    return projected_edges
 
 
 Edge.projectToShape = _projectEdgeToShape

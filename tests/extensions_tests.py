@@ -186,24 +186,6 @@ class TestVectorMethods(unittest.TestCase):
         self.assertTupleAlmostEquals(vector_y.toTuple(), (math.sqrt(2), 2, 0), 7)
         self.assertTupleAlmostEquals(vector_z.toTuple(), (0, -math.sqrt(2), 3), 7)
 
-    def test_point_to_vector(self):
-        """Validate conversion of 2D points to 3D vectors"""
-        point = cq.Vector(1, 2)
-        with self.assertRaises(ValueError):
-            point.pointToVector((1, 0, 0))
-        with self.assertRaises(ValueError):
-            point.pointToVector("x")
-        self.assertTupleAlmostEquals(point.pointToVector("XY").toTuple(), (1, 2, 0), 7)
-        self.assertTupleAlmostEquals(
-            point.pointToVector("XY", 4).toTuple(), (1, 2, 4), 7
-        )
-        self.assertTupleAlmostEquals(
-            point.pointToVector("XZ", 3).toTuple(), (1, 3, 2), 7
-        )
-        self.assertTupleAlmostEquals(
-            point.pointToVector("YZ", 5).toTuple(), (5, 1, 2), 7
-        )
-
     def testGetSignedAngle(self):
         """Verify getSignedAngle calculations with and without a provided normal"""
         a = math.pi / 3

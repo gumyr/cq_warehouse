@@ -29,14 +29,16 @@
 
 If you've ever wondered if there is a better alternative to doing mechanical CAD with
 proprietary software products, `CadQuery <https://cadquery.readthedocs.io/en/latest/index.html>`_
-and this package **cq_warehouse** might be what you've been looking for. CadQuery augments
+and this package - `cq_warehouse <https://github.com/gumyr/cq_warehouse>`_ - and similar packages
+like `cq_gears <https://github.com/meadiode/cq_gears>`_ might be what you've
+been looking for. CadQuery augments
 the Python programming language (the second most widely used programming language) with
 powerful capabilities enabling a wide variety of mechanical designs to be created
 in S/W with the same techniques that enable most of today's technology.
 
-The **cq_warehouse** augments CadQuery with parametric parts - generated on demand -
+**cq_warehouse** augments CadQuery with parametric parts - generated on demand -
 and extensions to the core CadQuery capabilities. The resulting parts can be used within your
-projects or saved to a CAD file in STEP or STL format (amongst others) for use in a wide
+projects or saved to a CAD file in STEP or STL format (among others) for use in a wide
 variety of CAD, CAM, or analytical systems.
 
 As an example, consider the design of a simple bearing pillow block:
