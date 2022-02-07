@@ -2,7 +2,7 @@
 ####################################
 chain - a parametric chain generator
 ####################################
-A chain wrapped around a set of sprockets can be generated with the ``Chain`` class by providing
+A chain wrapped around a set of sprockets can be generated with the :ref:`Chain<chain>` class by providing
 the size and locations of the sprockets, how the chain wraps and optionally the chain parameters.
 
 For example, one can create the chain for a bicycle with a rear deraileur as follows:
@@ -46,6 +46,8 @@ starting from the largest sprocket):
 	:alt: chain direction
 
 .. py:module:: chain
+
+.. _chain:
 
 .. autoclass:: Chain
 	:members: assemble_chain_transmission, make_link

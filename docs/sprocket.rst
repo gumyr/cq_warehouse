@@ -2,7 +2,7 @@
 sprocket - parametric sprockets
 ###############################
 A sprocket can be generated and saved to a STEP file with just four lines
-of python code using the ``Sprocket`` class:
+of python code using the :ref:`Sprocket <sprocket>` class:
 
 .. code-block:: python
 
@@ -27,6 +27,8 @@ the parameters used to generate this sprocket - such as the chain pitch - and so
 derived information that may be useful - such as the chain pitch radius.
 
 .. py:module:: sprocket
+
+.. _sprocket:
 
 .. autoclass:: Sprocket
 	:members: sprocket_pitch_radius, sprocket_circumference

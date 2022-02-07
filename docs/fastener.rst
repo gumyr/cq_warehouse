@@ -11,14 +11,16 @@ create many different types of nuts, screws and washers - as follows:
 	:alt: fastener_disc
 
 The holes for the screws in this figure were created with an extension of the Workplane
-class ``clearanceHole``, the nuts ``tapHole`` and the central hole ``threadedHole``.
+class :meth:`~extensions_doc.Workplane.clearanceHole`, the nuts
+:meth:`~extensions_doc.Workplane.tapHole` and the central hole
+:meth:`~extensions_doc.Workplane.threadedHole`.
 The washers were automatically placed and all components were add to an Assembly in
 their correct position and orientations - see
-`Clearance, Tap and Threaded Holes <clearance holes>` for details.
+:ref:`Clearance, Tap and Threaded Holes <clearance holes>` for details.
 
 Here is a list of the classes (and fastener types) provided:
 
-* `Nut <nut>` - the base nut class
+* :ref:`Nut <nut>` - the base nut class
 
   * ``DomedCapNut``: din1587
   * ``HexNut``: iso4033, iso4035, iso4032
@@ -26,7 +28,7 @@ Here is a list of the classes (and fastener types) provided:
   * ``UnchamferedHexagonNut``: iso4036
   * ``SquareNut``: din557
 
-* `Screw <screw>` - the base screw class
+* :ref:`Screw <screw>` - the base screw class
 
   * ``ButtonHeadScrew``: iso7380_1
   * ``ButtonHeadWithCollarScrew``: iso7380_2
@@ -41,13 +43,13 @@ Here is a list of the classes (and fastener types) provided:
   * ``SetScrew``: iso4026
   * ``SocketHeadCapScrew``: iso4762, asme_b18.3
 
-* `Washer <washer>` - the base washer class
+* :ref:`Washer <washer>` - the base washer class
 
   * ``PlainWasher``: iso7094, iso7093, iso7089, iso7091
   * ``ChamferedWasher``: iso7090
   * ``CheeseHeadWasher``: iso7092
 
-See `Extending the fastener sub-package <Extending-the-fastener-sub-package>` for guidance on how to easily
+See :ref:`Extending the fastener sub-package <extending>` for guidance on how to easily
 add new sizes or entirely new types of fasteners.
 
  The following example creates a variety of different sized fasteners:
@@ -313,9 +315,9 @@ Clearance, Tap and Threaded Holes
 When designing parts with CadQuery a common operation is to place holes appropriate to a specific fastener
 into the part. This operation is optimized with cq_warehouse by the following three new Workplane methods:
 
-* :meth:`extensions_doc.Workplane.clearanceHole`,
-* :meth:`extensions_doc.Workplane.tapHole`, and
-* :meth:`extensions_doc.Workplane.threadedHole`.
+* :meth:`~extensions_doc.Workplane.clearanceHole`,
+* :meth:`~extensions_doc.Workplane.tapHole`, and
+* :meth:`~extensions_doc.Workplane.threadedHole`.
 
 The API for all three methods are very similar. The ``fit`` parameter is used
 for clearance hole dimensions and to calculate the gap around the head of a countersunk screw.
@@ -410,7 +412,7 @@ or a numbered or lettered size (e.g. U). This information can be added to your d
 Fastener Locations
 ******************
 There are two methods that assist with the location of fastener holes relative to other
-parts: :meth:`extensions_doc.Assembly.fastenerLocations` and :meth:`extensions_doc.Workplane.pushFastenerLocations`.
+parts: :meth:`~extensions_doc.Assembly.fastenerLocations` and :meth:`~extensions_doc.Workplane.pushFastenerLocations`.
 
 The `align_fastener_holes.py <https://github.com/gumyr/cq_warehouse/blob/main/examples/align_fastener_holes.py>`_
 example shows how these methods can be used to align holes between parts in an assembly.
@@ -425,7 +427,7 @@ Bill of Materials
 *****************
 As previously mentioned, when an assembly is passed into the three hole methods the fasteners
 referenced are added to the assembly. A new method has been added to the CadQuery Assembly
-class - :meth:`extensions_doc.Assembly.fastenerQuantities` - which scans the assembly and returns a dictionary of either:
+class - :meth:`~extensions_doc.Assembly.fastenerQuantities` - which scans the assembly and returns a dictionary of either:
 
 * {fastener: count}, or
 * {fastener.info: count}
@@ -443,7 +445,7 @@ For example, the values for the previous pillow block example are:
 Note that this method scans the given assembly and all its children for fasteners. To limit the
 scan to just the current Assembly, set the ``deep=False`` optional parameter).
 
-.. _Extending-the-fastener-sub-package:
+.. _extending:
 
 **********************************
 Extending the fastener sub-package

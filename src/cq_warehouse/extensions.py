@@ -104,7 +104,7 @@ def _assembly_translate(self, vec: "VectorLike") -> "Assembly":
         The translated Assembly
 
     Example:
-        plain_assembly.translate((1,2,3))
+        car_assembly.translate((1,2,3))
     """
     self.loc = self.loc * Location(Vector(vec))
     return self
@@ -127,7 +127,7 @@ def _assembly_rotate(self, axis: "VectorLike", angle: float) -> "Assembly":
         The rotated Assembly
 
     Example:
-        plain_assembly.rotate((0,0,1),90)
+        car_assembly.rotate((0,0,1),90)
     """
     self.loc = self.loc * Location(Vector(0, 0, 0), Vector(axis), angle)
     return self
@@ -496,13 +496,15 @@ def _textOnPath(
     """
     Returns 3D text with the baseline following the given path.
 
-    The parameters are largely the same as the ``Workplane.text`` method. The
-    ``start`` parameter (normally between 0.0 and 1.0) specify where on the path to
+    The parameters are largely the same as the
+    `Workplane.text() <https://cadquery.readthedocs.io/en/latest/classreference.html#cadquery.Workplane.text>`_
+    method. The **start** parameter (normally between 0.0 and 1.0) specify where on the path to
     start the text.
 
     The path that the text follows is defined by the last Edge or Wire in the
     Workplane stack. Path's defined outside of the Workplane can be used with the
-    ``.add(path)`` method.
+    `add(<path>) <https://cadquery.readthedocs.io/en/latest/classreference.html#cadquery.Workplane.add>`_
+    method.
 
     .. image:: textOnPath.png
 
@@ -1402,7 +1404,7 @@ def _wire_makeNonPlanarFace(
     optionally refined by surfacePoints with optional holes defined by
     interiorWires.
 
-    The ``surfacePoints`` parameter can be used to refine the resulting Face. If no
+    The **surfacePoints** parameter can be used to refine the resulting Face. If no
     points are provided a single central point will be used to help avoid the
     creation of a planar face.
 
@@ -1539,7 +1541,7 @@ def _embossWireToShape(
 
     .. image:: embossFeature.png
 
-    with the ``sweep`` method.
+    with the `sweep() <https://cadquery.readthedocs.io/en/latest/_modules/cadquery/occ_impl/shapes.html#Solid.sweep>`_ method.
 
     Args:
         targetObject: Object to emboss onto

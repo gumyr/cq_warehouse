@@ -74,8 +74,6 @@ Functions
 *************************
 Assembly class extensions
 *************************
-Two additional methods are added to the ``Assembly`` class which allow easy
-manipulation of an Assembly like the chain cadquery objects.
 
 .. autoclass:: Assembly
 	:members:
@@ -125,8 +123,6 @@ Vector class extensions
 ***********************
 Vertex class extensions
 ***********************
-To facilitate placement of drafting objects within a design the cadquery
-``Vertex`` class has been extended with addition and subtraction methods.
 
 .. autoclass:: Vertex
 	:members: __add__, __sub__, __str__, toVector

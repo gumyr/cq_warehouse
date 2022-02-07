@@ -73,11 +73,13 @@ class Sprocket:
         cq_object (Workplane): cadquery sprocket object
 
     Example:
-        .. code-block:: python
 
-            s = Sprocket(num_teeth=32)
-            print(s.pitch_radius)                   # 64.78458745735234
-            s.cq_object.rotate((0,0,0),(0,0,1),10)
+        .. doctest::
+
+            >>> s = Sprocket(num_teeth=32)
+            >>> print(s.pitch_radius)
+            64.78458745735234
+            >>> s.cq_object.rotate((0,0,0),(0,0,1),10)
 
     """
 
