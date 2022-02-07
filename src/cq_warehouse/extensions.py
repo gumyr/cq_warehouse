@@ -34,6 +34,7 @@ license:
 import sys
 import logging
 import math
+from functools import reduce
 from typing import Optional, Literal, Union, Tuple
 import cadquery as cq
 from cadquery.occ_impl.shapes import VectorLike
@@ -54,8 +55,8 @@ from cadquery import (
     Workplane,
     DirectionMinMaxSelector,
 )
-
-# from cq_warehouse.fastener import Screw, Nut, Washer
+from cq_warehouse.fastener import Screw, Nut, Washer
+from cq_warehouse.thread import IsoThread
 
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace
 from OCP.ShapeAnalysis import ShapeAnalysis_FreeBounds

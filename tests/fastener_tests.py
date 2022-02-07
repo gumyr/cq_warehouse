@@ -28,6 +28,7 @@ license:
 import unittest
 import cadquery as cq
 from cq_warehouse.fastener import *
+import cq_warehouse.extensions
 
 MM = 1
 IN = 25.4 * MM
