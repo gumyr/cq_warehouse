@@ -15,8 +15,7 @@ sprocket_and_chain_tests.py                       141      1    99%
 """
 import math
 import unittest
-import pydantic
-import cadquery as cq
+from cadquery import Vector
 from cq_warehouse.sprocket import Sprocket
 from cq_warehouse.chain import Chain
 
@@ -59,9 +58,7 @@ class TestParsing(unittest.TestCase):
                 spkt_locations=[(0, 0), (1, 1)],
                 positive_chain_wrap=[True],
             )
-        with self.assertRaises(
-            pydantic.error_wrappers.ValidationError
-        ):  # Invalid locations
+        with self.assertRaises(ValueError):  # Invalid locations
             Chain(
                 spkt_teeth=[10, 10],
                 spkt_locations=[(0, 0), 1],
@@ -73,28 +70,54 @@ class TestParsing(unittest.TestCase):
                 spkt_locations=[(0, 0), (0, 0)],
                 positive_chain_wrap=[True, False],
             )
-        with self.assertRaises(KeyError):  # Invalid teeth
-            Chain(spkt_teeth=[12.5, 6])
-        with self.assertRaises(KeyError):  # Too few sprockets
-            Chain(spkt_teeth=[16])
-        with self.assertRaises(
-            pydantic.error_wrappers.ValidationError
-        ):  # Teeth not list
-            Chain(spkt_teeth=12)
-        with self.assertRaises(KeyError):  # Too few locations
-            Chain(spkt_locations=cq.Vector(0, 0, 0))
-        with self.assertRaises(KeyError):  # Wrap not a list
-            Chain(positive_chain_wrap=True)
-        with self.assertRaises(KeyError):  # Wrap not bool
-            Chain(positive_chain_wrap=["yes", "no"])
+        with self.assertRaises(ValueError):  # Invalid teeth
+            Chain(
+                spkt_teeth=[12.5, 6],
+                spkt_locations=[(0, 0), (1, 0)],
+                positive_chain_wrap=[True, False],
+            )
+        with self.assertRaises(ValueError):  # Too few sprockets
+            Chain(
+                spkt_teeth=[16],
+                spkt_locations=[(0, 0), (1, 0)],
+                positive_chain_wrap=[True, False],
+            )
+        with self.assertRaises(ValueError):  # Teeth not list
+            Chain(
+                spkt_teeth=12,
+                spkt_locations=[(0, 0), (1, 0)],
+                positive_chain_wrap=[True, False],
+            )
+        with self.assertRaises(ValueError):  # Too few locations
+            Chain(
+                spkt_teeth=[12, 12],
+                spkt_locations=Vector(0, 0, 0),
+                positive_chain_wrap=[True, False],
+            )
+        with self.assertRaises(ValueError):  # Wrap not a list
+            Chain(
+                spkt_teeth=[12, 12],
+                spkt_locations=Vector(0, 0, 0),
+                positive_chain_wrap=True,
+            )
+        with self.assertRaises(ValueError):  # Wrap not bool
+            Chain(
+                spkt_teeth=[12, 12],
+                spkt_locations=Vector(0, 0, 0),
+                positive_chain_wrap=["yes", "no"],
+            )
         with self.assertRaises(ValueError):  # Length mismatch
             Chain(
                 spkt_teeth=[20, 20],
-                spkt_locations=[cq.Vector(0, 0, 0), cq.Vector(20, 0, 0)],
+                spkt_locations=[Vector(0, 0, 0), Vector(20, 0, 0)],
                 positive_chain_wrap=[True],
             )
-        with self.assertRaises(KeyError):  # Overlapping sprockets
-            Chain(spkt_locations=[cq.Vector(0, 0, 0), cq.Vector(0, 0, 0)])
+        with self.assertRaises(ValueError):  # Overlapping sprockets
+            Chain(
+                spkt_teeth=[12, 12],
+                spkt_locations=[Vector(0, 0, 0), Vector(0, 0, 0)],
+                positive_chain_wrap=[True, True],
+            )
 
 
 class TestSprocketShape(unittest.TestCase):
@@ -110,7 +133,6 @@ class TestSprocketShape(unittest.TestCase):
             bore_diameter=80 * MM,
         )
         spkt_object = spkt.cq_object
-        # cq.exporters.export(spkt_object,"sprocket_flat.step")
         self.assertTrue(spkt_object.val().isValid())
         # self.assertEqual(spkt.hashCode(),2035876455)  # hashCode() isn't consistent
         self.assertAlmostEqual(spkt_object.val().Area(), 16935.40667143173)
@@ -126,7 +148,6 @@ class TestSprocketShape(unittest.TestCase):
             num_teeth=16, chain_pitch=0.5 * INCH, roller_diameter=0.49 * INCH
         )
         spkt_object = spkt.cq_object
-        # cq.exporters.export(spkt_object,"sprocket_spiky.step")
         self.assertTrue(spkt_object.val().isValid())
         self.assertAlmostEqual(spkt_object.val().Area(), 5475.870128515104)
         self.assertAlmostEqual(spkt_object.val().Volume(), 5124.246302618558)
@@ -234,11 +255,11 @@ class TestChainShape(unittest.TestCase):
             spkt_teeth=[32, 10, 10, 10, 16],
             positive_chain_wrap=[True, True, False, False, True],
             spkt_locations=[
-                cq.Vector(0, 158.9 * MM, 0),
-                cq.Vector(+190 * MM, -50 * MM, 0),
-                cq.Vector(+140 * MM, 20 * MM, 0),
-                cq.Vector(+120 * MM, 90 * MM, 0),
-                cq.Vector(+205 * MM, 158.9 * MM, 0),
+                Vector(0, 158.9 * MM, 0),
+                Vector(+190 * MM, -50 * MM, 0),
+                Vector(+140 * MM, 20 * MM, 0),
+                Vector(+120 * MM, 90 * MM, 0),
+                Vector(+205 * MM, 158.9 * MM, 0),
             ],
         )
         self.assertEqual(chain.num_rollers, len(roller_pos))
@@ -251,8 +272,8 @@ class TestChainShape(unittest.TestCase):
             Chain(
                 spkt_teeth=[32, 32],
                 spkt_locations=[
-                    cq.Vector(-4.9 * INCH, 0, 0),
-                    cq.Vector(+5 * INCH, 0, 0),
+                    Vector(-4.9 * INCH, 0, 0),
+                    Vector(+5 * INCH, 0, 0),
                 ],
                 positive_chain_wrap=[True, True],
             )
@@ -320,12 +341,12 @@ class TestChainMethods(unittest.TestCase):
 
         chain = Chain(
             spkt_teeth=[16, 16],
-            spkt_locations=[cq.Vector(-3 * INCH, 40, 50), cq.Vector(+3 * INCH, 40, 50)],
+            spkt_locations=[Vector(-3 * INCH, 40, 50), Vector(+3 * INCH, 40, 50)],
             positive_chain_wrap=[True, True],
         )
-        with self.assertRaises(pydantic.error_wrappers.ValidationError):
+        with self.assertRaises(ValueError):
             chain.assemble_chain_transmission(spkt0.cq_object)
-        with self.assertRaises(pydantic.error_wrappers.ValidationError):
+        with self.assertRaises(ValueError):
             chain.assemble_chain_transmission([spkt0, spkt1.cq_object])
 
         """ Validate a transmission assembly composed of two sprockets and a chain """
@@ -351,11 +372,6 @@ class TestChainMethods(unittest.TestCase):
         self.assertEqual(transmission.children[0].name, "spkt0")
         self.assertEqual(transmission.children[1].name, "spkt1")
         self.assertEqual(transmission.children[2].name, "chain")
-        # self.assertEqual(
-        #     transmission.children[0].loc,
-        #     cq.Location((-3*INCH,0,0),(1,0,0),90),
-        #     7
-        # )
 
 
 class TestVectorMethods(unittest.TestCase):
@@ -363,9 +379,9 @@ class TestVectorMethods(unittest.TestCase):
 
     def test_vector_rotate(self):
         """Validate vector rotate methods"""
-        vector_x = cq.Vector(1, 0, 1).rotateX(45)
-        vector_y = cq.Vector(1, 2, 1).rotateY(45)
-        vector_z = cq.Vector(-1, -1, 3).rotateZ(45)
+        vector_x = Vector(1, 0, 1).rotateX(45)
+        vector_y = Vector(1, 2, 1).rotateY(45)
+        vector_z = Vector(-1, -1, 3).rotateZ(45)
         self.assertTupleAlmostEquals(
             vector_x.toTuple(), (1, -math.sqrt(2) / 2, math.sqrt(2) / 2), 7
         )
@@ -374,27 +390,7 @@ class TestVectorMethods(unittest.TestCase):
 
     def test_vector_flip_y(self):
         """Validate vector flip of the xz plane method"""
-        self.assertTupleAlmostEquals(
-            cq.Vector(1, 2, 3).flipY().toTuple(), (1, -2, 3), 7
-        )
-
-    def test_point_to_vector(self):
-        """Validate conversion of 2D points to 3D vectors"""
-        point = cq.Vector(1, 2)
-        with self.assertRaises(ValueError):
-            point.pointToVector((1, 0, 0))
-        with self.assertRaises(ValueError):
-            point.pointToVector("x")
-        self.assertTupleAlmostEquals(point.pointToVector("XY").toTuple(), (1, 2, 0), 7)
-        self.assertTupleAlmostEquals(
-            point.pointToVector("XY", 4).toTuple(), (1, 2, 4), 7
-        )
-        self.assertTupleAlmostEquals(
-            point.pointToVector("XZ", 3).toTuple(), (1, 3, 2), 7
-        )
-        self.assertTupleAlmostEquals(
-            point.pointToVector("YZ", 5).toTuple(), (5, 1, 2), 7
-        )
+        self.assertTupleAlmostEquals(Vector(1, 2, 3).flipY().toTuple(), (1, -2, 3), 7)
 
 
 if __name__ == "__main__":

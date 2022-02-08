@@ -53,23 +53,47 @@ def imperial_str_to_float(measure: str) -> float:
     return result
 
 
+cq.Shape
+
+
 class Thread:
-    """Create a helical thread
-    Each end of the thread can finished as follows:
-    - "raw"     unfinished which typically results in the thread extended below
-                z=0 or above z=length
-    - "fade"    the thread height drops to zero over 90° of arc (or 1/4 pitch)
-    - "square"  clipped by the z=0 or z=length plane
-    - "chamfer" conical ends which facilitates alignment of a bolt into a nut
+    """Helical thread
 
-    Note that the performance of this Thread class varies significantly by end
-    finish. Here are some sample measurements (both ends finished) to illustate
-    how the time required to create the thread varies:
-    - "raw"     0.018s
-    - "fade"    0.087s
-    - "square"  0.370s
-    - "chamfer" 1.641s
+    The most general thread class used to build all of the other threads.
+    Creates right or left hand helical thread with the given
+    root and apex radii.
 
+    Args:
+        apex_radius: Radius at the narrow tip of the thread.
+        apex_width: Radius at the wide base of the thread.
+        root_radius: Radius at the wide base of the thread.
+        root_width: Thread base width.
+        pitch: Length of 360° of thread rotation.
+        length: End to end length of the thread.
+        apex_offset: Asymmetric thread apex offset from center. Defaults to 0.0.
+        hand: Twist direction. Defaults to "right".
+        taper_angle: Cone angle for tapered thread. Defaults to None.
+        end_finishes: Profile of each end, one of:
+
+            "raw"
+                unfinished which typically results in the thread
+                extended below z=0 or above z=length
+            "fade"
+                the thread height drops to zero over 90° of arc
+                (or 1/4 pitch)
+            "square"
+                clipped by the z=0 or z=length plane
+            "chamfer"
+                conical ends which facilitates alignment of a bolt
+                into a nut
+
+            Defaults to ("raw","raw").
+
+    Attributes:
+        cq_object: cadquery Solid object
+
+    Raises:
+        ValueError: if end_finishes not in ["raw", "square", "fade", "chamfer"]:
     """
 
     def fade_helix(
@@ -120,7 +144,7 @@ class Thread:
     ):
         """Store the parameters and create the thread object"""
         for finish in end_finishes:
-            if not finish in ["raw", "square", "fade", "chamfer"]:
+            if finish not in ["raw", "square", "fade", "chamfer"]:
                 raise ValueError(
                     'end_finishes invalid, must be tuple() of "raw, square, taper, or chamfer"'
                 )
@@ -369,9 +393,49 @@ class Thread:
 
 
 class IsoThread:
-    """
-    ISO standard threads as shown in the following diagram:
-        https://en.wikipedia.org/wiki/ISO_metric_screw_thread#/media/File:ISO_and_UTS_Thread_Dimensions.svg
+    """ISO Standard Thread
+
+    Both external and internal ISO standard 60° threads as shown in
+    the following diagram (from https://en.wikipedia.org/wiki/ISO_metric_screw_thread):
+
+    .. image:: https://upload.wikimedia.org/wikipedia/commons/4/4b/ISO_and_UTS_Thread_Dimensions.svg
+
+    The following is an example of an internal thread with a chamfered end as might be found inside a nut:
+
+    .. image:: internal_iso_thread.png
+
+    Args:
+        major_diameter (float): Primary thread diameter
+        pitch (float): Length of 360° of thread rotation
+        length (float): End to end length of the thread
+        external (bool, optional): External or internal thread selector. Defaults to True.
+        hand (Literal[, optional): Twist direction. Defaults to "right".
+        end_finishes (Tuple[ Literal[, optional): Profile of each end, one of:
+
+            "raw"
+                unfinished which typically results in the thread
+                extended below z=0 or above z=length
+            "fade"
+                the thread height drops to zero over 90° of arc
+                (or 1/4 pitch)
+            "square"
+                clipped by the z=0 or z=length plane
+            "chamfer"
+                conical ends which facilitates alignment of a bolt
+                into a nut
+
+            Defaults to ("fade", "square").
+
+    Attributes:
+        thread_angle (int): 60 degrees
+        h_parameter (float): Value of `h` as shown in the thread diagram
+        min_radius (float): Inside radius of the thread diagram
+        cq_object (Solid): The generated cadquery Solid thread object
+
+    Raises:
+        ValueError: if hand not in ["right", "left"]:
+        ValueError: end_finishes not in ["raw", "square", "fade", "chamfer"]
+
     """
 
     @property
@@ -411,7 +475,7 @@ class IsoThread:
             raise ValueError(f'hand must be one of "right" or "left" not {hand}')
         self.hand = hand
         for finish in end_finishes:
-            if not finish in ["raw", "square", "fade", "chamfer"]:
+            if finish not in ["raw", "square", "fade", "chamfer"]:
                 raise ValueError(
                     'end_finishes invalid, must be tuple() of "raw, square, taper, or chamfer"'
                 )
@@ -433,13 +497,46 @@ class IsoThread:
 
 
 class TrapezoidalThread(ABC):
-    """
+    """Trapezoidal Thread Base Class
+
     Trapezoidal Thread base class for Metric and Acme derived classes
 
     Trapezoidal thread forms are screw thread profiles with trapezoidal outlines. They are
     the most common forms used for leadscrews (power screws). They offer high strength
     and ease of manufacture. They are typically found where large loads are required, as
     in a vise or the leadscrew of a lathe.
+
+    Args:
+        size (str): specified by derived class
+        length (float): thread length
+        external (bool, optional): external or internal thread selector. Defaults to True.
+        hand (Literal[, optional): twist direction. Defaults to "right".
+        end_finishes (Tuple[ Literal[, optional): Profile of each end, one of:
+
+            "raw"
+                unfinished which typically results in the thread
+                extended below z=0 or above z=length
+            "fade"
+                the thread height drops to zero over 90° of arc
+                (or 1/4 pitch)
+            "square"
+                clipped by the z=0 or z=length plane
+            "chamfer"
+                conical ends which facilitates alignment of a bolt
+                into a nut
+
+            Defaults to ("fade", "fade").
+
+    Raises:
+        ValueError: hand must be one of "right" or "left"
+        ValueError: end_finishes invalid, must be tuple() of "raw, square, taper, or chamfer"
+
+    Attributes:
+        thread_angle (int): thread angle in degrees
+        diameter (float): thread diameter
+        pitch (float): thread pitch
+        cq_object (Solid): The generated cadquery Solid thread object
+
     """
 
     @property
@@ -506,11 +603,46 @@ class TrapezoidalThread(ABC):
 
 
 class AcmeThread(TrapezoidalThread):
-    """
+    """ACME Thread
+
     The original trapezoidal thread form, and still probably the one most commonly encountered
     worldwide, with a 29° thread angle, is the Acme thread form.
 
-    size is specified as a string (i.e. "3/4" or "1 1/4")
+    The following is the acme thread with faded ends:
+
+    .. image:: acme_thread.png
+
+    Args:
+        size (str): size as a string (i.e. "3/4" or "1 1/4")
+        length (float): thread length
+        external (bool, optional): external or internal thread selector. Defaults to True.
+        hand (Literal[, optional): twist direction. Defaults to "right".
+        end_finishes (Tuple[ Literal[, optional): Profile of each end, one of:
+
+            "raw"
+                unfinished which typically results in the thread
+                extended below z=0 or above z=length
+            "fade"
+                the thread height drops to zero over 90° of arc
+                (or 1/4 pitch)
+            "square"
+                clipped by the z=0 or z=length plane
+            "chamfer"
+                conical ends which facilitates alignment of a bolt
+                into a nut
+
+            Defaults to ("fade", "fade").
+
+    Raises:
+        ValueError: hand must be one of "right" or "left"
+        ValueError: end_finishes invalid, must be tuple() of "raw, square, taper, or chamfer"
+
+    Attributes:
+        thread_angle (int): thread angle in degrees
+        diameter (float): thread diameter
+        pitch (float): thread pitch
+        cq_object (Solid): The generated cadquery Solid thread object
+
     """
 
     acme_pitch = {
@@ -550,10 +682,40 @@ class AcmeThread(TrapezoidalThread):
 
 
 class MetricTrapezoidalThread(TrapezoidalThread):
-    """
+    """Metric Trapezoidal Thread
+
     The ISO 2904 standard metric trapezoidal thread with a thread angle of 30°
 
-    size is specified as a sting with diameter x pitch in mm (i.e. "8x1.5")
+    Args:
+        size (str): specified as a sting with diameter x pitch in mm (i.e. "8x1.5")
+        length (float): End to end length of the thread
+        external (bool, optional): external or internal thread selector. Defaults to True.
+        hand (Literal[, optional): twist direction. Defaults to "right".
+        end_finishes (Tuple[ Literal[, optional): Profile of each end, one of:
+
+            "raw"
+                unfinished which typically results in the thread
+                extended below z=0 or above z=length
+            "fade"
+                the thread height drops to zero over 90° of arc
+                (or 1/4 pitch)
+            "square"
+                clipped by the z=0 or z=length plane
+            "chamfer"
+                conical ends which facilitates alignment of a bolt
+                into a nut
+
+            Defaults to ("fade", "fade").
+
+    Raises:
+        ValueError: hand must be one of "right" or "left"
+        ValueError: end_finishes invalid, must be tuple() of "raw, square, taper, or chamfer"
+
+    Attributes:
+        thread_angle (int): thread angle in degrees
+        diameter (float): thread diameter
+        pitch (float): thread pitch
+        cq_object (Solid): The generated cadquery Solid thread object
     """
 
     # Turn off black auto-format for this array as it will be spread over hundreds of lines
@@ -610,16 +772,40 @@ class MetricTrapezoidalThread(TrapezoidalThread):
 class PlasticBottleThread:
     """ASTM D2911 Plastic Bottle Thread
 
-    size: [L|M][diameter(mm)]SP[100|103|110|200|400|410|415:425|444]
-          e.g.  M15SP425
+    The `ASTM D2911 Standard <https://www.astm.org/d2911-10.html>`_ Plastic Bottle Thread.
 
-    L Style: All-Purpose Thread - trapezoidal shape with 30° shoulders, metal or platsic closures
-    M Style: Modified Buttress Thread - asymmetric shape with 10° and 40/45/50° shoulders, plastic closures
+    L Style:
+        All-Purpose Thread - trapezoidal shape with 30° shoulders, metal or platsic closures
+    M Style:
+        Modified Buttress Thread - asymmetric shape with 10° and 40/45/50° shoulders, plastic closures
 
-    example:
-        thread = PlasticBottleThread(
-            size="M38SP444", external=False, manufacturingCompensation=0.2 * MM
-        )
+    .. image:: plasticThread.png
+
+    Args:
+        size (str): as defined by the ASTM is specified as [L|M][diameter(mm)]SP[100|103|110|200|400|410|415|425|444]
+        external (bool, optional): external or internal thread selector. Defaults to True.
+        hand (Literal[, optional): twist direction. Defaults to "right".
+        manufacturingCompensation (float, optional): used to compensate for over-extrusion of 3D
+            printers. A value of 0.2mm will reduce the radius of an external thread by 0.2mm (and
+            increase the radius of an internal thread) such that the resulting 3D printed part
+            matches the target dimensions. Defaults to 0.0.
+
+    Raises:
+        ValueError: hand must be one of "right" or "left"
+        ValueError: size invalid, must match [L|M][diameter(mm)]SP[100|103|110|200|400|410|415:425|444]
+        ValueError: finish invalid
+        ValueError: diameter invalid
+
+    Attributes:
+        cq_object (Solid): cadquery thread object
+
+    Example:
+        .. code-block:: python
+
+            thread = PlasticBottleThread(
+                size="M38SP444", external=False, manufacturingCompensation=0.2 * MM
+            )
+
     """
 
     # {TPI: [root_width,thread_height]}

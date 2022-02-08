@@ -10,7 +10,7 @@ padding = 12.0
 
 # make the screw
 screw = SocketHeadCapScrew(
-    fastener_type="iso4762", size="M2-0.4", length=16, simple=True
+    fastener_type="iso4762", size="M2-0.4", length=16, simple=False
 )
 # make the assembly
 pillow_block = cq.Assembly(None, name="pillow_block")
@@ -30,7 +30,7 @@ base = (
     .fillet(2.0)
 )
 pillow_block.add(base, name="base", color=cq.Color(162 / 255, 138 / 255, 255 / 255))
-print(pillow_block.fastener_quantities(bom=False))
+print(pillow_block.fastenerQuantities(bom=False))
 
 # Render the assembly
 if "show_object" in locals():
