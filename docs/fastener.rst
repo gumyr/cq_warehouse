@@ -420,6 +420,13 @@ example shows how these methods can be used to align holes between parts in an a
 .. literalinclude:: ../examples/align_fastener_holes.py
    :language: python
 
+.. doctest::
+
+	((25.0, 5.0, 12.0), (0.0, -0.0, 0.0))
+	((15.0, 5.0, 12.0), (0.0, -0.0, 0.0))
+	((20.0, 12.0, 5.0), (1.5707963267948966, -0.0, 3.141592653589793))
+	{'SocketHeadCapScrew(iso4762): M2-0.4x6': 3}
+
 .. image:: fastenerLocations.png
 
 *****************

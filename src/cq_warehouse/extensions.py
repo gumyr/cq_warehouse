@@ -149,6 +149,8 @@ def _fastener_quantities(self, bom: bool = True, deep: bool = True) -> dict:
     Returns:
         fastener usage summary
     """
+    from cq_warehouse.fastener import Screw, Nut, Washer
+
     assembly_list = []
     if deep:
         for _name, sub_assembly in self.traverse():
@@ -722,7 +724,7 @@ def _fastenerHole(
     fit: Optional[Literal["Close", "Normal", "Loose"]] = None,
     material: Optional[Literal["Soft", "Hard"]] = None,
     counterSunk: Optional[bool] = True,
-    baseAssembly: Optional[Assembly] = None,
+    baseAssembly: Optional["Assembly"] = None,
     hand: Optional[Literal["right", "left"]] = None,
     simple: Optional[bool] = False,
     clean: Optional[bool] = True,
@@ -751,6 +753,7 @@ def _fastenerHole(
     Returns:
         the shape on the workplane stack with a new hole
     """
+    from cq_warehouse.thread import IsoThread
 
     # If there is a thread direction, this is a threaded hole
     threaded_hole = not hand is None
@@ -866,7 +869,7 @@ def _clearanceHole(
     fit: Optional[Literal["Close", "Normal", "Loose"]] = "Normal",
     depth: Optional[float] = None,
     counterSunk: Optional[bool] = True,
-    baseAssembly: Optional[Assembly] = None,
+    baseAssembly: Optional["Assembly"] = None,
     clean: Optional[bool] = True,
 ) -> T:
     """Clearance Hole
@@ -911,7 +914,7 @@ def _tapHole(
     depth: Optional[float] = None,
     counterSunk: Optional[bool] = True,
     fit: Optional[Literal["Close", "Normal", "Loose"]] = "Normal",
-    baseAssembly: Optional[Assembly] = None,
+    baseAssembly: Optional["Assembly"] = None,
     clean: Optional[bool] = True,
 ) -> T:
     """Tap Hole
@@ -959,7 +962,7 @@ def _threadedHole(
     simple: Optional[bool] = False,
     counterSunk: Optional[bool] = True,
     fit: Optional[Literal["Close", "Normal", "Loose"]] = "Normal",
-    baseAssembly: Optional[Assembly] = None,
+    baseAssembly: Optional["Assembly"] = None,
     clean: Optional[bool] = True,
 ) -> T:
     """Threaded Hole
@@ -1005,7 +1008,7 @@ Workplane.threadedHole = _threadedHole
 def _push_fastener_locations(
     self: T,
     fastener: Union["Nut", "Screw"],
-    baseAssembly: Assembly,
+    baseAssembly: "Assembly",
 ):
     """Push Fastener Locations
 

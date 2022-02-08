@@ -3,6 +3,7 @@ README.md
 pyproject.toml
 setup.cfg
 src/cq_warehouse/__init__.py
+src/cq_warehouse/assembly_extended.py
 src/cq_warehouse/button_head_parameters.csv
 src/cq_warehouse/button_head_with_collar_parameters.csv
 src/cq_warehouse/chain.py
@@ -11,11 +12,14 @@ src/cq_warehouse/cheese_head_parameters.csv
 src/cq_warehouse/cheese_head_washer_parameters.csv
 src/cq_warehouse/clearance_hole_sizes.csv
 src/cq_warehouse/countersunk_head_parameters.csv
+src/cq_warehouse/cq_extended.py
 src/cq_warehouse/domed_cap_nut_parameters.csv
 src/cq_warehouse/drafting.py
 src/cq_warehouse/drill_sizes.csv
 src/cq_warehouse/extensions.py
+src/cq_warehouse/extensions_doc.py
 src/cq_warehouse/fastener.py
+src/cq_warehouse/geom_extended.py
 src/cq_warehouse/hex_head_parameters.csv
 src/cq_warehouse/hex_head_with_flange_parameters.csv
 src/cq_warehouse/hex_nut_parameters.csv
@@ -30,6 +34,7 @@ src/cq_warehouse/plain_washer_parameters.csv
 src/cq_warehouse/raised_cheese_head_parameters.csv
 src/cq_warehouse/raised_countersunk_oval_head_parameters.csv
 src/cq_warehouse/setscrew_parameters.csv
+src/cq_warehouse/shapes_extended.py
 src/cq_warehouse/socket_head_cap_parameters.csv
 src/cq_warehouse/sprocket.py
 src/cq_warehouse/square_nut_parameters.csv
@@ -39,5 +44,4 @@ src/cq_warehouse/unchamfered_hex_nut_parameters.csv
 src/cq_warehouse.egg-info/PKG-INFO
 src/cq_warehouse.egg-info/SOURCES.txt
 src/cq_warehouse.egg-info/dependency_links.txt
-src/cq_warehouse.egg-info/requires.txt
 src/cq_warehouse.egg-info/top_level.txt

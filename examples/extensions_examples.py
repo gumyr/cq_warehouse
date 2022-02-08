@@ -25,6 +25,7 @@ license:
     limitations under the License.
 
 """
+from math import sin, cos, pi
 import timeit
 import random
 import cadquery as cq
@@ -39,7 +40,7 @@ EMBOSS_TEXT = 6
 PROJECT_TEXT = 7
 EMBOSS_WIRE = 8
 
-example = EMBOSS_TEXT
+example = EMBOSS_WIRE
 
 # A sphere used as a projection target
 sphere = cq.Solid.makeSphere(50, angleDegrees1=-90)

@@ -319,7 +319,7 @@ class Workplane(object):
         fit: Optional[Literal["Close", "Normal", "Loose"]] = None,
         material: Optional[Literal["Soft", "Hard"]] = None,
         counterSunk: Optional[bool] = True,
-        baseAssembly: Optional[Assembly] = None,
+        baseAssembly: Optional["Assembly"] = None,
         hand: Optional[Literal["right", "left"]] = None,
         simple: Optional[bool] = False,
         clean: Optional[bool] = True,
@@ -355,7 +355,7 @@ class Workplane(object):
         fit: Optional[Literal["Close", "Normal", "Loose"]] = "Normal",
         depth: Optional[float] = None,
         counterSunk: Optional[bool] = True,
-        baseAssembly: Optional[Assembly] = None,
+        baseAssembly: Optional["Assembly"] = None,
         clean: Optional[bool] = True,
     ) -> T:
         """Clearance Hole
@@ -385,7 +385,7 @@ class Workplane(object):
         depth: Optional[float] = None,
         counterSunk: Optional[bool] = True,
         fit: Optional[Literal["Close", "Normal", "Loose"]] = "Normal",
-        baseAssembly: Optional[Assembly] = None,
+        baseAssembly: Optional["Assembly"] = None,
         clean: Optional[bool] = True,
     ) -> T:
         """Tap Hole
@@ -417,7 +417,7 @@ class Workplane(object):
         simple: Optional[bool] = False,
         counterSunk: Optional[bool] = True,
         fit: Optional[Literal["Close", "Normal", "Loose"]] = "Normal",
-        baseAssembly: Optional[Assembly] = None,
+        baseAssembly: Optional["Assembly"] = None,
         clean: Optional[bool] = True,
     ) -> T:
         """Threaded Hole
@@ -444,7 +444,7 @@ class Workplane(object):
     def pushFastenerLocations(
         self: T,
         fastener: Union["Nut", "Screw"],
-        baseAssembly: Assembly,
+        baseAssembly: "Assembly",
     ):
         """Push Fastener Locations
     
