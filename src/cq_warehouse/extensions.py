@@ -1307,6 +1307,44 @@ def _face_embossToShape(
 
 Face.embossToShape = _face_embossToShape
 
+
+def _face_makeHoles(
+    self,
+    interiorWires: list["Wire"] = None,
+) -> "Face":
+    """Make Holes in Face
+
+    Create holes in the Face 'self' from interiorWires which must be entirely interior
+
+    Raises:
+        RuntimeError: adding interior hole in non-planar face with provided interiorWires
+        RuntimeError: resulting face is not valid
+
+    Returns:
+        [Face]: 'self' with holes
+    """
+    # Add wires that define interior holes - note these wires must be entirely interior
+    if interiorWires:
+        makeface_object = BRepBuilderAPI_MakeFace(self.wrapped)
+        for w in interiorWires:
+            makeface_object.Add(w.wrapped)
+        try:
+            surface_face = Face(makeface_object.Face())
+        except StdFail_NotDone as e:
+            raise RuntimeError(
+                "Error adding interior hole in non-planar face with provided interiorWires"
+            ) from e
+
+    surface_face = surface_face.fix()
+    # if not surface_face.isValid():
+    #     raise RuntimeError("non planar face is invalid")
+
+    return surface_face
+
+
+Face.makeHoles = _face_makeHoles
+
+
 """
 
 Wire extensions: makeNonPlanarFace(), projectToShape(), embossToShape()
@@ -1337,7 +1375,10 @@ def makeNonPlanarFace(
         Non planar face
     """
 
-    surface_points = [Vector(p) for p in surfacePoints]
+    if surfacePoints:
+        surface_points = [Vector(p) for p in surfacePoints]
+    else:
+        surface_points = None
 
     # First, create the non-planar surface
     surface = BRepOffsetAPI_MakeFilling(
@@ -1355,7 +1396,7 @@ def makeNonPlanarFace(
     if isinstance(exterior, Wire):
         outside_edges = exterior.Edges()
     else:
-        outside_edges = [e.Edge() for e in exterior]
+        outside_edges = exterior
     for edge in outside_edges:
         surface.Add(edge.wrapped, GeomAbs_C0)
 
@@ -1795,9 +1836,42 @@ Edge.embossToShape = _embossEdgeToShape
 
 """
 
-Shape extensions: findIntersection(), projectText(), embossText()
+Shape extensions: transformed(), findIntersection(), projectText(), embossText()
 
 """
+
+
+def _transformed(
+    self, rotate: VectorLike = (0, 0, 0), offset: VectorLike = (0, 0, 0)
+) -> T:
+    """Transform Shape
+
+    Rotate and translate the Shape by the three angles (in degrees) and offset
+
+    Args:
+        rotate (VectorLike, optional): 3-tuple of angles to rotate, in degrees. Defaults to (0, 0, 0).
+        offset (VectorLike, optional): 3-tuple to offset. Defaults to (0, 0, 0).
+
+    Returns:
+        T: transformed object
+    """
+
+    # Convert to a Vector of radians
+    rotate = Vector(rotate).multiply(math.pi / 180.0)
+
+    # Compute rotation matrix.
+    t_rx = gp_Trsf()
+    t_rx.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(1, 0, 0)), rotate.x)
+    t_ry = gp_Trsf()
+    t_ry.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(0, 1, 0)), rotate.y)
+    t_rz = gp_Trsf()
+    t_rz.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), rotate.z)
+    t_o = gp_Trsf()
+    t_o.SetTranslation(Vector(offset).wrapped)
+    return self._apply_transform(t_rx * t_ry * t_rz * t_o)
+
+
+Shape.transformed = _transformed
 
 
 def _findIntersection(

@@ -40,7 +40,7 @@ from math import asin, pi, degrees, sqrt, atan2, floor, nan
 import warnings
 from functools import cache
 from typing import Union, Tuple, List
-from cadquery import Vector, Location, Solid, Workplane, Assembly
+from cadquery import Vector, Location, Workplane, Assembly, Plane, Shape
 from cadquery.occ_impl.shapes import VectorLike
 import cq_warehouse.extensions
 from cq_warehouse.sprocket import Sprocket
@@ -71,6 +71,8 @@ class Chain:
             Defaults to 3/32 inch.
         link_plate_thickness (float): thickness of the link plates (both inner and outer link plates).
             Defaults to 1 mm.
+        spkt_normal (VectorLike): direction of the sprocket axes - only required for two sprocket configurations.
+            Defaults to (0, 0, 1).
 
     Attributes:
         pitch_radii (float): radius of the circle formed by the center of the chain rollers on each sprocket
@@ -78,7 +80,9 @@ class Chain:
         num_rollers (int): number of link rollers in the entire chain
         roller_loc (list[Vector]): location of each roller in the chain
         chain_angles (list[tuple[float,float]]): chain entry and exit angles in degrees for each sprocket
-        spkt_initial_rotation (list[float]): angle in degrees to rotate each sprocket in-order to align the teeth with the gaps in the chain
+        spkt_initial_rotation (list[float]): angle in degrees to rotate each sprocket in-order to align the
+            teeth with the gaps in the chain
+        chain_plane (Plane): the plane defined by the location of the sprockets
         cq_object: cadquery chain object
 
     Raises:
@@ -122,7 +126,10 @@ class Chain:
     @property
     def roller_loc(self) -> List[Vector]:
         """the location of each roller in the chain"""
-        return self._roller_loc
+        roller_world_locations = [
+            self._chain_plane.toWorldCoords(l.toTuple()) for l in self._roller_loc
+        ]
+        return roller_world_locations
 
     @property
     def chain_angles(self) -> "List[Tuple(float,float)]":
@@ -134,6 +141,11 @@ class Chain:
         """a in degrees to rotate each sprocket in-order to align the teeth with the gaps
         in the chain"""
         return self._spkt_initial_rotation
+
+    @property
+    def chain_plane(self) -> Plane:
+        """the plane defined by the location of the sprockets"""
+        return self._chain_plane
 
     @property
     def cq_object(self) -> Assembly:
@@ -149,6 +161,7 @@ class Chain:
         roller_diameter: float = (5 / 16) * INCH,
         roller_length: float = (3 / 32) * INCH,
         link_plate_thickness: float = 1.0 * MM,
+        spkt_normal: VectorLike = (0, 0, 1),
     ):
         """Validate inputs and create the chain assembly object"""
         self.spkt_teeth = spkt_teeth
@@ -158,6 +171,7 @@ class Chain:
         self.roller_diameter = roller_diameter
         self.roller_length = roller_length
         self.link_plate_thickness = link_plate_thickness
+        self.spkt_normal = spkt_normal
 
         if not (
             isinstance(spkt_teeth, list) and all(isinstance(s, int) for s in spkt_teeth)
@@ -177,30 +191,41 @@ class Chain:
             raise ValueError(
                 "Length of spkt_teeth, spkt_locations, positive_chain_wrap not equal"
             )
+        if len(spkt_teeth) < 2:
+            raise ValueError("At least two sprockets are required")
         """Ensure that the roller would fit in the chain"""
         if self.roller_diameter >= self.chain_pitch:
             raise ValueError(
                 f"roller_diameter {self.roller_diameter} is too large for chain_pitch {self.chain_pitch}"
             )
+        if len(set(Vector(loc).toTuple() for loc in spkt_locations)) != len(
+            spkt_locations
+        ):
+            raise ValueError("At least two sprockets are in the same location")
 
         # Store the number of sprockets in this chain
         self._num_spkts = len(self.spkt_teeth)
 
-        # Store the locations of the sprockets as a list of Vector independent of the inputs
-        self._spkt_locs = [
-            Vector(l.x, l.y, 0) if isinstance(l, Vector) else Vector(l[0], l[1], 0)
-            for l in self.spkt_locations
-        ]
-
-        # Store the elevation of the chain plane from the XY plane
-        if isinstance(self.spkt_locations[0], Vector):
-            self._plane_offset = self.spkt_locations[0].z
-        else:
-            self._plane_offset = (
-                self.spkt_locations[0][2] if len(self.spkt_locations[0]) == 3 else 0
+        self.x_direction = (
+            Vector(self.spkt_locations[1]) - Vector(self.spkt_locations[0])
+        ).normalized()
+        if self._num_spkts > 2:
+            self.spkt_normal = self.x_direction.cross(
+                (
+                    Vector(self.spkt_locations[2]) - Vector(self.spkt_locations[0])
+                ).normalized()
             )
-        if len({loc.toTuple() for loc in self._spkt_locs}) != self._num_spkts:
-            raise ValueError("At least two sprockets are in the same location")
+        self._chain_plane = Plane(
+            origin=Vector(0, 0, 0),
+            xDir=self.x_direction,
+            normal=self.spkt_normal,
+        )
+
+        # Store the locations of the sprockets as a list of Vector in local coordinates
+        # as defined by the plane the sprocket locations create
+        self._spkt_locs = [
+            self._chain_plane.toLocalCoords(Vector(l)) for l in self.spkt_locations
+        ]
 
         self._calc_entry_exit_angles()  # Determine critical chain angles
         self._calc_segment_lengths()  # Determine the chain segment lengths
@@ -468,18 +493,20 @@ class Chain:
                 )
             )
             link_location = Location(
-                self._roller_loc[i] + Vector(0, 0, self._plane_offset)
+                self._chain_plane.toWorldCoords(self._roller_loc[i].toTuple())
             )
+            # Add the link after aligning it with the world coordinate system
             self._cq_object.add(
-                Chain.make_link(inner=i % 2 == 0).rotate(
-                    (0, 0, 0), Vector(0, 0, 1), link_rotation_a_d
-                ),
+                Chain.make_link(inner=i % 2 == 0)
+                .val()
+                .rotate((0, 0, 0), Vector(0, 0, 1), link_rotation_a_d)
+                ._apply_transform(self._chain_plane.rG.wrapped.Trsf()),
                 name="link" + str(i),
                 loc=link_location,
             )
 
     def assemble_chain_transmission(
-        self, spkts: list[Union[Solid, Workplane]]
+        self, spkts: list[Union[Shape, Workplane]]
     ) -> Assembly:
         """Build Socket/Chain Assembly
 
@@ -492,7 +519,7 @@ class Chain:
             Chain wrapped around sprockets
         """
         if not isinstance(spkts, list) or not all(
-            isinstance(s, (Solid, Workplane)) for s in spkts
+            isinstance(s, (Shape, Workplane)) for s in spkts
         ):
             raise ValueError("spkts must be a list of Solid or Workplane")
 
@@ -502,7 +529,10 @@ class Chain:
             spktname = "spkt" + str(spkt_num)
             transmission.add(
                 spkt.rotate(
-                    (0, 0, 0), (0, 0, 1), self._spkt_initial_rotation[spkt_num]
+                    # (0, 0, 0), (0, 0, 1), self._spkt_initial_rotation[spkt_num]
+                    (0, 0, 0),
+                    self.spkt_normal,
+                    self._spkt_initial_rotation[spkt_num],
                 ).translate(self.spkt_locations[spkt_num]),
                 name=spktname,
             )
