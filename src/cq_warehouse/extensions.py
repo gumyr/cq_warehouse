@@ -222,19 +222,19 @@ Assembly.fastenerLocations = _fastener_locations
 
 """
 
-Plane extensions: toLocalCoords()
+Plane extensions: toLocalCoords(), toWorldCoords()
 
 """
 
 
-def _toLocalCoords(self, obj: Union["Vector", "Shape", "BoundBox"]):
-    """Project the provided coordinates onto this plane
+def _toLocalCoords(self, obj: Union[tuple, "Vector", "Shape", "BoundBox"]):
+    """Reposition the object relative to this plane
 
     Args:
         obj: an object, vector, or bounding box to convert
 
     Returns:
-        an object of the same type, but converted to local coordinates
+        an object of the same type, but repositioned to local coordinates
 
     Most of the time, the z-coordinate returned will be zero, because most
     operations based on a plane are all 2D. Occasionally, though, 3D
@@ -244,8 +244,8 @@ def _toLocalCoords(self, obj: Union["Vector", "Shape", "BoundBox"]):
     """
     # from .shapes import Shape
 
-    if isinstance(obj, Vector):
-        return obj.transform(self.fG)
+    if isinstance(obj, (tuple, Vector)):
+        return Vector(obj).transform(self.fG)
     elif isinstance(obj, Shape):
         return obj.transformShape(self.fG)
     elif isinstance(obj, BoundBox):
@@ -258,13 +258,42 @@ def _toLocalCoords(self, obj: Union["Vector", "Shape", "BoundBox"]):
         )
         return BoundBox(local_bbox)
     else:
-        raise ValueError(
-            f"Don't know how to convert type {type(obj)} to local coordinates"
-        )
+        raise ValueError(f"Unable to convert type {type(obj)} to local coordinates")
 
 
 Plane.toLocalCoords = _toLocalCoords
 
+
+def _toWorldCoords(self, obj: Union[tuple, "Vector", "Shape", "BoundBox"]):
+    """Reposition the object relative from this plane
+
+    Args:
+        obj: an object, vector, or bounding box to convert
+
+    Returns:
+        an object of the same type, but repositioned to world coordinates
+
+    """
+    # from .shapes import Shape
+
+    if isinstance(obj, (tuple, Vector)):
+        return Vector(obj).transform(self.rG)
+    elif isinstance(obj, Shape):
+        return obj._apply_transform(self.rG.wrapped.Trsf())
+    elif isinstance(obj, BoundBox):
+        global_bottom_left = Vector(obj.xmin, obj.ymin, obj.zmin)
+        global_top_right = Vector(obj.xmax, obj.ymax, obj.zmax)
+        local_bottom_left = global_bottom_left.transform(self.rG)
+        local_top_right = global_top_right.transform(self.rG)
+        local_bbox = Bnd_Box(
+            gp_Pnt(*local_bottom_left.toTuple()), gp_Pnt(*local_top_right.toTuple())
+        )
+        return BoundBox(local_bbox)
+    else:
+        raise ValueError(f"Unable to convert type {type(obj)} to world coordinates")
+
+
+Plane.toWorldCoords = _toWorldCoords
 
 """
 

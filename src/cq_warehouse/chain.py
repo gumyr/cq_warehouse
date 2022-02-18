@@ -497,10 +497,11 @@ class Chain:
             )
             # Add the link after aligning it with the world coordinate system
             self._cq_object.add(
-                Chain.make_link(inner=i % 2 == 0)
-                .val()
-                .rotate((0, 0, 0), Vector(0, 0, 1), link_rotation_a_d)
-                ._apply_transform(self._chain_plane.rG.wrapped.Trsf()),
+                self._chain_plane.toWorldCoords(
+                    Chain.make_link(inner=i % 2 == 0)
+                    .val()
+                    .rotate((0, 0, 0), Vector(0, 0, 1), link_rotation_a_d)
+                ),
                 name="link" + str(i),
                 loc=link_location,
             )
