@@ -127,7 +127,7 @@ class Chain:
     def roller_loc(self) -> List[Vector]:
         """the location of each roller in the chain"""
         roller_world_locations = [
-            self._chain_plane.toWorldCoords(l.toTuple()) for l in self._roller_loc
+            self._chain_plane.fromLocalCoords(l.toTuple()) for l in self._roller_loc
         ]
         return roller_world_locations
 
@@ -493,11 +493,11 @@ class Chain:
                 )
             )
             link_location = Location(
-                self._chain_plane.toWorldCoords(self._roller_loc[i].toTuple())
+                self._chain_plane.fromLocalCoords(self._roller_loc[i].toTuple())
             )
             # Add the link after aligning it with the world coordinate system
             self._cq_object.add(
-                self._chain_plane.toWorldCoords(
+                self._chain_plane.fromLocalCoords(
                     Chain.make_link(inner=i % 2 == 0)
                     .val()
                     .rotate((0, 0, 0), Vector(0, 0, 1), link_rotation_a_d)

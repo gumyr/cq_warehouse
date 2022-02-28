@@ -249,6 +249,15 @@ def prepare_extensions(python_code: list[str]) -> dict[list[dict]]:
                 )
                 for line in method_code[method_name]
             ]
+        if method_name == "fastenerLocations":
+            method_code[method_name] = [
+                line.replace(
+                    "# from functools import reduce",
+                    "from functools import reduce",
+                )
+                for line in method_code[method_name]
+            ]
+
         # Now that the code has been modified, add it code dictionary
         if class_name in code_dictionary:
             code_dictionary[class_name].append(method_code)

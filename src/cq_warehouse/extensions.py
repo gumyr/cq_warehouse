@@ -55,7 +55,7 @@ from cadquery import (
     Workplane,
     DirectionMinMaxSelector,
 )
-from cq_warehouse.fastener import Screw, Nut, Washer
+from cq_warehouse.fastener import Screw, Nut, Washer, HeatSetNut
 from cq_warehouse.thread import IsoThread
 
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace
@@ -85,6 +85,9 @@ from OCP.gp import gp_Vec, gp_Pnt, gp_Ax1, gp_Dir, gp_Trsf, gp, gp_GTrsf
 #     level=logging.DEBUG,
 #     format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)s - %(funcName)20s() ] - %(message)s",
 # )
+class logging:
+    pass
+
 
 """
 
@@ -187,6 +190,8 @@ def _fastener_locations(self, fastener: Union["Nut", "Screw"]) -> list[Location]
         a list of cadquery Location objects for each fastener instance
     """
 
+    # from functools import reduce
+
     name_to_fastener = {}
     base_assembly_structure = {}
     # Extract a list of only the fasteners from the metadata
@@ -227,7 +232,46 @@ Plane extensions: toLocalCoords(), toWorldCoords()
 """
 
 
-def _toLocalCoords(self, obj: Union[tuple, "Vector", "Shape", "BoundBox"]):
+def __toFromLocalCoords(
+    self, obj: Union["VectorLike", "Shape", "BoundBox"], to: bool = True
+):
+    """Reposition the object relative to this plane
+
+    Args:
+        obj: an object, vector, or bounding box to convert
+        to: convert `to` or from local coordinates. Defaults to True.
+
+    Returns:
+        an object of the same type, but repositioned to local coordinates
+
+    """
+    # from .shapes import Shape
+
+    transform_matrix = self.fG if to else self.rG
+
+    if isinstance(obj, (tuple, Vector)):
+        return Vector(obj).transform(transform_matrix)
+    elif isinstance(obj, Shape):
+        return obj.transformShape(transform_matrix)
+    elif isinstance(obj, BoundBox):
+        global_bottom_left = Vector(obj.xmin, obj.ymin, obj.zmin)
+        global_top_right = Vector(obj.xmax, obj.ymax, obj.zmax)
+        local_bottom_left = global_bottom_left.transform(transform_matrix)
+        local_top_right = global_top_right.transform(transform_matrix)
+        local_bbox = Bnd_Box(
+            gp_Pnt(*local_bottom_left.toTuple()), gp_Pnt(*local_top_right.toTuple())
+        )
+        return BoundBox(local_bbox)
+    else:
+        raise ValueError(
+            f"Unable to repositioned type {type(obj)} with respect to local coordinates"
+        )
+
+
+Plane._toFromLocalCoords = __toFromLocalCoords
+
+
+def _toLocalCoords(self, obj: Union["VectorLike", "Shape", "BoundBox"]):
     """Reposition the object relative to this plane
 
     Args:
@@ -236,35 +280,14 @@ def _toLocalCoords(self, obj: Union[tuple, "Vector", "Shape", "BoundBox"]):
     Returns:
         an object of the same type, but repositioned to local coordinates
 
-    Most of the time, the z-coordinate returned will be zero, because most
-    operations based on a plane are all 2D. Occasionally, though, 3D
-    points outside of the current plane are transformed. One such example is
-    :py:meth:`Workplane.box`, where 3D corners of a box are transformed to
-    orient the box in space correctly.
     """
-    # from .shapes import Shape
-
-    if isinstance(obj, (tuple, Vector)):
-        return Vector(obj).transform(self.fG)
-    elif isinstance(obj, Shape):
-        return obj.transformShape(self.fG)
-    elif isinstance(obj, BoundBox):
-        global_bottom_left = Vector(obj.xmin, obj.ymin, obj.zmin)
-        global_top_right = Vector(obj.xmax, obj.ymax, obj.zmax)
-        local_bottom_left = global_bottom_left.transform(self.fG)
-        local_top_right = global_top_right.transform(self.fG)
-        local_bbox = Bnd_Box(
-            gp_Pnt(*local_bottom_left.toTuple()), gp_Pnt(*local_top_right.toTuple())
-        )
-        return BoundBox(local_bbox)
-    else:
-        raise ValueError(f"Unable to convert type {type(obj)} to local coordinates")
+    return self._toFromLocalCoords(obj, True)
 
 
 Plane.toLocalCoords = _toLocalCoords
 
 
-def _toWorldCoords(self, obj: Union[tuple, "Vector", "Shape", "BoundBox"]):
+def _fromLocalCoords(self, obj: Union[tuple, "Vector", "Shape", "BoundBox"]):
     """Reposition the object relative from this plane
 
     Args:
@@ -274,26 +297,10 @@ def _toWorldCoords(self, obj: Union[tuple, "Vector", "Shape", "BoundBox"]):
         an object of the same type, but repositioned to world coordinates
 
     """
-    # from .shapes import Shape
-
-    if isinstance(obj, (tuple, Vector)):
-        return Vector(obj).transform(self.rG)
-    elif isinstance(obj, Shape):
-        return obj._apply_transform(self.rG.wrapped.Trsf())
-    elif isinstance(obj, BoundBox):
-        global_bottom_left = Vector(obj.xmin, obj.ymin, obj.zmin)
-        global_top_right = Vector(obj.xmax, obj.ymax, obj.zmax)
-        local_bottom_left = global_bottom_left.transform(self.rG)
-        local_top_right = global_top_right.transform(self.rG)
-        local_bbox = Bnd_Box(
-            gp_Pnt(*local_bottom_left.toTuple()), gp_Pnt(*local_top_right.toTuple())
-        )
-        return BoundBox(local_bbox)
-    else:
-        raise ValueError(f"Unable to convert type {type(obj)} to world coordinates")
+    return self._toFromLocalCoords(obj, False)
 
 
-Plane.toWorldCoords = _toWorldCoords
+Plane.fromLocalCoords = _fromLocalCoords
 
 """
 
@@ -750,6 +757,7 @@ def _fastenerHole(
     fastener: Union["Nut", "Screw"],
     depth: float,
     washers: list["Washer"],
+    countersinkProfile: cq.Workplane,
     fit: Optional[Literal["Close", "Normal", "Loose"]] = None,
     material: Optional[Literal["Soft", "Hard"]] = None,
     counterSunk: Optional[bool] = True,
@@ -768,6 +776,7 @@ def _fastenerHole(
         fastener: A nut or screw instance
         depth: hole depth
         washers: A list of washer instances, can be empty
+        countersinkProfile: the 2D side profile of the fastener (not including a screw's shaft)
         fit: one of "Close", "Normal", "Loose" which determines clearance hole diameter. Defaults to None.
         material: on of "Soft", "Hard" which determines tap hole size. Defaults to None.
         counterSunk: Is the fastener countersunk into the part?. Defaults to True.
@@ -791,7 +800,8 @@ def _fastenerHole(
     origin = Vector(0, 0, 0)
 
     # Setscrews' countersink_profile is None so check if it exists
-    countersink_profile = fastener.countersink_profile(fit)
+    # countersink_profile = fastener.countersink_profile(fit)
+    countersink_profile = countersinkProfile
     if counterSunk and not countersink_profile is None:
         head_offset = countersink_profile.vertices(">Z").val().Z
         countersink_cutter = (
@@ -911,15 +921,23 @@ def _clearanceHole(
     Args:
         fastener: A nut or screw instance
         washers: A list of washer instances, can be empty
-        fit: one of "Close", "Normal", "Loose" which determines clearance hole diameter. Defaults to None.
+        fit: one of "Close", "Normal", "Loose" which determines clearance hole diameter. Defaults to "Normal".
         depth: hole depth. Defaults to through part.
         counterSunk: Is the fastener countersunk into the part?. Defaults to True.
         baseAssembly: Assembly to add faster to. Defaults to None.
         clean: execute a clean operation remove extraneous internal features. Defaults to True.
 
+    Raises:
+        ValueError: clearanceHole doesn't accept fasteners of type HeatSetNut - use insertHole instead
+
     Returns:
         the shape on the workplane stack with a new clearance hole
     """
+    if isinstance(fastener, HeatSetNut):
+        raise ValueError(
+            "clearanceHole doesn't accept fasteners of type HeatSetNut - use insertHole instead"
+        )
+
     if depth is None:
         depth = self.largestDimension()
 
@@ -927,9 +945,62 @@ def _clearanceHole(
         hole_diameters=fastener.clearance_hole_diameters,
         fastener=fastener,
         washers=washers,
+        countersinkProfile=fastener.countersink_profile(fit),
         fit=fit,
         depth=depth,
         counterSunk=counterSunk,
+        baseAssembly=baseAssembly,
+        clean=clean,
+    )
+
+
+def _insertHole(
+    self: T,
+    fastener: "Nut",
+    fit: Optional[Literal["Close", "Normal", "Loose"]] = "Normal",
+    depth: Optional[float] = None,
+    baseAssembly: Optional["Assembly"] = None,
+    clean: Optional[bool] = True,
+    manufacturingCompensation: float = 0.0,
+) -> T:
+    """Insert Hole
+
+    Put a hole appropriate for an insert nut at the provided location
+
+    For more information on how to use insertHole() see
+    :ref:`Clearance, Tap and Threaded Holes <clearance holes>`.
+
+    Args:
+        fastener: An insert nut instance
+        fit: one of "Close", "Normal", "Loose" which determines clearance hole diameter. Defaults to "Normal".
+        depth: hole depth. Defaults to through part.
+        baseAssembly: Assembly to add faster to. Defaults to None.
+        clean: execute a clean operation remove extraneous internal features. Defaults to True.
+        manufacturingCompensation (float, optional): used to compensate for over-extrusion
+            of 3D printers. A value of 0.2mm will reduce the radius of an external thread
+            by 0.2mm (and increase the radius of an internal thread) such that the resulting
+            3D printed part matches the target dimensions. Defaults to 0.0.
+
+    Raises:
+        ValueError: insertHole only accepts fasteners of type HeatSetNut
+
+    Returns:
+        the shape on the workplane stack with a new clearance hole
+    """
+    if not isinstance(fastener, HeatSetNut):
+        raise ValueError("insertHole only accepts fasteners of type HeatSetNut")
+
+    if depth is None:
+        depth = self.largestDimension()
+
+    return self.fastenerHole(
+        hole_diameters=fastener.clearance_hole_diameters,
+        fastener=fastener,
+        depth=depth,
+        washers=[],
+        countersinkProfile=fastener.countersink_profile(manufacturingCompensation),
+        fit=fit,
+        counterSunk=True,
         baseAssembly=baseAssembly,
         clean=clean,
     )
@@ -956,16 +1027,24 @@ def _tapHole(
     Args:
         fastener: A nut or screw instance
         washers: A list of washer instances, can be empty
-        material: on of "Soft", "Hard" which determines tap hole size. Defaults to None.
+        material: on of "Soft", "Hard" which determines tap hole size. Defaults to "Soft".
         depth: hole depth. Defaults to through part.
         counterSunk: Is the fastener countersunk into the part?. Defaults to True.
         fit: one of "Close", "Normal", "Loose" which determines clearance hole diameter. Defaults to None.
         baseAssembly: Assembly to add faster to. Defaults to None.
         clean: execute a clean operation remove extraneous internal features. Defaults to True.
 
+    Raises:
+        ValueError: tapHole doesn't accept fasteners of type HeatSetNut - use insertHole instead
+
     Returns:
         the shape on the workplane stack with a new tap hole
     """
+    if isinstance(fastener, HeatSetNut):
+        raise ValueError(
+            "tapHole doesn't accept fasteners of type HeatSetNut - use insertHole instead"
+        )
+
     if depth is None:
         depth = self.largestDimension()
 
@@ -973,6 +1052,7 @@ def _tapHole(
         hole_diameters=fastener.tap_hole_diameters,
         fastener=fastener,
         washers=washers,
+        countersinkProfile=fastener.countersink_profile(fit),
         fit=fit,
         material=material,
         depth=depth,
@@ -1012,13 +1092,22 @@ def _threadedHole(
         baseAssembly: Assembly to add faster to. Defaults to None.
         clean: execute a clean operation remove extraneous internal features. Defaults to True.
 
+    Raises:
+        ValueError: threadedHole doesn't accept fasteners of type HeatSetNut - use insertHole instead
+
     Returns:
         the shape on the workplane stack with a new threaded hole
     """
+    if isinstance(fastener, HeatSetNut):
+        raise ValueError(
+            "threadedHole doesn't accept fasteners of type HeatSetNut - use insertHole instead"
+        )
+
     return self.fastenerHole(
         hole_diameters=fastener.clearance_hole_diameters,
         fastener=fastener,
         washers=washers,
+        countersinkProfile=fastener.countersink_profile(fit),
         fit=fit,
         depth=depth,
         counterSunk=counterSunk,
@@ -1030,6 +1119,7 @@ def _threadedHole(
 
 
 Workplane.clearanceHole = _clearanceHole
+Workplane.insertHole = _insertHole
 Workplane.tapHole = _tapHole
 Workplane.threadedHole = _threadedHole
 

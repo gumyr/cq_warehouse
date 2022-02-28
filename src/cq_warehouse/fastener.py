@@ -152,16 +152,21 @@ def isolate_fastener_type(target_fastener: str, fastener_data: dict) -> dict:
     return result
 
 
-def lookup_drill_diameters(drill_hole_sizes: dict) -> dict:
-    """Return a dict of dict of drill size to drill diameter"""
-
-    # Read the drill size csv file and build a drill_size dictionary (Ah, the imperial system)
+def read_drill_sizes() -> dict:
+    """Read the drill size csv file and build a drill_size dictionary (Ah, the imperial system)"""
     drill_sizes = {}
     with pkg_resources.open_text(cq_warehouse, "drill_sizes.csv") as csvfile:
         reader = csv.DictReader(csvfile)
         fieldnames = reader.fieldnames
         for row in reader:
             drill_sizes[row[fieldnames[0]]] = float(row[fieldnames[1]]) * IN
+    return drill_sizes
+
+
+def lookup_drill_diameters(drill_hole_sizes: dict) -> dict:
+    """Return a dict of dict of drill size to drill diameter"""
+
+    drill_sizes = read_drill_sizes()
 
     #  Build a dictionary of hole diameters for these hole sizes
     drill_hole_diameters = {}
@@ -395,33 +400,37 @@ class Nut(ABC):
     def tap_drill_sizes(self):
         """A dictionary of drill sizes for tapped holes"""
         try:
-            return self.tap_hole_drill_sizes[self.size]
+            return self.tap_hole_drill_sizes[self.thread_size]
         except KeyError as e:
-            raise ValueError(f"No tap hole data for size {self.size}") from e
+            raise ValueError(f"No tap hole data for size {self.thread_size}") from e
 
     @property
     def tap_hole_diameters(self):
         """A dictionary of drill diameters for tapped holes"""
         try:
-            return self.tap_hole_data[self.size]
+            return self.tap_hole_data[self.thread_size]
         except KeyError as e:
-            raise ValueError(f"No tap hole data for size {self.size}") from e
+            raise ValueError(f"No tap hole data for size {self.thread_size}") from e
 
     @property
     def clearance_drill_sizes(self):
         """A dictionary of drill sizes for clearance holes"""
         try:
-            return self.clearance_hole_drill_sizes[self.size.split("-")[0]]
+            return self.clearance_hole_drill_sizes[self.thread_size.split("-")[0]]
         except KeyError as e:
-            raise ValueError(f"No clearance hole data for size {self.size}") from e
+            raise ValueError(
+                f"No clearance hole data for size {self.thread_size}"
+            ) from e
 
     @property
     def clearance_hole_diameters(self):
         """A dictionary of drill diameters for clearance holes"""
         try:
-            return self.clearance_hole_data[self.size.split("-")[0]]
+            return self.clearance_hole_data[self.thread_size.split("-")[0]]
         except KeyError as e:
-            raise ValueError(f"No clearance hole data for size {self.size}") from e
+            raise ValueError(
+                f"No clearance hole data for size {self.thread_size}"
+            ) from e
 
     @classmethod
     def select_by_size(cls, size: str) -> dict:
@@ -455,7 +464,7 @@ class Nut(ABC):
     @property
     def info(self):
         """Return identifying information"""
-        return f"{self.nut_class}({self.fastener_type}): {self.size}"
+        return f"{self.nut_class}({self.fastener_type}): {self.thread_size}"
 
     @property
     def nut_class(self):
@@ -506,19 +515,23 @@ class Nut(ABC):
         simple: bool = True,
     ):
         """Parse Nut input parameters"""
-        size_parts = size.strip().split("-")
-        if not len(size_parts) == 2:
+        self.size = size.strip()
+        size_parts = self.size.split("-")
+        if 2 < len(size_parts) < 3:
             raise ValueError(
-                f"{size_parts} invalid, must be formatted as size-pitch or size-TPI"
+                f"{size_parts} invalid, must be formatted as size-pitch(-length) or size-TPI(-length) where length is optional"
             )
-
-        self.size = size
-        self.is_metric = self.size[0] == "M"
+        self.thread_size = "-".join(size_parts[:2])
+        if len(size_parts) == 3:
+            self.length_size = size_parts[2]
+        self.is_metric = self.thread_size[0] == "M"
         if self.is_metric:
             self.thread_diameter = float(size_parts[0][1:])
             self.thread_pitch = float(size_parts[1])
         else:
-            (self.thread_diameter, self.thread_pitch) = decode_imperial_size(self.size)
+            (self.thread_diameter, self.thread_pitch) = decode_imperial_size(
+                self.thread_size
+            )
 
         if fastener_type not in self.types():
             raise ValueError(f"{fastener_type} invalid, must be one of {self.types()}")
@@ -531,6 +544,9 @@ class Nut(ABC):
         self.socket_clearance = 6 * MM  # Used as extra clearance when countersinking
         try:
             self.nut_data = evaluate_parameter_dict(
+                # isolate_fastener_type(self.fastener_type, self.fastener_data)[
+                #     self.thread_size
+                # ],
                 isolate_fastener_type(self.fastener_type, self.fastener_data)[
                     self.size
                 ],
@@ -641,6 +657,79 @@ class Nut(ABC):
         return cq.Workplane("XZ").rect(width / 2, m, centered=False)
 
 
+class BradTeeNut(Nut):
+    """Brad Tee Nut
+
+    A Brad Tee Nut - a large flanged nut fastened with multiple screws countersunk
+    into the flange.
+
+    Args:
+        size (str): nut size, e.g. M6-1
+        fastener_type (str): "Hilitchi"
+        hand (Literal["right", "left"]): thread direction. Defaults to "right".
+        simple (bool): omit the thread from the nut. Defaults to True.
+    """
+
+    fastener_data = read_fastener_parameters_from_csv("brad_tee_nut_parameters.csv")
+
+    @property
+    def cq_object(self):
+        """A cadquery Compound nut as defined by class attributes"""
+        brad = CounterSunkScrew(
+            size=self.nut_data["brad"],
+            length=2 * self.nut_data["c"],
+            fastener_type="iso10642",
+        )
+        return (
+            cq.Workplane(self._cq_object)
+            .faces(">Z")
+            .workplane()
+            .polarArray(self.nut_data["bcd"] / 2, 0, 360, self.nut_data["brad#"])
+            .clearanceHole(fastener=brad)
+            .val()
+        )
+
+    def nut_profile(self):
+        (dc, s, m, c) = (self.nut_data[p] for p in ["dc", "s", "m", "c"])
+        return (
+            cq.Workplane("XZ")
+            .vLine(m)
+            .hLine(dc / 2)
+            .vLine(-c)
+            .hLineTo(s)
+            .vLineTo(0)
+            .hLineTo(0)
+            .close()
+        )
+
+    def nut_plan(self):
+        return cq.Workplane("XY").circle(self.nut_data["dc"] / 2)
+
+    def countersink_profile(
+        self, fit: Literal["Close", "Normal", "Loose"]
+    ) -> cq.Workplane:
+        """A enlarged cavity allowing the nut to be countersunk"""
+        try:
+            clearance_hole_diameter = self.clearance_hole_diameters[fit]
+        except KeyError as e:
+            raise ValueError(
+                f"{fit} invalid, must be one of {list(self.clearance_hole_diameters.keys())}"
+            ) from e
+        (dc, s, m, c) = (self.nut_data[p] for p in ["dc", "s", "m", "c"])
+        clearance = (clearance_hole_diameter - self.thread_diameter) / 2
+        print(f"{clearance=}")
+        return (
+            cq.Workplane("XZ")
+            .vLine(m)
+            .hLine(dc / 2 + clearance)
+            .vLine(-c - clearance)
+            .hLineTo(s + clearance)
+            .vLineTo(-clearance)
+            .hLineTo(0)
+            .close()
+        )
+
+
 class DomedCapNut(Nut):
     """
     size: str
@@ -684,6 +773,335 @@ class DomedCapNut(Nut):
         return cq.Workplane("XZ").rect(width / 2, m + dk / 2, centered=False)
 
     nut_plan = Nut.default_nut_plan
+
+
+class HeatSetNut(Nut):
+    """Heat Set Nut
+
+    Args:
+        size (str): nut size, e.g. M5-0.8-Standard
+        fastener_type (str): standard or manufacturer that defines the nut ["McMaster-Carr"]
+        hand (Literal["right", "left"], optional): direction of thread. Defaults to "right".
+        simple (bool): omit the thread from the nut. Defaults to True.
+
+    Attributes:
+        fill_factor (float): Fraction of insert hole filled with heatset nut
+    """
+
+    fastener_data = read_fastener_parameters_from_csv("heatset_nut_parameters.csv")
+
+    @staticmethod
+    def knurled_cylinder_faces(
+        diameter: float,
+        bottom_hole_radius: float,
+        top_hole_radius: float,
+        height: float,
+        knurl_depth: float,
+        pitch: float,
+        tip_count: int,
+        hand: Literal["right", "left"] = "right",
+    ) -> list[cq.Face]:
+        """Faces of Knurled Cylinder
+
+        Generate a list of Faces on a knurled cylinder with a central hole. These faces are
+        used to build a knurled HeatSet insert with maximal performance.
+
+        Args:
+            diameter (float): outside diameter of knurled cylinder
+            bottom_hole_radius (float): size of bottom hole
+            top_hole_radius (float): size of top hole
+            height (float): end-to-end height
+            knurl_depth (float): size of the knurling
+            pitch (float): knurling helical pitch
+            tip_count (int): number of knurled tips
+            hand (Literal["right", "left"], optional): direction of knurling. Defaults to "right".
+
+        Returns:
+            list[Face]: Faces of the knurled cylinder except for central hole
+        """
+
+        # Start by creating helical edges for the inside and outside of the knurling
+        lefthand = hand == "left"
+        inside_edges = [
+            cq.Wire.makeHelix(
+                pitch, height, diameter / 2 - knurl_depth, lefthand=lefthand
+            )
+            .Edges()[0]
+            .rotate(Vector(0, 0, 0), Vector(0, 0, 1), i * 360 / tip_count)
+            for i in range(tip_count)
+        ]
+        outside_edges = [
+            cq.Wire.makeHelix(pitch, height, diameter / 2, lefthand=lefthand)
+            .Edges()[0]
+            .rotate(Vector(0, 0, 0), Vector(0, 0, 1), (i + 0.5) * 360 / tip_count)
+            for i in range(tip_count)
+        ]
+        # Connect the bottoms of the helical edges into a star shaped bottom face
+        bottom_edges = [
+            (
+                cq.Edge.makeLine(
+                    inside_edges[i].positionAt(0), outside_edges[i].positionAt(0)
+                ),
+                cq.Edge.makeLine(
+                    outside_edges[i].positionAt(0),
+                    inside_edges[(i + 1) % tip_count].positionAt(0),
+                ),
+            )
+            for i in range(tip_count)
+        ]
+        # Flatten the list of tuples to a list
+        bottom_edges = list(sum(bottom_edges, ()))
+        # Close the edges by connecting the last to first
+        bottom_edges.append(
+            cq.Edge.makeLine(
+                outside_edges[-1].positionAt(0),
+                inside_edges[0].positionAt(0),
+            )
+        )
+        top_edges = [
+            (
+                cq.Edge.makeLine(
+                    inside_edges[i].positionAt(1), outside_edges[i].positionAt(1)
+                ),
+                cq.Edge.makeLine(
+                    outside_edges[i].positionAt(1),
+                    inside_edges[(i + 1) % tip_count].positionAt(1),
+                ),
+            )
+            for i in range(tip_count)
+        ]
+        top_edges = list(sum(top_edges, ()))
+        top_edges.append(
+            cq.Edge.makeLine(
+                outside_edges[-1].positionAt(1),
+                inside_edges[0].positionAt(1),
+            )
+        )
+
+        # Build the faces from the edges
+        outside_faces = [
+            (
+                cq.Face.makeNSidedSurface(
+                    [
+                        inside_edges[i],
+                        outside_edges[i],
+                        bottom_edges[2 * i],
+                        top_edges[2 * i],
+                    ],
+                    [],
+                ),
+                cq.Face.makeNSidedSurface(
+                    [
+                        outside_edges[i],
+                        inside_edges[(i + 1) % tip_count],
+                        bottom_edges[2 * i + 1],
+                        top_edges[2 * i + 1],
+                    ],
+                    [],
+                ),
+            )
+            for i in range(tip_count)
+        ]
+        outside_faces = list(sum(outside_faces, ()))
+
+        # Create the top and bottom faces with holes in them
+        bottom_face = cq.Face.makeFromWires(
+            cq.Wire.assembleEdges(bottom_edges),
+            [
+                cq.Wire.makeCircle(
+                    bottom_hole_radius, center=Vector(0, 0, 0), normal=Vector(0, 0, 1)
+                )
+            ],
+        )
+        top_face = cq.Face.makeFromWires(
+            cq.Wire.assembleEdges(top_edges),
+            [
+                cq.Wire.makeCircle(
+                    top_hole_radius,
+                    center=Vector(0, 0, height),
+                    normal=Vector(0, 0, 1),
+                )
+            ],
+        )
+
+        return [bottom_face, top_face] + outside_faces
+
+    @property
+    def fill_factor(self) -> float:
+        """Relative size of nut vs hole
+
+        Returns:
+            float: Fraction of insert hole filled with heatset nut
+        """
+        drill_sizes = read_drill_sizes()
+        hole_radius = drill_sizes[self.nut_data["drill"].strip()] / 2
+        heatset_volume = (
+            self.cq_object.Volume()
+            + self.nut_data["m"] * pi * (self.thread_diameter / 2) ** 2
+        )
+        hole_volume = self.nut_data["m"] * pi * hole_radius ** 2
+        return heatset_volume / hole_volume
+
+    def make_nut(self) -> cq.Workplane:
+        """Build heatset nut object
+
+        Create the heatset nut with a flanged bottom and two knurled sections
+        with opposite twist direction which locks into the plastic when heated
+        and inserted into an appropriate hole.
+
+        To maximize performance, the nut is created by building assembling Faces
+        into a Shell which is converted to a Solid. No extrusions or boolean
+        operations are used until the thread is added to the nut.
+
+        Returns:
+            cq.Workplane: the heatset nut
+        """
+        nut_base = (
+            cq.Workplane("XZ")
+            .hLineTo(self.nut_data["dc"] / 2)
+            .vLineTo(0.11 * self.nut_data["m"])
+            .hLineTo(0.425 * self.nut_data["dc"])
+            .vLineTo(0.24 * self.nut_data["m"])
+            .hLineTo(0)
+            .close()
+            .revolve()
+        )
+        base_bottom_face = (
+            nut_base.faces("%Plane and <Z")
+            .faces()
+            .val()
+            .makeHoles(
+                [
+                    cq.Wire.makeCircle(
+                        self.thread_diameter / 2,
+                        center=Vector(0, 0, 0),
+                        normal=Vector(0, 0, 1),
+                    )
+                ]
+            )
+        )
+        base_outside_faces = nut_base.faces("not <Z").faces("not >Z").vals()
+
+        # Create the lower knurled section Faces
+        lower_knurl_faces = HeatSetNut.knurled_cylinder_faces(
+            self.nut_data["s"],
+            0.425 * self.nut_data["dc"],
+            0.425 * self.nut_data["dc"],
+            height=0.33 * self.nut_data["m"],
+            knurl_depth=0.1 * self.nut_data["s"],
+            pitch=3 * self.nut_data["m"],
+            tip_count=self.nut_data["knurls"],
+            hand="right",
+        )
+        lower_knurl_faces = [
+            f.translate(cq.Vector(0, 0, 0.24 * self.nut_data["m"]))
+            for f in lower_knurl_faces
+        ]
+
+        # Create the Face in the gap between the knurled sections
+        nut_middle_face = (
+            cq.Workplane("XY", origin=(0, 0, 0.57 * self.nut_data["m"]))
+            .cylinder(
+                0.1 * self.nut_data["m"],
+                0.425 * self.nut_data["dc"],
+                centered=(True, True, False),
+            )
+            .faces("not %Plane")
+            .val()
+        )
+
+        # Create the Faces in the upper knurled section
+        upper_knurl_faces = HeatSetNut.knurled_cylinder_faces(
+            self.nut_data["s"],
+            0.425 * self.nut_data["dc"],
+            self.thread_diameter / 2,
+            height=0.33 * self.nut_data["m"],
+            knurl_depth=0.1 * self.nut_data["s"],
+            pitch=3 * self.nut_data["m"],
+            tip_count=20,
+            hand="left",
+        )
+        upper_knurl_faces = [
+            f.translate(cq.Vector(0, 0, 0.67 * self.nut_data["m"]))
+            for f in upper_knurl_faces
+        ]
+
+        # Create the Face for the inside of the nut
+        thread_hole_face = (
+            cq.Workplane("XY")
+            .cylinder(
+                self.nut_data["m"],
+                self.thread_diameter / 2,
+                centered=(True, True, False),
+            )
+            .faces("not %Plane")
+            .val()
+        )
+
+        # Build a Shell of the nut from all of the Faces
+        nut_shell = cq.Shell.makeShell(
+            [base_bottom_face, nut_middle_face, thread_hole_face]
+            + base_outside_faces
+            + lower_knurl_faces
+            + upper_knurl_faces
+        )
+
+        # Finally create the Solid from the Shell
+        nut = cq.Workplane(cq.Solid.makeSolid(nut_shell))
+
+        # Add the thread to the nut body
+        if not self.simple:
+            # Create the thread
+            thread = IsoThread(
+                major_diameter=self.thread_diameter,
+                pitch=self.thread_pitch,
+                length=self.nut_data["m"],
+                external=False,
+                end_finishes=("fade", "fade"),
+                hand=self.hand,
+            )
+            nut = nut.union(thread.cq_object)
+
+        return nut
+
+    def nut_profile(self):
+        """Not used but required by the abstract base class"""
+        pass
+
+    def nut_plan(self):
+        """Not used but required by the abstract base class"""
+        pass
+
+    def countersink_profile(
+        self, manufacturingCompensation: float = 0.0
+    ) -> cq.Workplane:
+        """_summary_
+
+        Create the profile for a cavity allowing the heatset nut to be countersunk into the plastic.
+
+        Args:
+            manufacturingCompensation (float, optional): used to compensate for over-extrusion
+                of 3D printers. A value of 0.2mm will reduce the radius of an external thread
+                by 0.2mm (and increase the radius of an internal thread) such that the resulting
+                3D printed part matches the target dimensions. Defaults to 0.0.
+
+        Returns:
+            cq.Workplane: The countersink hole profile
+        """
+        drill_sizes = read_drill_sizes()
+        hole_radius = (
+            drill_sizes[self.nut_data["drill"].strip()] / 2 + manufacturingCompensation
+        )
+        # chamfer_size = self.nut_data["s"] / 2 - hole_radius
+        return (
+            cq.Workplane("XZ")
+            .hLine(hole_radius)
+            .vLine(self.nut_data["m"])
+            # .vLine(self.nut_data["m"]-chamfer_size)
+            # .lineTo(self.nut_data["s"] / 2, self.nut_data["m"])
+            .hLineTo(0)
+            .close()
+        )
 
 
 class HexNut(Nut):
@@ -881,33 +1299,37 @@ class Screw(ABC):
     def tap_drill_sizes(self):
         """A dictionary of drill sizes for tapped holes"""
         try:
-            return self.tap_hole_drill_sizes[self.size]
+            return self.tap_hole_drill_sizes[self.thread_size]
         except KeyError as e:
-            raise ValueError(f"No tap hole data for size {self.size}") from e
+            raise ValueError(f"No tap hole data for size {self.thread_size}") from e
 
     @property
     def tap_hole_diameters(self):
         """A dictionary of drill diameters for tapped holes"""
         try:
-            return self.tap_hole_data[self.size]
+            return self.tap_hole_data[self.thread_size]
         except KeyError as e:
-            raise ValueError(f"No tap hole data for size {self.size}") from e
+            raise ValueError(f"No tap hole data for size {self.thread_size}") from e
 
     @property
     def clearance_drill_sizes(self):
         """A dictionary of drill sizes for clearance holes"""
         try:
-            return self.clearance_hole_drill_sizes[self.size.split("-")[0]]
+            return self.clearance_hole_drill_sizes[self.thread_size.split("-")[0]]
         except KeyError as e:
-            raise ValueError(f"No clearance hole data for size {self.size}") from e
+            raise ValueError(
+                f"No clearance hole data for size {self.thread_size}"
+            ) from e
 
     @property
     def clearance_hole_diameters(self):
         """A dictionary of drill diameters for clearance holes"""
         try:
-            return self.clearance_hole_data[self.size.split("-")[0]]
+            return self.clearance_hole_data[self.thread_size.split("-")[0]]
         except KeyError as e:
-            raise ValueError(f"No clearance hole data for size {self.size}") from e
+            raise ValueError(
+                f"No clearance hole data for size {self.thread_size}"
+            ) from e
 
     @property
     @classmethod
@@ -984,7 +1406,7 @@ class Screw(ABC):
     @property
     def info(self):
         """Return identifying information"""
-        return f"{self.screw_class}({self.fastener_type}): {self.size}x{self.length}{' left hand thread' if self.hand=='left' else ''}"
+        return f"{self.screw_class}({self.fastener_type}): {self.thread_size}x{self.length}{' left hand thread' if self.hand=='left' else ''}"
 
     @property
     def screw_class(self):
@@ -1040,13 +1462,15 @@ class Screw(ABC):
                 f"{size_parts} invalid, must be formatted as size-pitch or size-TPI"
             )
 
-        self.size = size
-        self.is_metric = self.size[0] == "M"
+        self.thread_size = size
+        self.is_metric = self.thread_size[0] == "M"
         if self.is_metric:
             self.thread_diameter = float(size_parts[0][1:])
             self.thread_pitch = float(size_parts[1])
         else:
-            (self.thread_diameter, self.thread_pitch) = decode_imperial_size(self.size)
+            (self.thread_diameter, self.thread_pitch) = decode_imperial_size(
+                self.thread_size
+            )
 
         self.length = length
         if fastener_type not in self.types():
@@ -1060,13 +1484,13 @@ class Screw(ABC):
         try:
             self.screw_data = evaluate_parameter_dict(
                 isolate_fastener_type(self.fastener_type, self.fastener_data)[
-                    self.size
+                    self.thread_size
                 ],
                 is_metric=self.is_metric,
             )
         except KeyError as e:
             raise ValueError(
-                f"{size} invalid, must be one of {self.sizes(self.fastener_type)}"
+                f"{size} invalid, must be one of {self.thread_sizes(self.fastener_type)}"
             ) from e
         self.socket_clearance = socket_clearance  # Only used for hex head screws
 
@@ -1776,9 +2200,11 @@ class Washer(ABC):
     def clearance_hole_diameters(self):
         """A dictionary of drill diameters for clearance holes"""
         try:
-            return self.clearance_hole_data[self.size.split("-")[0]]
+            return self.clearance_hole_data[self.thread_size.split("-")[0]]
         except KeyError as e:
-            raise ValueError(f"No clearance hole data for size {self.size}") from e
+            raise ValueError(
+                f"No clearance hole data for size {self.thread_size}"
+            ) from e
 
     @property
     @classmethod
@@ -1795,7 +2221,7 @@ class Washer(ABC):
     @property
     def info(self):
         """Return identifying information"""
-        return f"{self.washer_class}({self.fastener_type}): {self.size}"
+        return f"{self.washer_class}({self.fastener_type}): {self.thread_size}"
 
     @property
     def washer_class(self):
@@ -1842,8 +2268,8 @@ class Washer(ABC):
         size: str,
         fastener_type: str,
     ):
-        self.size = size
-        self.is_metric = self.size[0] == "M"
+        self.thread_size = size
+        self.is_metric = self.thread_size[0] == "M"
         # Used only for clearance gap calculations
         if self.is_metric:
             self.thread_diameter = float(size[1:])
@@ -1856,13 +2282,13 @@ class Washer(ABC):
         try:
             self.washer_data = evaluate_parameter_dict(
                 isolate_fastener_type(self.fastener_type, self.fastener_data)[
-                    self.size
+                    self.thread_size
                 ],
                 is_metric=self.is_metric,
             )
         except KeyError as e:
             raise ValueError(
-                f"{size} invalid, must be one of {self.sizes(self.fastener_type)}"
+                f"{size} invalid, must be one of {self.thread_sizes(self.fastener_type)}"
             ) from e
         self._cq_object = self.make_washer().val()
 
