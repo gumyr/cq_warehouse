@@ -86,7 +86,8 @@ from OCP.gp import gp_Vec, gp_Pnt, gp_Ax1, gp_Dir, gp_Trsf, gp, gp_GTrsf
 #     format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)s - %(funcName)20s() ] - %(message)s",
 # )
 class logging:
-    pass
+    def debug(self):
+        pass
 
 
 """
@@ -195,7 +196,7 @@ def _fastener_locations(self, fastener: Union["Nut", "Screw"]) -> list[Location]
     name_to_fastener = {}
     base_assembly_structure = {}
     # Extract a list of only the fasteners from the metadata
-    for (name, a) in self.traverse():
+    for name, a in self.traverse():
         base_assembly_structure[name] = a
         if a.metadata is None:
             continue
@@ -206,14 +207,13 @@ def _fastener_locations(self, fastener: Union["Nut", "Screw"]) -> list[Location]
 
     fastener_path_locations = {}
     base_assembly_path = self._flatten()
-    for assembly_name, _assembly_pointer in base_assembly_path.items():
+    for assembly_path in base_assembly_path.keys():
         for fastener_name in name_to_fastener.keys():
-            if fastener_name in assembly_name:
-                parents = assembly_name.split("/")
+            if fastener_name in assembly_path:
+                parents = assembly_path.split("/")
                 fastener_path_locations[fastener_name] = [
                     base_assembly_structure[name].loc for name in parents
                 ]
-
     fastener_locations = [
         reduce(lambda l1, l2: l1 * l2, locs)
         for locs in fastener_path_locations.values()
@@ -1128,6 +1128,8 @@ def _push_fastener_locations(
     self: T,
     fastener: Union["Nut", "Screw"],
     baseAssembly: "Assembly",
+    offset: float = 0,
+    flip: bool = False,
 ):
     """Push Fastener Locations
 
@@ -1138,10 +1140,18 @@ def _push_fastener_locations(
     """
 
     # The locations need to be pushed as global not local object locations
+
     ns = self.__class__()
     ns.plane = Plane(origin=(0, 0, 0), xDir=(1, 0, 0), normal=(0, 0, 1))
     ns.parent = self
-    ns.objects = baseAssembly.fastenerLocations(fastener)
+    locations = baseAssembly.fastenerLocations(fastener)
+    ns.objects = [
+        l * Location(Plane(origin=(0, 0, 0), normal=(0, 0, -1)), Vector(0, 0, offset))
+        if flip
+        else l * Location(Vector(0, 0, offset))
+        for l in locations
+    ]
+
     ns.ctx = self.ctx
     return ns
 

@@ -717,7 +717,6 @@ class BradTeeNut(Nut):
             ) from e
         (dc, s, m, c) = (self.nut_data[p] for p in ["dc", "s", "m", "c"])
         clearance = (clearance_hole_diameter - self.thread_diameter) / 2
-        print(f"{clearance=}")
         return (
             cq.Workplane("XZ")
             .vLine(m)
@@ -827,13 +826,13 @@ class HeatSetNut(Nut):
                 pitch, height, diameter / 2 - knurl_depth, lefthand=lefthand
             )
             .Edges()[0]
-            .rotate(Vector(0, 0, 0), Vector(0, 0, 1), i * 360 / tip_count)
+            .rotate(cq.Vector(0, 0, 0), cq.Vector(0, 0, 1), i * 360 / tip_count)
             for i in range(tip_count)
         ]
         outside_edges = [
             cq.Wire.makeHelix(pitch, height, diameter / 2, lefthand=lefthand)
             .Edges()[0]
-            .rotate(Vector(0, 0, 0), Vector(0, 0, 1), (i + 0.5) * 360 / tip_count)
+            .rotate(cq.Vector(0, 0, 0), cq.Vector(0, 0, 1), (i + 0.5) * 360 / tip_count)
             for i in range(tip_count)
         ]
         # Connect the bottoms of the helical edges into a star shaped bottom face
@@ -909,7 +908,7 @@ class HeatSetNut(Nut):
             cq.Wire.assembleEdges(bottom_edges),
             [
                 cq.Wire.makeCircle(
-                    bottom_hole_radius, center=Vector(0, 0, 0), normal=Vector(0, 0, 1)
+                    bottom_hole_radius, center=cq.Vector(0, 0, 0), normal=cq.Vector(0, 0, 1)
                 )
             ],
         )
@@ -918,8 +917,8 @@ class HeatSetNut(Nut):
             [
                 cq.Wire.makeCircle(
                     top_hole_radius,
-                    center=Vector(0, 0, height),
-                    normal=Vector(0, 0, 1),
+                    center=cq.Vector(0, 0, height),
+                    normal=cq.Vector(0, 0, 1),
                 )
             ],
         )
@@ -966,19 +965,15 @@ class HeatSetNut(Nut):
             .close()
             .revolve()
         )
-        base_bottom_face = (
-            nut_base.faces("%Plane and <Z")
-            .faces()
-            .val()
-            .makeHoles(
-                [
-                    cq.Wire.makeCircle(
-                        self.thread_diameter / 2,
-                        center=Vector(0, 0, 0),
-                        normal=Vector(0, 0, 1),
-                    )
-                ]
-            )
+        base_bottom_face = cq.Face.makeFromWires(
+            nut_base.faces("%Plane and <Z").wires().val(),
+            [
+                cq.Wire.makeCircle(
+                    self.thread_diameter / 2,
+                    center=cq.Vector(0, 0, 0),
+                    normal=cq.Vector(0, 0, 1),
+                )
+            ],
         )
         base_outside_faces = nut_base.faces("not <Z").faces("not >Z").vals()
 
