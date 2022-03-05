@@ -676,7 +676,7 @@ class BradTeeNut(Nut):
     def cq_object(self):
         """A cadquery Compound nut as defined by class attributes"""
         brad = CounterSunkScrew(
-            size=self.nut_data["brad"],
+            size=self.nut_data["brad_size"],
             length=2 * self.nut_data["c"],
             fastener_type="iso10642",
         )
@@ -684,7 +684,7 @@ class BradTeeNut(Nut):
             cq.Workplane(self._cq_object)
             .faces(">Z")
             .workplane()
-            .polarArray(self.nut_data["bcd"] / 2, 0, 360, self.nut_data["brad#"])
+            .polarArray(self.nut_data["bcd"] / 2, 0, 360, self.nut_data["brad_num"])
             .clearanceHole(fastener=brad)
             .val()
         )
@@ -908,7 +908,9 @@ class HeatSetNut(Nut):
             cq.Wire.assembleEdges(bottom_edges),
             [
                 cq.Wire.makeCircle(
-                    bottom_hole_radius, center=cq.Vector(0, 0, 0), normal=cq.Vector(0, 0, 1)
+                    bottom_hole_radius,
+                    center=cq.Vector(0, 0, 0),
+                    normal=cq.Vector(0, 0, 1),
                 )
             ],
         )
