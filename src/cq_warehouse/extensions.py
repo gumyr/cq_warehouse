@@ -31,6 +31,7 @@ license:
     limitations under the License.
 
 """
+from re import X
 import sys
 import logging
 import math
@@ -78,17 +79,14 @@ from OCP.Standard import Standard_NoSuchObject
 from OCP.BRepIntCurveSurface import BRepIntCurveSurface_Inter
 from OCP.gp import gp_Vec, gp_Pnt, gp_Ax1, gp_Dir, gp_Trsf, gp, gp_GTrsf
 
-# Logging configuration - uncomment to enable logs
-# logging.basicConfig(
-#     filename="cq_warehouse.log",
-#     encoding="utf-8",
-#     level=logging.DEBUG,
-#     format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)s - %(funcName)20s() ] - %(message)s",
-# )
-class logging:
-    def debug(self):
-        pass
-
+# Logging configuration - all cq_warehouse logs are level DEBUG
+logging.basicConfig(
+    filename="cq_warehouse.log",
+    encoding="utf-8",
+    # level=logging.DEBUG,
+    level=logging.CRITICAL,
+    format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)s - %(funcName)20s() ] - %(message)s",
+)
 
 """
 
@@ -198,8 +196,8 @@ def _fastener_locations(self, fastener: Union["Nut", "Screw"]) -> list[Location]
     # Extract a list of only the fasteners from the metadata
     for name, a in self.traverse():
         base_assembly_structure[name] = a
-        if a.metadata is None:
-            continue
+        # if a.metadata is None:
+        #     continue
 
         for key, value in a.metadata.items():
             if value == fastener:
@@ -1437,10 +1435,7 @@ def _face_embossToShape(
 Face.embossToShape = _face_embossToShape
 
 
-def _face_makeHoles(
-    self,
-    interiorWires: list["Wire"] = None,
-) -> "Face":
+def _face_makeHoles(self, interiorWires: list["Wire"]) -> "Face":
     """Make Holes in Face
 
     Create holes in the Face 'self' from interiorWires which must be entirely interior
@@ -1453,16 +1448,15 @@ def _face_makeHoles(
         [Face]: 'self' with holes
     """
     # Add wires that define interior holes - note these wires must be entirely interior
-    if interiorWires:
-        makeface_object = BRepBuilderAPI_MakeFace(self.wrapped)
-        for w in interiorWires:
-            makeface_object.Add(w.wrapped)
-        try:
-            surface_face = Face(makeface_object.Face())
-        except StdFail_NotDone as e:
-            raise RuntimeError(
-                "Error adding interior hole in non-planar face with provided interiorWires"
-            ) from e
+    makeface_object = BRepBuilderAPI_MakeFace(self.wrapped)
+    for w in interiorWires:
+        makeface_object.Add(w.wrapped)
+    try:
+        surface_face = Face(makeface_object.Face())
+    except StdFail_NotDone as e:
+        raise RuntimeError(
+            "Error adding interior hole in non-planar face with provided interiorWires"
+        ) from e
 
     surface_face = surface_face.fix()
     # if not surface_face.isValid():
@@ -1975,7 +1969,8 @@ def _transformed(
 ) -> T:
     """Transform Shape
 
-    Rotate and translate the Shape by the three angles (in degrees) and offset
+    Rotate and translate the Shape by the three angles (in degrees) and offset.
+    Functions exactly like the Workplane.transformed() method but for Shapes.
 
     Args:
         rotate (VectorLike, optional): 3-tuple of angles to rotate, in degrees. Defaults to (0, 0, 0).
@@ -1986,18 +1981,17 @@ def _transformed(
     """
 
     # Convert to a Vector of radians
-    rotate = Vector(rotate).multiply(math.pi / 180.0)
-
+    rotate_vector = Vector(rotate).multiply(math.pi / 180.0)
     # Compute rotation matrix.
     t_rx = gp_Trsf()
-    t_rx.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(1, 0, 0)), rotate.x)
+    t_rx.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(1, 0, 0)), rotate_vector.x)
     t_ry = gp_Trsf()
-    t_ry.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(0, 1, 0)), rotate.y)
+    t_ry.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(0, 1, 0)), rotate_vector.y)
     t_rz = gp_Trsf()
-    t_rz.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), rotate.z)
+    t_rz.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), rotate_vector.z)
     t_o = gp_Trsf()
     t_o.SetTranslation(Vector(offset).wrapped)
-    return self._apply_transform(t_rx * t_ry * t_rz * t_o)
+    return self._apply_transform(t_o * t_rx * t_ry * t_rz)
 
 
 Shape.transformed = _transformed
