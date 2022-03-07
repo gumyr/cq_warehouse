@@ -79,12 +79,12 @@ from OCP.Standard import Standard_NoSuchObject
 from OCP.BRepIntCurveSurface import BRepIntCurveSurface_Inter
 from OCP.gp import gp_Vec, gp_Pnt, gp_Ax1, gp_Dir, gp_Trsf, gp, gp_GTrsf
 
-# Logging configuration - all cq_warehouse logs are level DEBUG
+# Logging configuration - all cq_warehouse logs are level DEBUG or WARNING
 logging.basicConfig(
     filename="cq_warehouse.log",
     encoding="utf-8",
-    # level=logging.DEBUG,
-    level=logging.CRITICAL,
+    level=logging.DEBUG,
+    # level=logging.CRITICAL,
     format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)s - %(funcName)20s() ] - %(message)s",
 )
 
@@ -1356,7 +1356,7 @@ def _face_embossToShape(
     targetObject: "Shape",
     surfacePoint: "VectorLike",
     surfaceXDirection: "VectorLike",
-    internalFacePoints: list["Vector"] = [],
+    internalFacePoints: list["Vector"] = None,
 ) -> "Face":
     """Emboss Face on target object
 
@@ -1370,7 +1370,7 @@ def _face_embossToShape(
         targetObject: Object to emboss onto
         surfacePoint: Point on target object to start embossing
         surfaceXDirection: Direction of X-Axis on target object
-        internalFacePoints: Surface refinement points. Defaults to [].
+        internalFacePoints: Surface refinement points. Defaults to None.
 
     Returns:
         Face: Embossed face
@@ -1722,7 +1722,17 @@ def _embossWireToShape(
     Returns:
         Embossed wire
     """
+    import warnings
+
     planar_edges = self.Edges()
+    for i, planar_edge in enumerate(planar_edges[:-1]):
+        if (
+            planar_edge.positionAt(1) - planar_edges[i + 1].positionAt(0)
+        ).Length > tolerance:
+            warnings.warn("Edges in provided wire are not sequential - emboss may fail")
+            logging.warning(
+                "Edges in provided wire are not sequential - emboss may fail"
+            )
     planar_closed = self.IsClosed()
     logging.debug(f"embossing wire with {len(planar_edges)} edges")
     edges_in = TopTools_HSequenceOfShape()

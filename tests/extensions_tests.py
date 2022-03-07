@@ -66,7 +66,32 @@ class FaceTests(unittest.TestCase):
     """Test new Face methods - not including projection or emboss"""
 
     def test_make_holes(self):
-        pass
+        radius = 10
+        circumference = 2 * math.pi * radius
+        hex_diagonal = 4 * (circumference / 10) / 3
+        cylinder = cq.Workplane("XY").cylinder(
+            hex_diagonal * 5, radius, centered=(True, True, False)
+        )
+        cylinder_wall = cylinder.faces("not %Plane").val()
+        hex_wire_vertical = (
+            cq.Workplane("XZ", origin=(0, radius, hex_diagonal / 2))
+            .polygon(6, hex_diagonal * 0.8)
+            .wires()
+            .val()
+        )
+        projected_wire = hex_wire_vertical.projectToShape(
+            targetObject=cylinder.val(), center=(0, 0, hex_diagonal / 2)
+        )[0]
+        projected_wires = [
+            projected_wire.rotate((0, 0, 0), (0, 0, 1), i * 360 / 10).translate(
+                (0, 0, (j + (i % 2) / 2) * hex_diagonal)
+            )
+            for i in range(6)
+            for j in range(4)
+        ]
+        cylinder_walls_with_holes = cylinder_wall.makeHoles(projected_wires)
+        self.assertTrue(cylinder_walls_with_holes.isValid())
+        self.assertLess(cylinder_walls_with_holes.Area(), cylinder_wall.Area())
 
 
 class ShapeTests(unittest.TestCase):
@@ -329,12 +354,25 @@ class ProjectionTests(unittest.TestCase):
             path=arch_path,
         )
         self.assertEqual(len(projected_text.Solids()), 49)
+        projected_text = sphere.projectText(
+            txt="project - 'the quick brown fox jumped over the lazy dog'",
+            fontsize=14,
+            font="Serif",
+            fontPath="/usr/share/fonts/truetype/freefont",
+            depth=0,
+            path=arch_path,
+        )
+        self.assertEqual(len(projected_text.Solids()), 0)
+        self.assertEqual(len(projected_text.Faces()), 49)
 
     def test_error_handling(self):
         sphere = cq.Solid.makeSphere(50, angleDegrees1=-90)
         f = cq.Sketch().rect(10, 10)._faces.Faces()[0]
         with self.assertRaises(ValueError):
             f.projectToShape(sphere, center=None, direction=None)[0]
+        w = cq.Workplane("XY").rect(10, 10).wires().val()
+        with self.assertRaises(ValueError):
+            w.projectToShape(sphere, center=None, direction=None)[0]
 
 
 class EmbossTests(unittest.TestCase):
@@ -360,16 +398,61 @@ class EmbossTests(unittest.TestCase):
             path=arch_path,
         )
         self.assertEqual(len(projected_text.Solids()), 47)
+        projected_text = sphere.embossText(
+            txt="emboss - 'the quick brown fox jumped over the lazy dog'",
+            fontsize=14,
+            font="Serif",
+            fontPath="/usr/share/fonts/truetype/freefont",
+            depth=0,
+            path=arch_path,
+        )
+        self.assertEqual(len(projected_text.Faces()), 47)
+        self.assertEqual(len(projected_text.Solids()), 0)
 
-    def test_emboss_with_internal_points(self):
+    def test_emboss_face(self):
         sphere = cq.Solid.makeSphere(50, angleDegrees1=-90)
-        f = cq.Sketch().rect(12, 12)._faces.Faces()[0]
-        pts = [cq.Vector(x, y, 0) for x in [-5, 5] for y in [-5, 5]]
-        embossed_face = f.embossToShape(
+        square_face = cq.Face.makeFromWires(
+            cq.Workplane("XY").rect(12, 12).wires().val(), []
+        )
+        embossed_face = square_face.embossToShape(
             sphere,
-            surfacePoint=(50, 0, 0),
-            surfaceXDirection=(0, 1, 0),
+            surfacePoint=(0, 0, 50),
+            surfaceXDirection=(1, 1, 0),
+        )
+        self.assertTrue(embossed_face.isValid())
+
+        pts = [cq.Vector(x, y, 0) for x in [-5, 5] for y in [-5, 5]]
+        embossed_face = square_face.embossToShape(
+            sphere,
+            surfacePoint=(0, 0, 50),
+            surfaceXDirection=(1, 1, 0),
             internalFacePoints=pts,
+        )
+        self.assertTrue(embossed_face.isValid())
+
+        square_face = cq.Sketch().rect(12, 12)._faces.Faces()[0]
+        with self.assertRaises(RuntimeError):
+            with self.assertWarns(UserWarning):
+                square_face.embossToShape(
+                    sphere,
+                    surfacePoint=(0, 0, 50),
+                    surfaceXDirection=(1, 1, 0),
+                )
+
+    def test_emboss_wire(self):
+        sphere = cq.Solid.makeSphere(50, angleDegrees1=-90)
+        triangle_face = cq.Wire.makePolygon(
+            [
+                cq.Vector(0, 0, 0),
+                cq.Vector(6, 6, 0),
+                cq.Vector(-6, 6, 0),
+                cq.Vector(0, 0, 0),
+            ]
+        )
+        embossed_face = triangle_face.embossToShape(
+            sphere,
+            surfacePoint=(0, 0, 50),
+            surfaceXDirection=(1, 1, 0),
         )
         self.assertTrue(embossed_face.isValid())
 
