@@ -33,19 +33,18 @@ import cq_warehouse.extensions
 MM = 1
 
 # Create the fasteners used in this example
-bradtee_nut = BradTeeNut(size="M8-1.25", fastener_type="Hilitchi", simple=True)
+bradtee_nut = BradTeeNut(size="M8-1.25", fastener_type="Hilitchi", simple=False)
 brad = CounterSunkScrew(
     size=bradtee_nut.nut_data["brad_size"],
     length=20 * MM,
     fastener_type="iso10642",
-    simple=True,
+    simple=False,
 )
 heatset = HeatSetNut(
     size=bradtee_nut.nut_data["brad_size"] + "-Standard",
     fastener_type="McMaster-Carr",
     simple=True,
 )
-
 # Create an empty Assembly to hold all of the fasteners
 fastener_assembly = cq.Assembly(None, name="plate")
 
@@ -71,6 +70,7 @@ plate = (
     .insertHole(fastener=heatset, baseAssembly=fastener_assembly)
 )
 print(fastener_assembly.fastenerQuantities())
+print(HeatSetNut.sizes("McMaster-Carr"))
 
 if "show_object" in locals():
     show_object(plate, name="plate", options={"alpha": 0.8})

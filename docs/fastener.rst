@@ -16,7 +16,7 @@ class :meth:`~extensions_doc.Workplane.clearanceHole`, the nuts
 :meth:`~extensions_doc.Workplane.threadedHole`.
 The washers were automatically placed and all components were add to an Assembly in
 their correct position and orientations - see
-:ref:`Clearance, Tap and Threaded Holes <clearance holes>` for details.
+:ref:`Clearance, Tap and Threaded Holes <custom holes>` for details.
 
 Here is a list of the classes (and fastener types) provided:
 
@@ -146,7 +146,9 @@ The following is a list of the current nut classes derived from the base Nut cla
 the type for each of these derived classes where the type refers to a standard that defines the nut
 parameters. All derived nuts inherit the same API as the base Nut class.
 
+* ``BradTeeNut``: Hilitchi
 * ``DomedCapNut``: din1587
+* ``HeatSetNut``: McMaster-Carr
 * ``HexNut``: iso4033, iso4035, iso4032
 * ``HexNutWithFlange``: din1665
 * ``UnchamferedHexagonNut``: iso4036
@@ -154,6 +156,31 @@ parameters. All derived nuts inherit the same API as the base Nut class.
 
 Detailed information about any of the nut types can be readily found on the internet from manufacture's
 websites or from the standard document itself.
+
+The ``BradTeeNut`` is a compound object that uses multiple ``CounterSunkScrew`` to fix the
+nut to the base object.  The size of these brads is stored in the ``nut_data`` instance variable and
+can be used to place the brads as shown in the
+`brad_tee_and_heatset_nuts.py <https://github.com/gumyr/cq_warehouse/blob/main/examples/brad_tee_and_heatset_nuts.py>`_
+example.
+
+.. literalinclude:: ../examples/brad_tee_and_heatset_nuts.py
+   :language: python
+
+.. doctest::
+
+	{'CounterSunkScrew(iso10642): M4-0.7x20': 3, 'HeatSetNut(McMaster-Carr): M4-0.7': 3, 'BradTeeNut(Hilitchi): M8-1.25': 1}
+
+.. image:: brad_tee_nut_assembly.png
+
+Note that a ``HeatSetNut`` can only be placed with an :meth:`~extensions_doc.Workplane.insertHole`
+method (see the :ref:`Custom Holes <custom holes>` section of more information). Also note that
+the size of a ``HeatSetNut`` includes a length component like "-Standard" or "-Short" but this depends
+on the type.  Use the sizes method to see the valid values.
+
+.. doctest::
+
+	>>> HeatSetNut.sizes("McMaster-Carr")
+	['M2-0.4-Short', 'M2-0.4-Standard', 'M3-0.5-Short', 'M3-0.5-Standard', 'M4-0.7-Short', 'M4-0.7-Standard', 'M5-0.8-Short', 'M5-0.8-Standard']
 
 .. _screw:
 
@@ -307,19 +334,20 @@ parameters. All derived washers inherit the same API as the base Washer class.
 Detailed information about any of the washer types can be readily found on the internet from manufacture's
 websites or from the standard document itself.
 
-.. _clearance holes:
+.. _custom holes:
 
-*********************************
-Clearance, Tap and Threaded Holes
-*********************************
+************
+Custom Holes
+************
 When designing parts with CadQuery a common operation is to place holes appropriate to a specific fastener
 into the part. This operation is optimized with cq_warehouse by the following three new Workplane methods:
 
 * :meth:`~extensions_doc.Workplane.clearanceHole`,
-* :meth:`~extensions_doc.Workplane.tapHole`, and
-* :meth:`~extensions_doc.Workplane.threadedHole`.
+* :meth:`~extensions_doc.Workplane.tapHole`,
+* :meth:`~extensions_doc.Workplane.threadedHole`, and
+* :meth:`~extensions_doc.Workplane.insertHole`.
 
-The API for all three methods are very similar. The ``fit`` parameter is used
+The API for the first three methods are very similar. The ``fit`` parameter is used
 for clearance hole dimensions and to calculate the gap around the head of a countersunk screw.
 The ``material`` parameter controls the size of the tap hole as they differ as a function of the
 material the part is made of. For clearance and tap holes, ``depth`` values of ``None`` are treated
@@ -408,14 +436,39 @@ or a numbered or lettered size (e.g. U). This information can be added to your d
 :ref:`drafting <drafting>` sub-package.
 
 
+The :meth:`~extensions_doc.Workplane.insertHole` is much like the previous three custom hole
+methods but creates holes for heat set inserts in plastic parts - commonly used in 3D printing.
+
+.. py:module:: extensions
+
+.. automethod:: Workplane.insertHole
+
 ******************
 Fastener Locations
 ******************
 There are two methods that assist with the location of fastener holes relative to other
 parts: :meth:`~extensions_doc.Assembly.fastenerLocations` and :meth:`~extensions_doc.Workplane.pushFastenerLocations`.
 
-The `align_fastener_holes.py <https://github.com/gumyr/cq_warehouse/blob/main/examples/align_fastener_holes.py>`_
-example shows how these methods can be used to align holes between parts in an assembly.
+To aid in the alignment of fasteners :meth:`~extensions_doc.Assembly.fastenerLocations` scans
+the provided Assembly for the given fastener and pushes the Location values onto the CadQuery
+Workplane stack. This method provides ``offset`` and ``flip`` options which modify the existing
+fastener locations to allow for a fastener to be positioned on the back side of a structure as
+shown in the `bolt_plates_together.py <https://github.com/gumyr/cq_warehouse/blob/main/examples/bolt_plates_together.py>`_
+example.
+
+.. literalinclude:: ../examples/bolt_plates_together.py
+   :language: python
+
+.. doctest::
+
+	{'HexNutWithFlange(din1665): M6-1': 1, 'HexHeadScrew(iso4014): M6-1x20': 1, 'PlainWasher(iso7093): M6': 1}
+
+.. image:: bolting_plates.png
+
+In more complex situations many Assemblies may be nested together. To cope with this, the Locations
+are relative to the Assembly provided and shown in the
+`align_fastener_holes.py <https://github.com/gumyr/cq_warehouse/blob/main/examples/align_fastener_holes.py>`_
+example.
 
 .. literalinclude:: ../examples/align_fastener_holes.py
    :language: python

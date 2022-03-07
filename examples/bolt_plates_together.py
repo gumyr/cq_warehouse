@@ -1,13 +1,12 @@
 """
 
-Brad Tee and HeatSet Nuts Example
+Bolt Plates Together Example
 
-name: brad_tee_and_heatset_nuts.py
+name: bolt_plates_together.py
 by:   Gumyr
-date: February 28th 2022
+date: March 7th 2022
 
-desc: Example of using the BradTee and HeatSet nuts with pushFastenerLocations()
-      method to align holes.
+desc: Example of using pushFastenerLocations to align fasteners.
 
 license:
 
@@ -38,8 +37,11 @@ hex_bolt = HexHeadScrew(
 )
 flanged_nut = HexNutWithFlange(size="M6-1", fastener_type="din1665")
 large_washer = PlainWasher(size="M6", fastener_type="iso7093")
+
 # Create an empty Assembly to hold all of the fasteners
 fastener_assembly = cq.Assembly(None, name="top")
+
+# Create the top and bottom plates with holes
 top_plate_size = (50 * MM, 100 * MM, 5 * MM)
 bottom_plate_size = (100 * MM, 50 * MM, 5 * MM)
 top_plate = (

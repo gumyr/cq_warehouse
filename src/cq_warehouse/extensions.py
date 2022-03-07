@@ -914,7 +914,7 @@ def _clearanceHole(
     Put a clearance hole in a shape at the provided location
 
     For more information on how to use clearanceHole() see
-    :ref:`Clearance, Tap and Threaded Holes <clearance holes>`.
+    :ref:`Custom Holes <custom holes>`.
 
     Args:
         fastener: A nut or screw instance
@@ -966,7 +966,7 @@ def _insertHole(
     Put a hole appropriate for an insert nut at the provided location
 
     For more information on how to use insertHole() see
-    :ref:`Clearance, Tap and Threaded Holes <clearance holes>`.
+    :ref:`Custom Holes <custom holes>`.
 
     Args:
         fastener: An insert nut instance
@@ -1020,7 +1020,7 @@ def _tapHole(
     Put a tap hole in a shape at the provided location
 
     For more information on how to use tapHole() see
-    :ref:`Clearance, Tap and Threaded Holes <clearance holes>`.
+    :ref:`Custom Holes <custom holes>`.
 
     Args:
         fastener: A nut or screw instance
@@ -1077,7 +1077,7 @@ def _threadedHole(
     Put a threaded hole in a shape at the provided location
 
     For more information on how to use threadedHole() see
-    :ref:`Clearance, Tap and Threaded Holes <clearance holes>`.
+    :ref:`Custom Holes <custom holes>`.
 
     Args:
         fastener: A nut or screw instance

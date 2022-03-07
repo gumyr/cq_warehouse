@@ -337,7 +337,15 @@ def update_source_code(
         source_code[class_end + 1 : class_end + 1] = extension_code
 
         # Add a mock logging class
-        source_code.extend(["class logging:", "    def debug(self):", "        pass"])
+        source_code.extend(
+            [
+                "class logging:",
+                "    def debug(self):",
+                "        pass",
+                "    def warn(self):",
+                "        pass",
+            ]
+        )
 
     return source_code
 
