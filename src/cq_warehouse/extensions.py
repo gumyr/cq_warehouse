@@ -755,7 +755,7 @@ def _fastenerHole(
     fastener: Union["Nut", "Screw"],
     depth: float,
     washers: list["Washer"],
-    countersinkProfile: cq.Workplane,
+    countersinkProfile: "Workplane",
     fit: Optional[Literal["Close", "Normal", "Loose"]] = None,
     material: Optional[Literal["Soft", "Hard"]] = None,
     counterSunk: Optional[bool] = True,
@@ -1438,14 +1438,39 @@ Face.embossToShape = _face_embossToShape
 def _face_makeHoles(self, interiorWires: list["Wire"]) -> "Face":
     """Make Holes in Face
 
-    Create holes in the Face 'self' from interiorWires which must be entirely interior
+    Create holes in the Face 'self' from interiorWires which must be entirely interior.
+    Note that making holes in Faces is more efficient than using boolean operations
+    with solid object. Also note that OCCT core may fail unless the orientation of the wire
+    isn't correct - use ``cq.Wire(forward_wire.wrapped.Reversed())`` to reverse a wire.
+
+    Example:
+
+        For example, make a series of slots on the curved walls of a cylinder.
+
+    .. code-block:: python
+
+        cylinder = cq.Workplane("XY").cylinder(100, 50, centered=(True, True, False))
+        cylinder_wall = cylinder.faces("not %Plane").val()
+        path = cylinder.section(50).edges().val()
+        slot_wire = cq.Workplane("XY").slot2D(60, 10, angle=90).wires().val()
+        embossed_slot_wire = slot_wire.embossToShape(
+            targetObject=cylinder.val(),
+            surfacePoint=path.positionAt(0),
+            surfaceXDirection=path.tangentAt(0),
+        )
+        embossed_slot_wires = [
+            embossed_slot_wire.rotate((0, 0, 0), (0, 0, 1), a) for a in range(90, 271, 20)
+        ]
+        cylinder_wall_with_hole = cylinder_wall.makeHoles(embossed_slot_wires)
+
+    .. image:: slotted_cylinder.png
 
     Raises:
         RuntimeError: adding interior hole in non-planar face with provided interiorWires
         RuntimeError: resulting face is not valid
 
     Returns:
-        [Face]: 'self' with holes
+        Face: 'self' with holes
     """
     # Add wires that define interior holes - note these wires must be entirely interior
     makeface_object = BRepBuilderAPI_MakeFace(self.wrapped)
@@ -1850,7 +1875,7 @@ def _projectEdgeToShape(
     Returns:
         Projected Edge(s)
     """
-    wire = cq.Wire.assembleEdges([self])
+    wire = Wire.assembleEdges([self])
     projected_wires = wire.projectToShape(targetObject, direction, center)
     projected_edges = [w.Edges()[0] for w in projected_wires]
     return projected_edges

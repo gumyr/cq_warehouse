@@ -168,7 +168,8 @@ example.
 
 .. doctest::
 
-	{'CounterSunkScrew(iso10642): M4-0.7x20': 3, 'HeatSetNut(McMaster-Carr): M4-0.7': 3, 'BradTeeNut(Hilitchi): M8-1.25': 1}
+	{'BradTeeNut(Hilitchi): M8-1.25': 1, 'HeatSetNut(McMaster-Carr): M4-0.7': 3, 'CounterSunkScrew(iso10642): M4-0.7x20': 3}
+	['M2-0.4-Short', 'M2-0.4-Standard', 'M3-0.5-Short', 'M3-0.5-Standard', 'M4-0.7-Short', 'M4-0.7-Standard', 'M5-0.8-Short', 'M5-0.8-Standard']
 
 .. image:: brad_tee_nut_assembly.png
 
