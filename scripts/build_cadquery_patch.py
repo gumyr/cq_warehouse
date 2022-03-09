@@ -339,11 +339,11 @@ def update_source_code(
         # Add a mock logging class
         source_code.extend(
             [
-                "class logging:",
-                "    def debug(self):",
-                "        pass",
-                "    def warn(self):",
-                "        pass",
+                "class logging:\n",
+                "    def debug(self):\n",
+                "        pass\n",
+                "    def warn(self):\n",
+                "        pass\n",
             ]
         )
 

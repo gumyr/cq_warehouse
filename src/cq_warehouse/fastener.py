@@ -517,7 +517,7 @@ class Nut(ABC):
         """Parse Nut input parameters"""
         self.size = size.strip()
         size_parts = self.size.split("-")
-        if 2 < len(size_parts) < 3:
+        if 3 > len(size_parts) < 2:
             raise ValueError(
                 f"{size_parts} invalid, must be formatted as size-pitch(-length) or size-TPI(-length) where length is optional"
             )
@@ -1487,7 +1487,7 @@ class Screw(ABC):
             )
         except KeyError as e:
             raise ValueError(
-                f"{size} invalid, must be one of {self.thread_sizes(self.fastener_type)}"
+                f"{size} invalid, must be one of {self.sizes(self.fastener_type)}"
             ) from e
         self.socket_clearance = socket_clearance  # Only used for hex head screws
 
@@ -2285,7 +2285,7 @@ class Washer(ABC):
             )
         except KeyError as e:
             raise ValueError(
-                f"{size} invalid, must be one of {self.thread_sizes(self.fastener_type)}"
+                f"{size} invalid, must be one of {self.sizes(self.fastener_type)}"
             ) from e
         self._cq_object = self.make_washer().val()
 
@@ -2336,7 +2336,7 @@ class PlainWasher(Washer):
 
     fastener_data = read_fastener_parameters_from_csv("plain_washer_parameters.csv")
     washer_profile = Washer.default_washer_profile
-    washer_countersink_profile = Washer.default_countersink_profile
+    countersink_profile = Washer.default_countersink_profile
 
 
 class ChamferedWasher(Washer):
@@ -2362,7 +2362,7 @@ class ChamferedWasher(Washer):
         )
         return profile
 
-    washer_countersink_profile = Washer.default_countersink_profile
+    countersink_profile = Washer.default_countersink_profile
 
 
 class CheeseHeadWasher(Washer):
@@ -2391,4 +2391,4 @@ class CheeseHeadWasher(Washer):
         )
         return profile
 
-    washer_countersink_profile = Washer.default_countersink_profile
+    countersink_profile = Washer.default_countersink_profile

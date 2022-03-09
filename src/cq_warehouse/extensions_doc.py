@@ -589,6 +589,7 @@ class Face(object):
         surfacePoint: "VectorLike",
         surfaceXDirection: "VectorLike",
         internalFacePoints: list["Vector"] = None,
+        tolerance: float = 0.01,
     ) -> "Face":
         """Emboss Face on target object
     
@@ -603,6 +604,7 @@ class Face(object):
             surfacePoint: Point on target object to start embossing
             surfaceXDirection: Direction of X-Axis on target object
             internalFacePoints: Surface refinement points. Defaults to None.
+            tolerance: maximum allowed error in embossed wire length. Defaults to 0.01.
     
         Returns:
             Face: Embossed face
@@ -613,7 +615,7 @@ class Face(object):
         Create holes in the Face 'self' from interiorWires which must be entirely interior.
         Note that making holes in Faces is more efficient than using boolean operations
         with solid object. Also note that OCCT core may fail unless the orientation of the wire
-        isn't correct - use ``cq.Wire(forward_wire.wrapped.Reversed())`` to reverse a wire.
+        is correct - use ``cq.Wire(forward_wire.wrapped.Reversed())`` to reverse a wire.
     
         Example:
     
@@ -633,7 +635,7 @@ class Face(object):
             embossed_slot_wires = [
                 embossed_slot_wire.rotate((0, 0, 0), (0, 0, 1), a) for a in range(90, 271, 20)
             ]
-            cylinder_wall_with_hole = cylinder_wall.makeHoles(embossed_slot_wires)
+            cylinder_wall_with_holes = cylinder_wall.makeHoles(embossed_slot_wires)
     
         .. image:: slotted_cylinder.png
     

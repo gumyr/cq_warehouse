@@ -931,6 +931,8 @@ def _clearanceHole(
     Returns:
         the shape on the workplane stack with a new clearance hole
     """
+    from cq_warehouse.fastener import HeatSetNut
+
     if isinstance(fastener, HeatSetNut):
         raise ValueError(
             "clearanceHole doesn't accept fasteners of type HeatSetNut - use insertHole instead"
@@ -985,6 +987,8 @@ def _insertHole(
     Returns:
         the shape on the workplane stack with a new clearance hole
     """
+    from cq_warehouse.fastener import HeatSetNut
+
     if not isinstance(fastener, HeatSetNut):
         raise ValueError("insertHole only accepts fasteners of type HeatSetNut")
 
@@ -1038,6 +1042,8 @@ def _tapHole(
     Returns:
         the shape on the workplane stack with a new tap hole
     """
+    from cq_warehouse.fastener import HeatSetNut
+
     if isinstance(fastener, HeatSetNut):
         raise ValueError(
             "tapHole doesn't accept fasteners of type HeatSetNut - use insertHole instead"
@@ -1096,6 +1102,8 @@ def _threadedHole(
     Returns:
         the shape on the workplane stack with a new threaded hole
     """
+    from cq_warehouse.fastener import HeatSetNut
+
     if isinstance(fastener, HeatSetNut):
         raise ValueError(
             "threadedHole doesn't accept fasteners of type HeatSetNut - use insertHole instead"
@@ -1357,6 +1365,7 @@ def _face_embossToShape(
     surfacePoint: "VectorLike",
     surfaceXDirection: "VectorLike",
     internalFacePoints: list["Vector"] = None,
+    tolerance: float = 0.01,
 ) -> "Face":
     """Emboss Face on target object
 
@@ -1371,6 +1380,7 @@ def _face_embossToShape(
         surfacePoint: Point on target object to start embossing
         surfaceXDirection: Direction of X-Axis on target object
         internalFacePoints: Surface refinement points. Defaults to None.
+        tolerance: maximum allowed error in embossed wire length. Defaults to 0.01.
 
     Returns:
         Face: Embossed face
@@ -1385,7 +1395,7 @@ def _face_embossToShape(
     planar_outer_wire = self.outerWire()
     planar_outer_wire_orientation = planar_outer_wire.wrapped.Orientation()
     embossed_outer_wire = planar_outer_wire.embossToShape(
-        targetObject, surfacePoint, surfaceXDirection
+        targetObject, surfacePoint, surfaceXDirection, tolerance
     )
 
     # Phase 2 - inner wires
@@ -1396,7 +1406,7 @@ def _face_embossToShape(
         for w in self.innerWires()
     ]
     embossed_inner_wires = [
-        w.embossToShape(targetObject, surfacePoint, surfaceXDirection)
+        w.embossToShape(targetObject, surfacePoint, surfaceXDirection, tolerance)
         for w in planar_inner_wires
     ]
 
@@ -1418,7 +1428,7 @@ def _face_embossToShape(
             planar_grid = Wire.makePolygon([Vector(v) for v in internalFacePoints])
 
         embossed_grid = planar_grid.embossToShape(
-            targetObject, surfacePoint, surfaceXDirection
+            targetObject, surfacePoint, surfaceXDirection, tolerance
         )
         embossed_surface_points = [
             Vector(*v.toTuple()) for v in embossed_grid.Vertices()
@@ -1441,7 +1451,7 @@ def _face_makeHoles(self, interiorWires: list["Wire"]) -> "Face":
     Create holes in the Face 'self' from interiorWires which must be entirely interior.
     Note that making holes in Faces is more efficient than using boolean operations
     with solid object. Also note that OCCT core may fail unless the orientation of the wire
-    isn't correct - use ``cq.Wire(forward_wire.wrapped.Reversed())`` to reverse a wire.
+    is correct - use ``cq.Wire(forward_wire.wrapped.Reversed())`` to reverse a wire.
 
     Example:
 
@@ -1461,7 +1471,7 @@ def _face_makeHoles(self, interiorWires: list["Wire"]) -> "Face":
         embossed_slot_wires = [
             embossed_slot_wire.rotate((0, 0, 0), (0, 0, 1), a) for a in range(90, 271, 20)
         ]
-        cylinder_wall_with_hole = cylinder_wall.makeHoles(embossed_slot_wires)
+        cylinder_wall_with_holes = cylinder_wall.makeHoles(embossed_slot_wires)
 
     .. image:: slotted_cylinder.png
 

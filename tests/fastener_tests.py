@@ -107,6 +107,23 @@ class TestWashers(unittest.TestCase):
 
                         self.assertEqual(washer.washer_class, washer_class.__name__)
 
+    def test_countersink(self):
+        """Validate diameter and thickness of washer"""
+        for washer_class in Washer.__subclasses__():
+            washer_type = list(washer_class.types())[0]
+            washer_size = washer_class.sizes(fastener_type=washer_type)[0]
+            washer = washer_class(size=washer_size, fastener_type=washer_type)
+
+            box = (
+                cq.Workplane("XY")
+                .box(10, 10, 10)
+                .faces(">Z")
+                .workplane()
+                .clearanceHole(fastener=washer, counterSunk=True)
+                .val()
+            )
+            self.assertLess(box.Volume(), 999.99)
+
 
 class TestNuts(unittest.TestCase):
     """Test creation of all nuts"""
@@ -183,15 +200,29 @@ class TestNuts(unittest.TestCase):
             nut_size = nut_class.sizes(fastener_type=nut_type)[0]
             nut = nut_class(size=nut_size, fastener_type=nut_type, simple=True)
 
-            box = (
-                cq.Workplane("XY")
-                .box(10, 10, 10)
-                .faces(">Z")
-                .workplane()
-                .clearanceHole(fastener=nut, counterSunk=True)
-                .val()
-            )
+            if nut_class == HeatSetNut:
+                box = (
+                    cq.Workplane("XY")
+                    .box(10, 10, 10)
+                    .faces(">Z")
+                    .workplane()
+                    .insertHole(fastener=nut)
+                    .val()
+                )
+            else:
+                box = (
+                    cq.Workplane("XY")
+                    .box(10, 10, 10)
+                    .faces(">Z")
+                    .workplane()
+                    .clearanceHole(fastener=nut, counterSunk=True)
+                    .val()
+                )
             self.assertLess(box.Volume(), 999.99)
+
+    def test_heatset_fillfactor(self):
+        heatset = HeatSetNut(size="M3-0.5-Standard", fastener_type="McMaster-Carr")
+        self.assertTrue(isinstance(heatset.fill_factor, float))
 
 
 class TestScrews(unittest.TestCase):
