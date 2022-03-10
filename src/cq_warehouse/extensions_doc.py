@@ -69,20 +69,38 @@ class Assembly(object):
             a list of cadquery Location objects for each fastener instance
         """
 class Plane(object):
-    def toLocalCoords(self, obj: Union["Vector", "Shape", "BoundBox"]):
-        """Project the provided coordinates onto this plane
+    def _toFromLocalCoords(
+        self, obj: Union["VectorLike", "Shape", "BoundBox"], to: bool = True
+    ):
+        """Reposition the object relative to this plane
+    
+        Args:
+            obj: an object, vector, or bounding box to convert
+            to: convert `to` or from local coordinates. Defaults to True.
+    
+        Returns:
+            an object of the same type, but repositioned to local coordinates
+    
+        """
+    def toLocalCoords(self, obj: Union["VectorLike", "Shape", "BoundBox"]):
+        """Reposition the object relative to this plane
     
         Args:
             obj: an object, vector, or bounding box to convert
     
         Returns:
-            an object of the same type, but converted to local coordinates
+            an object of the same type, but repositioned to local coordinates
     
-        Most of the time, the z-coordinate returned will be zero, because most
-        operations based on a plane are all 2D. Occasionally, though, 3D
-        points outside of the current plane are transformed. One such example is
-        :py:meth:`Workplane.box`, where 3D corners of a box are transformed to
-        orient the box in space correctly.
+        """
+    def fromLocalCoords(self, obj: Union[tuple, "Vector", "Shape", "BoundBox"]):
+        """Reposition the object relative from this plane
+    
+        Args:
+            obj: an object, vector, or bounding box to convert
+    
+        Returns:
+            an object of the same type, but repositioned to world coordinates
+    
         """
 class Vector(object):
     def rotateX(self, angle: float) -> "Vector":
@@ -316,6 +334,7 @@ class Workplane(object):
         fastener: Union["Nut", "Screw"],
         depth: float,
         washers: list["Washer"],
+        countersinkProfile: "Workplane",
         fit: Optional[Literal["Close", "Normal", "Loose"]] = None,
         material: Optional[Literal["Soft", "Hard"]] = None,
         counterSunk: Optional[bool] = True,
@@ -334,6 +353,7 @@ class Workplane(object):
             fastener: A nut or screw instance
             depth: hole depth
             washers: A list of washer instances, can be empty
+            countersinkProfile: the 2D side profile of the fastener (not including a screw's shaft)
             fit: one of "Close", "Normal", "Loose" which determines clearance hole diameter. Defaults to None.
             material: on of "Soft", "Hard" which determines tap hole size. Defaults to None.
             counterSunk: Is the fastener countersunk into the part?. Defaults to True.
@@ -363,16 +383,52 @@ class Workplane(object):
         Put a clearance hole in a shape at the provided location
     
         For more information on how to use clearanceHole() see
-        :ref:`Clearance, Tap and Threaded Holes <clearance holes>`.
+        :ref:`Custom Holes <custom holes>`.
     
         Args:
             fastener: A nut or screw instance
             washers: A list of washer instances, can be empty
-            fit: one of "Close", "Normal", "Loose" which determines clearance hole diameter. Defaults to None.
+            fit: one of "Close", "Normal", "Loose" which determines clearance hole diameter. Defaults to "Normal".
             depth: hole depth. Defaults to through part.
             counterSunk: Is the fastener countersunk into the part?. Defaults to True.
             baseAssembly: Assembly to add faster to. Defaults to None.
             clean: execute a clean operation remove extraneous internal features. Defaults to True.
+    
+        Raises:
+            ValueError: clearanceHole doesn't accept fasteners of type HeatSetNut - use insertHole instead
+    
+        Returns:
+            the shape on the workplane stack with a new clearance hole
+        """
+    def insertHole(
+        self: T,
+        fastener: "Nut",
+        fit: Optional[Literal["Close", "Normal", "Loose"]] = "Normal",
+        depth: Optional[float] = None,
+        baseAssembly: Optional["Assembly"] = None,
+        clean: Optional[bool] = True,
+        manufacturingCompensation: float = 0.0,
+    ) -> T:
+        """Insert Hole
+    
+        Put a hole appropriate for an insert nut at the provided location
+    
+        For more information on how to use insertHole() see
+        :ref:`Custom Holes <custom holes>`.
+    
+        Args:
+            fastener: An insert nut instance
+            fit: one of "Close", "Normal", "Loose" which determines clearance hole diameter. Defaults to "Normal".
+            depth: hole depth. Defaults to through part.
+            baseAssembly: Assembly to add faster to. Defaults to None.
+            clean: execute a clean operation remove extraneous internal features. Defaults to True.
+            manufacturingCompensation (float, optional): used to compensate for over-extrusion
+                of 3D printers. A value of 0.2mm will reduce the radius of an external thread
+                by 0.2mm (and increase the radius of an internal thread) such that the resulting
+                3D printed part matches the target dimensions. Defaults to 0.0.
+    
+        Raises:
+            ValueError: insertHole only accepts fasteners of type HeatSetNut
     
         Returns:
             the shape on the workplane stack with a new clearance hole
@@ -393,17 +449,20 @@ class Workplane(object):
         Put a tap hole in a shape at the provided location
     
         For more information on how to use tapHole() see
-        :ref:`Clearance, Tap and Threaded Holes <clearance holes>`.
+        :ref:`Custom Holes <custom holes>`.
     
         Args:
             fastener: A nut or screw instance
             washers: A list of washer instances, can be empty
-            material: on of "Soft", "Hard" which determines tap hole size. Defaults to None.
+            material: on of "Soft", "Hard" which determines tap hole size. Defaults to "Soft".
             depth: hole depth. Defaults to through part.
             counterSunk: Is the fastener countersunk into the part?. Defaults to True.
             fit: one of "Close", "Normal", "Loose" which determines clearance hole diameter. Defaults to None.
             baseAssembly: Assembly to add faster to. Defaults to None.
             clean: execute a clean operation remove extraneous internal features. Defaults to True.
+    
+        Raises:
+            ValueError: tapHole doesn't accept fasteners of type HeatSetNut - use insertHole instead
     
         Returns:
             the shape on the workplane stack with a new tap hole
@@ -425,7 +484,7 @@ class Workplane(object):
         Put a threaded hole in a shape at the provided location
     
         For more information on how to use threadedHole() see
-        :ref:`Clearance, Tap and Threaded Holes <clearance holes>`.
+        :ref:`Custom Holes <custom holes>`.
     
         Args:
             fastener: A nut or screw instance
@@ -438,6 +497,9 @@ class Workplane(object):
             baseAssembly: Assembly to add faster to. Defaults to None.
             clean: execute a clean operation remove extraneous internal features. Defaults to True.
     
+        Raises:
+            ValueError: threadedHole doesn't accept fasteners of type HeatSetNut - use insertHole instead
+    
         Returns:
             the shape on the workplane stack with a new threaded hole
         """
@@ -445,6 +507,8 @@ class Workplane(object):
         self: T,
         fastener: Union["Nut", "Screw"],
         baseAssembly: "Assembly",
+        offset: float = 0,
+        flip: bool = False,
     ):
         """Push Fastener Locations
     
@@ -524,7 +588,8 @@ class Face(object):
         targetObject: "Shape",
         surfacePoint: "VectorLike",
         surfaceXDirection: "VectorLike",
-        internalFacePoints: list["Vector"] = [],
+        internalFacePoints: list["Vector"] = None,
+        tolerance: float = 0.01,
     ) -> "Face":
         """Emboss Face on target object
     
@@ -538,10 +603,48 @@ class Face(object):
             targetObject: Object to emboss onto
             surfacePoint: Point on target object to start embossing
             surfaceXDirection: Direction of X-Axis on target object
-            internalFacePoints: Surface refinement points. Defaults to [].
+            internalFacePoints: Surface refinement points. Defaults to None.
+            tolerance: maximum allowed error in embossed wire length. Defaults to 0.01.
     
         Returns:
             Face: Embossed face
+        """
+    def makeHoles(self, interiorWires: list["Wire"]) -> "Face":
+        """Make Holes in Face
+    
+        Create holes in the Face 'self' from interiorWires which must be entirely interior.
+        Note that making holes in Faces is more efficient than using boolean operations
+        with solid object. Also note that OCCT core may fail unless the orientation of the wire
+        is correct - use ``cq.Wire(forward_wire.wrapped.Reversed())`` to reverse a wire.
+    
+        Example:
+    
+            For example, make a series of slots on the curved walls of a cylinder.
+    
+        .. code-block:: python
+    
+            cylinder = cq.Workplane("XY").cylinder(100, 50, centered=(True, True, False))
+            cylinder_wall = cylinder.faces("not %Plane").val()
+            path = cylinder.section(50).edges().val()
+            slot_wire = cq.Workplane("XY").slot2D(60, 10, angle=90).wires().val()
+            embossed_slot_wire = slot_wire.embossToShape(
+                targetObject=cylinder.val(),
+                surfacePoint=path.positionAt(0),
+                surfaceXDirection=path.tangentAt(0),
+            )
+            embossed_slot_wires = [
+                embossed_slot_wire.rotate((0, 0, 0), (0, 0, 1), a) for a in range(90, 271, 20)
+            ]
+            cylinder_wall_with_holes = cylinder_wall.makeHoles(embossed_slot_wires)
+    
+        .. image:: slotted_cylinder.png
+    
+        Raises:
+            RuntimeError: adding interior hole in non-planar face with provided interiorWires
+            RuntimeError: resulting face is not valid
+    
+        Returns:
+            Face: 'self' with holes
         """
 class Wire(object):
     def makeNonPlanarFace(
@@ -678,6 +781,21 @@ class Edge(object):
             Embossed edge
         """
 class Shape(object):
+    def transformed(
+        self, rotate: VectorLike = (0, 0, 0), offset: VectorLike = (0, 0, 0)
+    ) -> T:
+        """Transform Shape
+    
+        Rotate and translate the Shape by the three angles (in degrees) and offset.
+        Functions exactly like the Workplane.transformed() method but for Shapes.
+    
+        Args:
+            rotate (VectorLike, optional): 3-tuple of angles to rotate, in degrees. Defaults to (0, 0, 0).
+            offset (VectorLike, optional): 3-tuple to offset. Defaults to (0, 0, 0).
+    
+        Returns:
+            T: transformed object
+        """
     def findIntersection(
         self, point: "Vector", direction: "Vector"
     ) -> list[tuple["Vector", "Vector"]]:

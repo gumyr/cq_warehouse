@@ -28,6 +28,7 @@ license:
 """
 import cadquery as cq
 from cq_warehouse.fastener import SocketHeadCapScrew
+import cq_warehouse.extensions
 
 # Create the screws that will fasten the plates together
 cap_screw = SocketHeadCapScrew(

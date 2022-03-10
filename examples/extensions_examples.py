@@ -40,7 +40,7 @@ EMBOSS_TEXT = 6
 PROJECT_TEXT = 7
 EMBOSS_WIRE = 8
 
-example = EMBOSS_WIRE
+example = EMBOSS_TEXT
 
 # A sphere used as a projection target
 sphere = cq.Solid.makeSphere(50, angleDegrees1=-90)

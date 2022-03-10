@@ -58,6 +58,12 @@ class TestParsing(unittest.TestCase):
                 spkt_locations=[(0, 0), (1, 1)],
                 positive_chain_wrap=[True],
             )
+        with self.assertRaises(ValueError):  # Must be a list
+            Chain(
+                spkt_teeth=[10, 10],
+                spkt_locations=[(0, 0), (1, 1)],
+                positive_chain_wrap=True,
+            )
         with self.assertRaises(ValueError):  # Invalid locations
             Chain(
                 spkt_teeth=[10, 10],
@@ -117,6 +123,12 @@ class TestParsing(unittest.TestCase):
                 spkt_teeth=[12, 12],
                 spkt_locations=[Vector(0, 0, 0), Vector(0, 0, 0)],
                 positive_chain_wrap=[True, True],
+            )
+        with self.assertRaises(ValueError):  # At least two sprockets
+            Chain(
+                spkt_teeth=[12],
+                spkt_locations=[Vector(0, 0, 0)],
+                positive_chain_wrap=[True],
             )
 
 
@@ -278,6 +290,19 @@ class TestChainShape(unittest.TestCase):
                 positive_chain_wrap=[True, True],
             )
 
+    def test_oblique_plane(self):
+        """Validate the local plane is setup correctly"""
+        chain = Chain(
+            spkt_teeth=[10, 10, 10],
+            spkt_locations=[(-40, -30, -20), (80, 55, 35), (12, 5, 85)],
+            positive_chain_wrap=[False, False, False],
+        )
+        self.assertTupleAlmostEquals(
+            chain.chain_plane.zDir.toTuple(),
+            (0.5835035466941887, -0.8119035064001996, -0.0183386828961031),
+            7,
+        )
+
 
 class TestSprocketMethods(unittest.TestCase):
     """Sprocket class methods"""
@@ -372,25 +397,6 @@ class TestChainMethods(unittest.TestCase):
         self.assertEqual(transmission.children[0].name, "spkt0")
         self.assertEqual(transmission.children[1].name, "spkt1")
         self.assertEqual(transmission.children[2].name, "chain")
-
-
-class TestVectorMethods(unittest.TestCase):
-    """Extensions to the Vector class"""
-
-    def test_vector_rotate(self):
-        """Validate vector rotate methods"""
-        vector_x = Vector(1, 0, 1).rotateX(45)
-        vector_y = Vector(1, 2, 1).rotateY(45)
-        vector_z = Vector(-1, -1, 3).rotateZ(45)
-        self.assertTupleAlmostEquals(
-            vector_x.toTuple(), (1, -math.sqrt(2) / 2, math.sqrt(2) / 2), 7
-        )
-        self.assertTupleAlmostEquals(vector_y.toTuple(), (math.sqrt(2), 2, 0), 7)
-        self.assertTupleAlmostEquals(vector_z.toTuple(), (0, -math.sqrt(2), 3), 7)
-
-    def test_vector_flip_y(self):
-        """Validate vector flip of the xz plane method"""
-        self.assertTupleAlmostEquals(Vector(1, 2, 3).flipY().toTuple(), (1, -2, 3), 7)
 
 
 if __name__ == "__main__":

@@ -249,6 +249,15 @@ def prepare_extensions(python_code: list[str]) -> dict[list[dict]]:
                 )
                 for line in method_code[method_name]
             ]
+        if method_name == "fastenerLocations":
+            method_code[method_name] = [
+                line.replace(
+                    "# from functools import reduce",
+                    "from functools import reduce",
+                )
+                for line in method_code[method_name]
+            ]
+
         # Now that the code has been modified, add it code dictionary
         if class_name in code_dictionary:
             code_dictionary[class_name].append(method_code)
@@ -326,6 +335,18 @@ def update_source_code(
         else:
             _class_start, class_end = code_location(class_name, "class", source_code)
         source_code[class_end + 1 : class_end + 1] = extension_code
+
+        # Add a mock logging class
+        source_code.extend(
+            [
+                "class logging:\n",
+                "    def debug(self):\n",
+                "        pass\n",
+                "    def warn(self):\n",
+                "        pass\n",
+            ]
+        )
+
     return source_code
 
 

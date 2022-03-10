@@ -25,6 +25,7 @@ license:
     limitations under the License.
 
 """
+from random import uniform
 import math
 import unittest
 import cadquery as cq
@@ -41,7 +42,78 @@ def _assertTupleAlmostEquals(self, expected, actual, places, msg=None):
 unittest.TestCase.assertTupleAlmostEquals = _assertTupleAlmostEquals
 
 
-class Workplane(unittest.TestCase):
+class AssemblyTests(unittest.TestCase):
+    """Test new Assembly methods"""
+
+    def test_translate(self):
+        """Validate translate moves an Assembly"""
+        test_assembly = cq.Assembly(cq.Workplane("XY").box(10, 10, 10)).translate(
+            (20, 20, 20)
+        )
+        position = test_assembly.loc.toTuple()[0]
+        self.assertTupleAlmostEquals(position, (20, 20, 20), 7)
+
+    def test_rotate(self):
+        test_assembly = cq.Assembly(cq.Workplane("XY").box(10, 10, 10)).rotate(
+            (0, 0, 1), 90
+        )
+        rotation = test_assembly.loc.toTuple()[1]
+        # In radians
+        self.assertTupleAlmostEquals(rotation, (0, 0, math.pi / 2), 7)
+
+
+class FaceTests(unittest.TestCase):
+    """Test new Face methods - not including projection or emboss"""
+
+    def test_make_holes(self):
+        radius = 10
+        circumference = 2 * math.pi * radius
+        hex_diagonal = 4 * (circumference / 10) / 3
+        cylinder = cq.Workplane("XY").cylinder(
+            hex_diagonal * 5, radius, centered=(True, True, False)
+        )
+        cylinder_wall = cylinder.faces("not %Plane").val()
+        hex_wire_vertical = (
+            cq.Workplane("XZ", origin=(0, radius, hex_diagonal / 2))
+            .polygon(6, hex_diagonal * 0.8)
+            .wires()
+            .val()
+        )
+        projected_wire = hex_wire_vertical.projectToShape(
+            targetObject=cylinder.val(), center=(0, 0, hex_diagonal / 2)
+        )[0]
+        projected_wires = [
+            projected_wire.rotate((0, 0, 0), (0, 0, 1), i * 360 / 10).translate(
+                (0, 0, (j + (i % 2) / 2) * hex_diagonal)
+            )
+            for i in range(6)
+            for j in range(4)
+        ]
+        cylinder_walls_with_holes = cylinder_wall.makeHoles(projected_wires)
+        self.assertTrue(cylinder_walls_with_holes.isValid())
+        self.assertLess(cylinder_walls_with_holes.Area(), cylinder_wall.Area())
+
+
+class ShapeTests(unittest.TestCase):
+    """Test new Shape methods"""
+
+    def test_transformed(self):
+        """Validate that transformed works the same for Shape and Workplane"""
+        rotation = (uniform(0, 360), uniform(0, 360), uniform(0, 360))
+        offset = (uniform(0, 50), uniform(0, 50), uniform(0, 50))
+        shape_transformed = cq.Solid.makeSphere(
+            50, angleDegrees1=0, angleDegrees2=90, angleDegrees3=90
+        ).transformed(rotation, offset)
+        workplane_transformed = (
+            cq.Workplane("XY")
+            .transformed(rotation, offset)
+            .sphere(50, angle1=0, angle2=90, angle3=90)
+        )
+        difference = workplane_transformed.cut(shape_transformed).val().Volume()
+        self.assertAlmostEqual(difference, 0.0, 7)
+
+
+class WorkplaneTests(unittest.TestCase):
     """Test 2D text on a path"""
 
     def test_text_on_path(self):
@@ -126,9 +198,9 @@ class Workplane(unittest.TestCase):
         self.assertAlmostEqual(box.Volume(), 2, 7)
 
 
-class TestPlane(unittest.TestCase):
-    def test_toLocalWorldCoords(self):
-        """Tests the toLocalCoords and toGlocalCoords methods"""
+class PlaneTests(unittest.TestCase):
+    def test_to_from_local_coords(self):
+        """Tests the toLocalCoords and fromLocalCoords methods"""
 
         # Test vector translation
         v1 = cq.Vector(1, 2, 0)
@@ -169,11 +241,11 @@ class TestPlane(unittest.TestCase):
             .val()
             .toTuple()
         )  # (1.0, 2.0, 4.0)
-        v3 = p1.toWorldCoords(v2)  # (1.0, 4.0, -2.0)
+        v3 = p1.fromLocalCoords(v2)  # (1.0, 4.0, -2.0)
         self.assertTupleAlmostEquals(v2, (v3.x, v3.z, -v3.y), 3)
 
 
-class TestVectorMethods(unittest.TestCase):
+class VectorTests(unittest.TestCase):
     """Extensions to the Vector class"""
 
     def test_vector_rotate(self):
@@ -204,7 +276,7 @@ class TestVectorMethods(unittest.TestCase):
         self.assertTupleAlmostEquals(v.toTuple(), (1, 2, 3), 5)
 
 
-class TestProjection(unittest.TestCase):
+class ProjectionTests(unittest.TestCase):
     def test_flat_projection(self):
 
         sphere = cq.Solid.makeSphere(50, angleDegrees1=-90)
@@ -251,6 +323,15 @@ class TestProjection(unittest.TestCase):
         ]
         self.assertEqual(len(projected_text_faces), 8)
 
+    def test_projection_with_internal_points(self):
+        sphere = cq.Solid.makeSphere(50, angleDegrees1=-90)
+        f = cq.Sketch().rect(10, 10)._faces.Faces()[0].translate(cq.Vector(0, 0, 60))
+        pts = [cq.Vector(x, y, 60) for x in [-5, 5] for y in [-5, 5]]
+        projected_faces = f.projectToShape(
+            sphere, center=(0, 0, 0), internalFacePoints=pts
+        )
+        self.assertEqual(len(projected_faces), 1)
+
     def test_text_projection(self):
 
         sphere = cq.Solid.makeSphere(50, angleDegrees1=-90)
@@ -273,9 +354,28 @@ class TestProjection(unittest.TestCase):
             path=arch_path,
         )
         self.assertEqual(len(projected_text.Solids()), 49)
+        projected_text = sphere.projectText(
+            txt="project - 'the quick brown fox jumped over the lazy dog'",
+            fontsize=14,
+            font="Serif",
+            fontPath="/usr/share/fonts/truetype/freefont",
+            depth=0,
+            path=arch_path,
+        )
+        self.assertEqual(len(projected_text.Solids()), 0)
+        self.assertEqual(len(projected_text.Faces()), 49)
+
+    def test_error_handling(self):
+        sphere = cq.Solid.makeSphere(50, angleDegrees1=-90)
+        f = cq.Sketch().rect(10, 10)._faces.Faces()[0]
+        with self.assertRaises(ValueError):
+            f.projectToShape(sphere, center=None, direction=None)[0]
+        w = cq.Workplane("XY").rect(10, 10).wires().val()
+        with self.assertRaises(ValueError):
+            w.projectToShape(sphere, center=None, direction=None)[0]
 
 
-class TestEmboss(unittest.TestCase):
+class EmbossTests(unittest.TestCase):
     def test_emboss_text(self):
 
         sphere = cq.Solid.makeSphere(50, angleDegrees1=-90)
@@ -298,9 +398,66 @@ class TestEmboss(unittest.TestCase):
             path=arch_path,
         )
         self.assertEqual(len(projected_text.Solids()), 47)
+        projected_text = sphere.embossText(
+            txt="emboss - 'the quick brown fox jumped over the lazy dog'",
+            fontsize=14,
+            font="Serif",
+            fontPath="/usr/share/fonts/truetype/freefont",
+            depth=0,
+            path=arch_path,
+        )
+        self.assertEqual(len(projected_text.Faces()), 47)
+        self.assertEqual(len(projected_text.Solids()), 0)
+
+    def test_emboss_face(self):
+        sphere = cq.Solid.makeSphere(50, angleDegrees1=-90)
+        square_face = cq.Face.makeFromWires(
+            cq.Workplane("XY").rect(12, 12).wires().val(), []
+        )
+        embossed_face = square_face.embossToShape(
+            sphere,
+            surfacePoint=(0, 0, 50),
+            surfaceXDirection=(1, 1, 0),
+        )
+        self.assertTrue(embossed_face.isValid())
+
+        pts = [cq.Vector(x, y, 0) for x in [-5, 5] for y in [-5, 5]]
+        embossed_face = square_face.embossToShape(
+            sphere,
+            surfacePoint=(0, 0, 50),
+            surfaceXDirection=(1, 1, 0),
+            internalFacePoints=pts,
+        )
+        self.assertTrue(embossed_face.isValid())
+
+        square_face = cq.Sketch().rect(12, 12)._faces.Faces()[0]
+        with self.assertRaises(RuntimeError):
+            with self.assertWarns(UserWarning):
+                square_face.embossToShape(
+                    sphere,
+                    surfacePoint=(0, 0, 50),
+                    surfaceXDirection=(1, 1, 0),
+                )
+
+    def test_emboss_wire(self):
+        sphere = cq.Solid.makeSphere(50, angleDegrees1=-90)
+        triangle_face = cq.Wire.makePolygon(
+            [
+                cq.Vector(0, 0, 0),
+                cq.Vector(6, 6, 0),
+                cq.Vector(-6, 6, 0),
+                cq.Vector(0, 0, 0),
+            ]
+        )
+        embossed_face = triangle_face.embossToShape(
+            sphere,
+            surfacePoint=(0, 0, 50),
+            surfaceXDirection=(1, 1, 0),
+        )
+        self.assertTrue(embossed_face.isValid())
 
 
-class TestVertexExtensions(unittest.TestCase):
+class VertexTests(unittest.TestCase):
     """Test the extensions to the cadquery Vertex class"""
 
     def test_vertex_add(self):
@@ -345,7 +502,7 @@ class TestVertexExtensions(unittest.TestCase):
         )
 
 
-class TestFastenerMethods(unittest.TestCase):
+class FastenerTests(unittest.TestCase):
     def test_clearance_hole(self):
         screw = SocketHeadCapScrew(size="M6-1", fastener_type="iso4762", length=40)
         depth = screw.min_hole_depth()
@@ -362,6 +519,7 @@ class TestFastenerMethods(unittest.TestCase):
         self.assertEqual(len(pillow_block.children), 1)
         self.assertEqual(pillow_block.fastenerQuantities(bom=False)[screw], 1)
         self.assertEqual(len(pillow_block.fastenerQuantities(bom=True)), 1)
+        self.assertEqual(len(pillow_block.fastenerQuantities(bom=True, deep=False)), 1)
 
     def test_invalid_clearance_hole(self):
         for fastener_class in Screw.__subclasses__() + Nut.__subclasses__():
@@ -386,6 +544,15 @@ class TestFastenerMethods(unittest.TestCase):
                     .workplane()
                     .clearanceHole(fastener=fastener, depth=40, fit="Bad")
                 )
+        nut = HeatSetNut(size="M3-0.5-Standard", fastener_type="McMaster-Carr")
+        with self.assertRaises(ValueError):
+            (
+                cq.Workplane("XY")
+                .box(20, 20, 20)
+                .faces(">Z")
+                .workplane()
+                .clearanceHole(fastener=nut, depth=40)
+            )
 
     def test_tap_hole(self):
         nut = DomedCapNut(size="M6-1", fastener_type="din1587")
@@ -425,6 +592,15 @@ class TestFastenerMethods(unittest.TestCase):
                     .workplane()
                     .tapHole(fastener=fastener, depth=40, material="Bad")
                 )
+        nut = HeatSetNut(size="M3-0.5-Standard", fastener_type="McMaster-Carr")
+        with self.assertRaises(ValueError):
+            (
+                cq.Workplane("XY")
+                .box(20, 20, 20)
+                .faces(">Z")
+                .workplane()
+                .tapHole(fastener=nut, depth=40)
+            )
 
     def test_threaded_hole(self):
         screw = SocketHeadCapScrew(size="M6-1", fastener_type="iso4762", length=40)
@@ -456,6 +632,17 @@ class TestFastenerMethods(unittest.TestCase):
         self.assertLess(box.Volume(), 8000)
         self.assertEqual(len(pillow_block.children), 3)
         self.assertEqual(len(pillow_block.fastenerLocations(screw)), 1)
+
+    def test_invalid_threaded_hole(self):
+        nut = HeatSetNut(size="M3-0.5-Standard", fastener_type="McMaster-Carr")
+        with self.assertRaises(ValueError):
+            (
+                cq.Workplane("XY")
+                .box(20, 20, 20)
+                .faces(">Z")
+                .workplane()
+                .threadedHole(fastener=nut, depth=40)
+            )
 
     def test_push_fastener_locations(self):
         # Create the screws that will fasten the plates together
@@ -519,6 +706,56 @@ class TestFastenerMethods(unittest.TestCase):
         for i, loc in enumerate(square_tube_assembly.fastenerLocations(cap_screw)):
             self.assertTupleAlmostEquals(loc.toTuple()[0], fastener_positions[i], 7)
             self.assertTrue(str(fastener_positions[i]) in str(loc))
+
+    def test_fastener_quantities(self):
+        screw = SocketHeadCapScrew(size="M6-1", fastener_type="iso4762", length=40)
+        depth = screw.min_hole_depth()
+        pillow_block = cq.Assembly(None, name="pillow_block")
+        box = (
+            cq.Workplane("XY")
+            .box(10, 10, 10)
+            .faces(">Z")
+            .workplane()
+            .clearanceHole(fastener=screw, baseAssembly=pillow_block, depth=depth)
+            .val()
+        )
+        machine = cq.Assembly(None, name="machine")
+        machine.add(pillow_block)
+        self.assertLess(box.Volume(), 999.99)
+        self.assertEqual(len(pillow_block.children), 1)
+        self.assertEqual(pillow_block.fastenerQuantities(bom=False)[screw], 1)
+        self.assertDictEqual(
+            pillow_block.fastenerQuantities(bom=True),
+            {"SocketHeadCapScrew(iso4762): M6-1x40": 1},
+        )
+        self.assertEqual(len(machine.fastenerQuantities(bom=True, deep=False)), 0)
+        self.assertEqual(len(machine.fastenerQuantities(bom=True, deep=True)), 1)
+
+    def test_insert_hole(self):
+        nut = HeatSetNut(size="M3-0.5-Standard", fastener_type="McMaster-Carr")
+        block_assembly = cq.Assembly(None, name="block_assembly")
+        box = (
+            cq.Workplane("XY")
+            .box(20, 20, 20)
+            .faces(">Z")
+            .workplane()
+            .insertHole(fastener=nut, baseAssembly=block_assembly)
+            .val()
+        )
+        self.assertLess(box.Volume(), 7999.99)
+        self.assertEqual(len(block_assembly.children), 1)
+        self.assertEqual(block_assembly.fastenerQuantities(bom=False)[nut], 1)
+
+    def test_invalid_insert_hole(self):
+        screw = SocketHeadCapScrew(size="M6-1", fastener_type="iso4762", length=40)
+        with self.assertRaises(ValueError):
+            (
+                cq.Workplane("XY")
+                .box(20, 20, 20)
+                .faces(">Z")
+                .workplane()
+                .insertHole(fastener=screw)
+            )
 
 
 if __name__ == "__main__":
