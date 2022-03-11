@@ -5,7 +5,6 @@ setup.cfg
 src/cq_warehouse/__init__.py
 src/cq_warehouse/assembly_extended.py
 src/cq_warehouse/brad_tee_nut_parameters.csv
-src/cq_warehouse/bradteenut.py
 src/cq_warehouse/button_head_parameters.csv
 src/cq_warehouse/button_head_with_collar_parameters.csv
 src/cq_warehouse/chain.py
