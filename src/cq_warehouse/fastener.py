@@ -657,6 +657,51 @@ class Nut(ABC):
         return cq.Workplane("XZ").rect(width / 2, m, centered=False)
 
 
+class DomedCapNut(Nut):
+    """
+    size: str
+    fastener_type: str
+        din1587 Hexagon domed cap nuts
+    hand: Literal["right", "left"] = "right"
+    simple: bool = True
+    """
+
+    fastener_data = read_fastener_parameters_from_csv("domed_cap_nut_parameters.csv")
+
+    def nut_profile(self):
+        """Create 2D profile of hex nuts with double chamfers"""
+        (dk, m, s) = (self.nut_data[p] for p in ["dk", "m", "s"])
+        e = polygon_diagonal(s, 6)
+        # Chamfer angle must be between 15 and 30 degrees
+        cs = (e - s) * tan(radians(15)) / 2
+        profile = (
+            cq.Workplane("XZ")
+            .moveTo(1 * MM, 0)
+            .hLineTo(s / 2)
+            .lineTo(e / 2, cs)
+            .vLineTo(m - cs)
+            .lineTo(s / 2, m)
+            .hLineTo(dk / 2)
+            .radiusArc((0, m + dk / 2), -dk / 2)
+            .vLineTo(m + dk / 2 - 1 * MM)
+            .radiusArc((dk / 2 - 1 * MM, m), (dk / 2 - 1 * MM))
+            .hLineTo(1 * MM)
+            .close()
+        )
+        return profile
+
+    def countersink_profile(self, fit) -> cq.Workplane:
+        """A simple rectangle with gets revolved into a cylinder with an
+        extra socket_clearance (defaults to 6mm across the diameter) for a socket wrench"""
+        # Note that fit is only used for some flanged nuts but is here for uniformity
+        del fit
+        (dk, m, s) = (self.nut_data[p] for p in ["dk", "m", "s"])
+        width = polygon_diagonal(s, 6) + self.socket_clearance
+        return cq.Workplane("XZ").rect(width / 2, m + dk / 2, centered=False)
+
+    nut_plan = Nut.default_nut_plan
+
+
 class BradTeeNut(Nut):
     """Brad Tee Nut
 
@@ -670,7 +715,36 @@ class BradTeeNut(Nut):
         simple (bool): omit the thread from the nut. Defaults to True.
     """
 
-    fastener_data = read_fastener_parameters_from_csv("brad_tee_nut_parameters.csv")
+    # fastener_data = read_fastener_parameters_from_csv("brad_tee_nut_parameters.csv")
+    fastener_data = {
+        "M6-1": {
+            "Hilitchi:s": "5.95",
+            "Hilitchi:m": "16.5",
+            "Hilitchi:dc": "36.3",
+            "Hilitchi:c": "2.4",
+            "Hilitchi:bcd": "24",
+            "Hilitchi:brad_size": "M4-0.7",
+            "Hilitchi:brad_num": "3",
+        },
+        "M8-1.25": {
+            "Hilitchi:s": "5.95",
+            "Hilitchi:m": "16.5",
+            "Hilitchi:dc": "36.3",
+            "Hilitchi:c": "2.4",
+            "Hilitchi:bcd": "24",
+            "Hilitchi:brad_size": "M4-0.7",
+            "Hilitchi:brad_num": "3",
+        },
+        "M10-1.5": {
+            "Hilitchi:s": "5.95",
+            "Hilitchi:m": "16.5",
+            "Hilitchi:dc": "36.3",
+            "Hilitchi:c": "2.4",
+            "Hilitchi:bcd": "24",
+            "Hilitchi:brad_size": "M4-0.7",
+            "Hilitchi:brad_num": "3",
+        },
+    }
 
     @property
     def cq_object(self):
@@ -727,51 +801,6 @@ class BradTeeNut(Nut):
             .hLineTo(0)
             .close()
         )
-
-
-class DomedCapNut(Nut):
-    """
-    size: str
-    fastener_type: str
-        din1587 Hexagon domed cap nuts
-    hand: Literal["right", "left"] = "right"
-    simple: bool = True
-    """
-
-    fastener_data = read_fastener_parameters_from_csv("domed_cap_nut_parameters.csv")
-
-    def nut_profile(self):
-        """Create 2D profile of hex nuts with double chamfers"""
-        (dk, m, s) = (self.nut_data[p] for p in ["dk", "m", "s"])
-        e = polygon_diagonal(s, 6)
-        # Chamfer angle must be between 15 and 30 degrees
-        cs = (e - s) * tan(radians(15)) / 2
-        profile = (
-            cq.Workplane("XZ")
-            .moveTo(1 * MM, 0)
-            .hLineTo(s / 2)
-            .lineTo(e / 2, cs)
-            .vLineTo(m - cs)
-            .lineTo(s / 2, m)
-            .hLineTo(dk / 2)
-            .radiusArc((0, m + dk / 2), -dk / 2)
-            .vLineTo(m + dk / 2 - 1 * MM)
-            .radiusArc((dk / 2 - 1 * MM, m), (dk / 2 - 1 * MM))
-            .hLineTo(1 * MM)
-            .close()
-        )
-        return profile
-
-    def countersink_profile(self, fit) -> cq.Workplane:
-        """A simple rectangle with gets revolved into a cylinder with an
-        extra socket_clearance (defaults to 6mm across the diameter) for a socket wrench"""
-        # Note that fit is only used for some flanged nuts but is here for uniformity
-        del fit
-        (dk, m, s) = (self.nut_data[p] for p in ["dk", "m", "s"])
-        width = polygon_diagonal(s, 6) + self.socket_clearance
-        return cq.Workplane("XZ").rect(width / 2, m + dk / 2, centered=False)
-
-    nut_plan = Nut.default_nut_plan
 
 
 class HeatSetNut(Nut):
