@@ -715,7 +715,36 @@ class BradTeeNut(Nut):
         simple (bool): omit the thread from the nut. Defaults to True.
     """
 
-    fastener_data = read_fastener_parameters_from_csv("brad_tee_nut_parameters.csv")
+    # fastener_data = read_fastener_parameters_from_csv("brad_tee_nut_parameters.csv")
+    fastener_data = {
+        "M6-1": {
+            "Hilitchi:s": "5.95",
+            "Hilitchi:m": "16.5",
+            "Hilitchi:dc": "36.3",
+            "Hilitchi:c": "2.4",
+            "Hilitchi:bcd": "24",
+            "Hilitchi:brad_size": "M4-0.7",
+            "Hilitchi:brad_num": "3",
+        },
+        "M8-1.25": {
+            "Hilitchi:s": "5.95",
+            "Hilitchi:m": "16.5",
+            "Hilitchi:dc": "36.3",
+            "Hilitchi:c": "2.4",
+            "Hilitchi:bcd": "24",
+            "Hilitchi:brad_size": "M4-0.7",
+            "Hilitchi:brad_num": "3",
+        },
+        "M10-1.5": {
+            "Hilitchi:s": "5.95",
+            "Hilitchi:m": "16.5",
+            "Hilitchi:dc": "36.3",
+            "Hilitchi:c": "2.4",
+            "Hilitchi:bcd": "24",
+            "Hilitchi:brad_size": "M4-0.7",
+            "Hilitchi:brad_num": "3",
+        },
+    }
 
     @property
     def cq_object(self):
