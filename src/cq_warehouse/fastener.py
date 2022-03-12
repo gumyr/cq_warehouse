@@ -715,36 +715,7 @@ class BradTeeNut(Nut):
         simple (bool): omit the thread from the nut. Defaults to True.
     """
 
-    # fastener_data = read_fastener_parameters_from_csv("brad_tee_nut_parameters.csv")
-    fastener_data = {
-        "M6-1": {
-            "Hilitchi:s": "5.95",
-            "Hilitchi:m": "16.5",
-            "Hilitchi:dc": "36.3",
-            "Hilitchi:c": "2.4",
-            "Hilitchi:bcd": "24",
-            "Hilitchi:brad_size": "M4-0.7",
-            "Hilitchi:brad_num": "3",
-        },
-        "M8-1.25": {
-            "Hilitchi:s": "5.95",
-            "Hilitchi:m": "16.5",
-            "Hilitchi:dc": "36.3",
-            "Hilitchi:c": "2.4",
-            "Hilitchi:bcd": "24",
-            "Hilitchi:brad_size": "M4-0.7",
-            "Hilitchi:brad_num": "3",
-        },
-        "M10-1.5": {
-            "Hilitchi:s": "5.95",
-            "Hilitchi:m": "16.5",
-            "Hilitchi:dc": "36.3",
-            "Hilitchi:c": "2.4",
-            "Hilitchi:bcd": "24",
-            "Hilitchi:brad_size": "M4-0.7",
-            "Hilitchi:brad_num": "3",
-        },
-    }
+    fastener_data = read_fastener_parameters_from_csv("brad_tee_nut_parameters.csv")
 
     @property
     def cq_object(self):
@@ -817,71 +788,6 @@ class HeatSetNut(Nut):
     """
 
     fastener_data = read_fastener_parameters_from_csv("heatset_nut_parameters.csv")
-    # fastener_data = {
-    #     "M2-0.4-Short": {
-    #         "McMaster-Carr:s": "3.6",
-    #         "McMaster-Carr:m": "2.5",
-    #         "McMaster-Carr:dc": "3.1",
-    #         "McMaster-Carr:knurls": "20",
-    #         "McMaster-Carr:material_thickness": "3.3",
-    #         "McMaster-Carr:drill": "#30",
-    #         "McMaster-Carr:part": " 94459A110",
-    #     },
-    #     "M2-0.4-Standard": {
-    #         "McMaster-Carr:s": "3.6",
-    #         "McMaster-Carr:m": "4",
-    #         "McMaster-Carr:dc": "3.1",
-    #         "McMaster-Carr:knurls": "20",
-    #         "McMaster-Carr:material_thickness": "4.7",
-    #         "McMaster-Carr:drill": "#30",
-    #         "McMaster-Carr:part": " 94459A120",
-    #     },
-    #     "M3-0.5-Short": {
-    #         "McMaster-Carr:s": "4.7",
-    #         "McMaster-Carr:m": "4.3",
-    #         "McMaster-Carr:dc": "3.9",
-    #         "McMaster-Carr:knurls": "20",
-    #         "McMaster-Carr:material_thickness": "5.1",
-    #         "McMaster-Carr:drill": "#21",
-    #         "McMaster-Carr:part": " 94459A130",
-    #     },
-    #     "M3-0.5-Standard": {
-    #         "McMaster-Carr:s": "4.7",
-    #         "McMaster-Carr:m": "5.7",
-    #         "McMaster-Carr:dc": "3.9",
-    #         "McMaster-Carr:knurls": "20",
-    #         "McMaster-Carr:material_thickness": "6.5",
-    #         "McMaster-Carr:drill": "#21",
-    #         "McMaster-Carr:part": " 94459A140",
-    #     },
-    #     "M4-0.7-Short": {
-    #         "McMaster-Carr:s": "6.3",
-    #         "McMaster-Carr:m": "4.7",
-    #         "McMaster-Carr:dc": "5.5",
-    #         "McMaster-Carr:knurls": "20",
-    #         "McMaster-Carr:material_thickness": "5.5",
-    #         "McMaster-Carr:drill": "#2",
-    #         "McMaster-Carr:part": " 94459A150",
-    #     },
-    #     "M4-0.7-Standard": {
-    #         "McMaster-Carr:s": "6.3",
-    #         "McMaster-Carr:m": "8.2",
-    #         "McMaster-Carr:dc": "5.5",
-    #         "McMaster-Carr:knurls": "20",
-    #         "McMaster-Carr:material_thickness": "8.9",
-    #         "McMaster-Carr:drill": "#2",
-    #         "McMaster-Carr:part": " 94459A170",
-    #     },
-    #     "M5-0.8-Standard": {
-    #         "McMaster-Carr:s": "7.1",
-    #         "McMaster-Carr:m": "9.5",
-    #         "McMaster-Carr:dc": "6.3",
-    #         "McMaster-Carr:knurls": "20",
-    #         "McMaster-Carr:material_thickness": "10.3",
-    #         "McMaster-Carr:drill": " F",
-    #         "McMaster-Carr:part": " 94459A180",
-    #     },
-    # }
 
     @staticmethod
     def knurled_cylinder_faces(
