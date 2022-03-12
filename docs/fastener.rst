@@ -22,7 +22,9 @@ Here is a list of the classes (and fastener types) provided:
 
 * :ref:`Nut <nut>` - the base nut class
 
+  * ``BradTeeNut``: Hilitchi
   * ``DomedCapNut``: din1587
+  * ``HeatSetNut``: McMaster-Carr
   * ``HexNut``: iso4033, iso4035, iso4032
   * ``HexNutWithFlange``: din1665
   * ``UnchamferedHexagonNut``: iso4036
