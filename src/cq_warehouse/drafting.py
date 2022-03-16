@@ -208,13 +208,14 @@ class Draft:
     ) -> Solid:
         """Create an arrow head which follows the provided path"""
 
+        path_as_wire = path if isinstance(path, Wire) else Wire.assembleEdges([path])
         # Calculate the position along the path to create the arrow cross-sections
         loft_pos = [0.0 if tip_pos == "start" else 1.0]
         for i in [2, 1]:
             loft_pos.append(
-                self.arrow_length / (i * Wire.assembleEdges([path]).Length())
+                self.arrow_length / (i * path_as_wire.Length())
                 if tip_pos == "start"
-                else 1.0 - self.arrow_length / (i * Wire.assembleEdges([path]).Length())
+                else 1.0 - self.arrow_length / (i * path_as_wire.Length())
             )
         radius_lut = {0: 0.0001, 1: 0.2, 2: 0.5}
         arrow_cross_sections = [
@@ -258,7 +259,9 @@ class Draft:
     @staticmethod
     def _path_to_wire(path: PathDescriptor) -> Wire:
         """Convert a PathDescriptor into a Wire"""
-        if isinstance(path, (Edge, Wire)):
+        if isinstance(path, Wire):
+            path_as_wire = path
+        elif isinstance(path, Edge):
             path_as_wire = Wire.assembleEdges([path])
         else:
             path_as_wire = Wire.assembleEdges(
@@ -358,7 +361,8 @@ class Draft:
             arrow_shaft = (
                 Workplane(
                     Plane(
-                        origin=line_wire.positionAt(line_wire_pos),
+                        # origin=line_wire.positionAt(line_wire_pos),
+                        line_wire.positionAt(line_wire_pos),
                         xDir=line_wire.tangentAt(line_wire_pos),
                         normal=self._label_normal,
                     )
@@ -378,12 +382,16 @@ class Draft:
     ) -> Solid:
         if position == "center":
             text_plane = Plane(
-                origin=location_wire.positionAt(0.5),
+                # origin=location_wire.positionAt(0.5),
+                location_wire.positionAt(0.5),
                 xDir=location_wire.tangentAt(0.5),
                 normal=self._label_normal,
             )
             label_object = Workplane(text_plane).text(
-                txt=label_str, fontsize=self.font_size, distance=self.font_size / 100
+                # txt=label_str, fontsize=self.font_size, distance=self.font_size / 100
+                label_str,
+                fontsize=self.font_size,
+                distance=self.font_size / 100,
             )
         elif position == "end":
             text_plane = Plane(
@@ -393,20 +401,23 @@ class Draft:
                 normal=self._label_normal,
             )
             label_object = Workplane(text_plane).text(
-                txt=label_str,
+                # txt=label_str,
+                label_str,
                 fontsize=self.font_size,
                 distance=self.font_size / 100,
                 halign="left",
             )
         else:  # position=="start"
             text_plane = Plane(
-                origin=location_wire.tangentAt(1.0) * 1.5 * MM
-                + location_wire.positionAt(1.0),
+                # origin=location_wire.tangentAt(1.0) * 1.5 * MM
+                # + location_wire.positionAt(1.0),
+                location_wire.tangentAt(1.0) * 1.5 * MM + location_wire.positionAt(1.0),
                 xDir=location_wire.tangentAt(1.0) * -1,
                 normal=self._label_normal,
             )
             label_object = Workplane(text_plane).text(
-                txt=label_str,
+                # txt=label_str,
+                label_str,
                 fontsize=self.font_size,
                 distance=self.font_size / 100,
                 halign="right",
@@ -577,7 +588,8 @@ class Draft:
         else:
             extension_tangent = object_path.tangentAt(0).cross(self._label_normal)
             dimension_plane = Plane(
-                origin=object_path.positionAt(0),
+                # origin=object_path.positionAt(0),
+                object_path.positionAt(0),
                 xDir=extension_tangent,
                 normal=self._label_normal,
             )
@@ -654,11 +666,15 @@ class Draft:
             raise ValueError("Either origin or tail must be provided")
 
         text_plane = Plane(
-            origin=text_origin, xDir=self._label_x_dir, normal=self._label_normal
+            # origin=text_origin, xDir=self._label_x_dir, normal=self._label_normal
+            text_origin,
+            xDir=self._label_x_dir,
+            normal=self._label_normal,
         )
         t_box = Assembly(None, name=label + "_callout", color=self.color)
         label_text = Workplane(text_plane).text(
-            txt=label,
+            # txt=label,
+            label,
             fontsize=self.font_size,
             distance=self.font_size / 100,
             halign=justify,
