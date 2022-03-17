@@ -35,7 +35,7 @@ the_wind = (
 top_face = (
     cq.Sketch()
     .push([(width / 2, 3 * height / 4)])
-    .rect(height / 2, width)
+    .rect(width, height / 2)
     ._faces.Faces()[0]
     .translate(cq.Vector(0, 0, height / 2))
 )

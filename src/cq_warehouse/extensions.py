@@ -90,7 +90,7 @@ logging.basicConfig(
 
 """
 
-Assembly extensions: rotate(), translate(), fastenerQuantities(), fastenerLocations()
+Assembly extensions: rotate(), translate(), fastenerQuantities(), fastenerLocations(), findLocation()
 
 """
 
@@ -222,6 +222,43 @@ def _fastener_locations(self, fastener: Union["Nut", "Screw"]) -> list[Location]
 
 Assembly.fastenerLocations = _fastener_locations
 
+
+def _find_Location(self, target: str) -> cq.Location:
+    """Find Location of named target
+
+    Return the Location of the target object relative to the given Assembly
+    including the given Assembly.
+
+    Args:
+        target (str): name of target object
+
+    Raises:
+        ValueError: target object not in found in Assembly
+
+    Returns:
+        cq.Location: Location of target relative to self
+    """
+    target_assembly = None
+    for object_name, object_assembly in self.objects.items():
+        if object_name.split("/")[-1] == target:
+            target_assembly = object_assembly
+            break
+
+    if target_assembly is None:
+        raise ValueError(f"{target} not found in given assembly")
+
+    locations = []
+    current_assembly = target_assembly
+    while True:
+        locations.append(current_assembly.loc)
+        current_assembly = current_assembly.parent
+        if current_assembly is self or current_assembly is None:
+            break
+
+    return reduce(lambda l1, l2: l1 * l2, locations)
+
+
+cq.Assembly.findLocation = _find_Location
 
 """
 
@@ -2294,3 +2331,27 @@ def _location_str(self):
 
 
 Location.__str__ = _location_str
+
+
+def _location_position(self):
+    """Extract Position component
+
+    Returns:
+        Vector: Position part of Location
+    """
+    return Vector(self.toTuple()[0])
+
+
+Location.position = _location_position
+
+
+def _location_rotation(self):
+    """Extract Rotation component
+
+    Returns:
+        Vector: Rotation part of Location
+    """
+    return Vector(self.toTuple()[1])
+
+
+Location.rotation = _location_rotation
