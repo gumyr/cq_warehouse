@@ -279,7 +279,7 @@ def hexalobular_recess(size: str) -> Tuple[cq.Workplane, float]:
     # Given the outer (A) and inner (B) diameters and the external radius (Re),
     # calculate the internal radius
     sqrt_3 = sqrt(3)
-    Ri = (A ** 2 - sqrt_3 * A * B - 4 * A * Re + B ** 2 + 2 * sqrt_3 * B * Re) / (
+    Ri = (A**2 - sqrt_3 * A * B - 4 * A * Re + B**2 + 2 * sqrt_3 * B * Re) / (
         2 * (sqrt_3 * A - 2 * B - 2 * sqrt_3 * Re + 4 * Re)
     )
 
@@ -305,13 +305,15 @@ def hexalobular_recess(size: str) -> Tuple[cq.Workplane, float]:
         .radiusArc(tangent_points[1], -Ri)
         .radiusArc(cq.Vector(sqrt_3 * A / 4, A / 4), Re)
         .consolidateWires()
-        .val()
+        .edges()
+        .vals()
     )
     # Create all six of the wires in clockwise direction
-    plan_wires = [
-        one_sixth_plan.rotate((0, 0, 0), (0, 0, 1), a) for a in range(0, -360, -60)
-    ]
-    return (cq.Workplane(cq.Wire.assembleEdges(plan_wires)), 0.6 * A)
+    plan_edges = []
+    for a in range(0, -360, -60):
+        for e in one_sixth_plan:
+            plan_edges.append(e.rotate((0, 0, 0), (0, 0, 1), a))
+    return (cq.Workplane(cq.Wire.assembleEdges(plan_edges)), 0.6 * A)
     # return plan
 
 
@@ -850,13 +852,7 @@ class HeatSetNut(Nut):
         ]
         # Flatten the list of tuples to a list
         bottom_edges = list(sum(bottom_edges, ()))
-        # Close the edges by connecting the last to first
-        bottom_edges.append(
-            cq.Edge.makeLine(
-                outside_edges[-1].positionAt(0),
-                inside_edges[0].positionAt(0),
-            )
-        )
+
         top_edges = [
             (
                 cq.Edge.makeLine(
@@ -870,12 +866,6 @@ class HeatSetNut(Nut):
             for i in range(tip_count)
         ]
         top_edges = list(sum(top_edges, ()))
-        top_edges.append(
-            cq.Edge.makeLine(
-                outside_edges[-1].positionAt(1),
-                inside_edges[0].positionAt(1),
-            )
-        )
 
         # Build the faces from the edges
         outside_faces = [
@@ -940,7 +930,7 @@ class HeatSetNut(Nut):
             self.cq_object.Volume()
             + self.nut_data["m"] * pi * (self.thread_diameter / 2) ** 2
         )
-        hole_volume = self.nut_data["m"] * pi * hole_radius ** 2
+        hole_volume = self.nut_data["m"] * pi * hole_radius**2
         return heatset_volume / hole_volume
 
     def make_nut(self) -> cq.Workplane:
@@ -1139,13 +1129,10 @@ class HexNutWithFlange(Nut):
         """Flange for hexagon Bolts"""
         (dc, c) = (self.nut_data[p] for p in ["dc", "c"])
         flange_angle = 25
-        tangent_point = (
-            cq.Vector(
-                (c / 2) * cos(radians(90 - flange_angle)),
-                (c / 2) * sin(radians(90 - flange_angle)),
-            )
-            + cq.Vector((dc - c) / 2, c / 2)
-        )
+        tangent_point = cq.Vector(
+            (c / 2) * cos(radians(90 - flange_angle)),
+            (c / 2) * sin(radians(90 - flange_angle)),
+        ) + cq.Vector((dc - c) / 2, c / 2)
         profile = (
             cq.Workplane("XZ")
             .hLineTo(dc / 2 - c / 2)
@@ -1882,13 +1869,10 @@ class HexHeadWithFlangeScrew(Screw):
         """Flange for hexagon Bolts"""
         (dc, c) = (self.screw_data[p] for p in ["dc", "c"])
         flange_angle = 25
-        tangent_point = (
-            cq.Vector(
-                (c / 2) * cos(radians(90 - flange_angle)),
-                (c / 2) * sin(radians(90 - flange_angle)),
-            )
-            + cq.Vector((dc - c) / 2, c / 2)
-        )
+        tangent_point = cq.Vector(
+            (c / 2) * cos(radians(90 - flange_angle)),
+            (c / 2) * sin(radians(90 - flange_angle)),
+        ) + cq.Vector((dc - c) / 2, c / 2)
         profile = (
             cq.Workplane("XZ")
             .hLineTo(dc / 2 - c / 2)
@@ -2003,7 +1987,7 @@ class RaisedCheeseHeadScrew(Screw):
     def head_profile(self):
         """raised cheese head screws"""
         (dk, k, rf) = (self.screw_data[p] for p in ["dk", "k", "rf"])
-        oval_height = rf - sqrt(4 * rf ** 2 - dk ** 2) / 2
+        oval_height = rf - sqrt(4 * rf**2 - dk**2) / 2
         profile = (
             cq.Workplane("XZ")
             .vLineTo(k)
@@ -2043,7 +2027,7 @@ class RaisedCounterSunkOvalHeadScrew(Screw):
         """raised countersunk oval head screws"""
         (a, k, rf, dk) = (self.screw_data[p] for p in ["a", "k", "rf", "dk"])
         side_length = k / cos(radians(a / 2))
-        oval_height = rf - sqrt(4 * rf ** 2 - dk ** 2) / 2
+        oval_height = rf - sqrt(4 * rf**2 - dk**2) / 2
         profile = (
             cq.Workplane("XZ")
             .vLineTo(k + oval_height)
