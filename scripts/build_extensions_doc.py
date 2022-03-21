@@ -295,6 +295,7 @@ def main(argv):
         [
             "from typing import Union, Tuple, Optional, Literal\n"
             "from fastener import Screw, Nut, Washer\n"
+            "from bearing import Bearing\n"
             "class gp_Ax1:\n    pass\n",
             "class T:\n    pass\n",
             "class VectorLike:\n    pass\n",

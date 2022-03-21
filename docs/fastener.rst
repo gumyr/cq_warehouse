@@ -3,8 +3,7 @@ fastener - parametric threaded fasteners
 ########################################
 Many mechanical designs will contain threaded fasteners of some kind, either in a
 threaded hole or threaded screws or bolts holding two or more parts together. The
-fastener sub-package provides a set of classes with which raw threads can be created
-such that they can be integrated into other parts as well as a set of classes that
+fastener sub-package provides a set of classes that
 create many different types of nuts, screws and washers - as follows:
 
 .. image:: fastener_disc.png
@@ -16,7 +15,7 @@ class :meth:`~extensions_doc.Workplane.clearanceHole`, the nuts
 :meth:`~extensions_doc.Workplane.threadedHole`.
 The washers were automatically placed and all components were add to an Assembly in
 their correct position and orientations - see
-:ref:`Clearance, Tap and Threaded Holes <custom holes>` for details.
+:ref:`Custom Holes <custom holes>` for details.
 
 Here is a list of the classes (and fastener types) provided:
 
@@ -365,38 +364,7 @@ head of the screw or nut in the provided Assembly.
 For example, let's re-build the parametric bearing pillow block found in
 the `CadQuery Quickstart <https://cadquery.readthedocs.io/en/latest/quickstart.html>`_:
 
-.. code-block:: python
-
-	import cadquery as cq
-	from cq_warehouse.fastener import SocketHeadCapScrew
-
-	height = 60.0
-	width = 80.0
-	thickness = 10.0
-	diameter = 22.0
-	padding = 12.0
-
-	# make the screw
-	screw = SocketHeadCapScrew(fastener_type="iso4762", size="M2-0.4", length=16, simple=False)
-	# make the assembly
-	pillow_block = cq.Assembly(None, name="pillow_block")
-	# make the base
-	base = (
-	    cq.Workplane("XY")
-	    .box(height, width, thickness)
-	    .faces(">Z")
-	    .workplane()
-	    .hole(diameter)
-	    .faces(">Z")
-	    .workplane()
-	    .rect(height - padding, width - padding, forConstruction=True)
-	    .vertices()
-	    .clearanceHole(fastener=screw, baseAssembly=pillow_block)
-	    .edges("|Z")
-	)
-	pillow_block.add(base)
-	# Render the assembly
-	show_object(pillow_block)
+.. literalinclude:: ../examples/pillow_block.py
 
 Which results in:
 
@@ -405,13 +373,14 @@ Which results in:
 
 The differences between this code and the Read the Docs version are:
 
-* screw dimensions aren't required
+* screw and bearing dimensions aren't required
+* the bearing is created during instantiation of the ``DeepGrooveBallBearing`` class
 * the screw is created during instantiation of the ``SocketHeadCapScrew`` class
 * an assembly is created and later the base is added to that assembly
 * the call to cskHole is replaced with clearanceHole
 
-Not only were the appropriate holes for M2-0.4 screws created but an assembly was created to
-store all of the parts in this project all without having to research the dimensions of M2 screws.
+Not only were the appropriate holes for the bearing and M2-0.4 screws created but an assembly was created to
+store all of the parts in this project all without having to research the dimensions of the parts.
 
 Note: In this example the ``simple=False`` parameter creates accurate threads on each of the
 screws which significantly increases the complexity of the model. The default of simple is True
