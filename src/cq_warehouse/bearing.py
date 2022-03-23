@@ -389,9 +389,34 @@ class SingleRowAngularContactBallBearing(Bearing):
     countersink_profile = Bearing.default_countersink_profile
 
 
+class SingleRowCylindricalRollerBearing(Bearing):
+
+    bearing_data = read_fastener_parameters_from_csv(
+        "single_row_cylindrical_roller_bearing_parameters.csv"
+    )
+
+    @property
+    def roller_diameter(self):
+        return self.default_roller_diameter()
+
+    outer_race_section = Bearing.default_outer_race_section
+    inner_race_section = Bearing.default_inner_race_section
+
+    def roller(self) -> Solid:
+        roller_length = 0.7 * self.bearing_dict["B"]
+        return Solid.makeCylinder(
+            self.roller_diameter / 2,
+            roller_length,
+            pnt=Vector(0, 0, -roller_length / 2),
+        )
+
+    countersink_profile = Bearing.default_countersink_profile
+
+
 angular = SingleRowAngularContactBallBearing(size="M10-30-9", bearing_type="SKT")
 bearing = SingleRowDeepGrooveBallBearing(size="M8-22-7", bearing_type="SKT")
 capped = SingleRowCappedDeepGrooveBallBearing(size="M8-22-7", bearing_type="SKT")
+roller = SingleRowCylindricalRollerBearing(size="M20-47-14", bearing_type="SKT")
 print(SingleRowAngularContactBallBearing.types())
 print(Bearing.select_by_size("M8-22-7"))
 print(SingleRowCappedDeepGrooveBallBearing.sizes("SKT"))
@@ -400,3 +425,4 @@ if "show_object" in locals():
     show_object(angular.cq_object, name="angular")
     show_object(bearing.cq_object, name="bearing")
     show_object(capped.cq_object, name="capped")
+    show_object(roller.cq_object, name="roller")
