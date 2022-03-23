@@ -58,6 +58,12 @@ class Bearing(ABC):
 
     """
 
+    def method_exists(self, method: str) -> bool:
+        """Did the derived class create this method"""
+        return hasattr(self.__class__, method) and callable(
+            getattr(self.__class__, method)
+        )
+
     # Read clearance and tap hole dimesions tables
     # Close, Medium, Loose
     clearance_hole_drill_sizes = read_fastener_parameters_from_csv(
@@ -119,10 +125,10 @@ class Bearing(ABC):
         """Each derived class must provide the roller object - a sphere, cylinder or cone"""
         return NotImplementedError
 
-    @abstractmethod
-    def cap(self) -> Workplane:
-        """Each derived class must provide a sealing cap"""
-        return NotImplementedError
+    # @abstractmethod
+    # def cap(self) -> Workplane:
+    #     """Each derived class must provide a sealing cap"""
+    #     return NotImplementedError
 
     @abstractmethod
     def countersink_profile(self) -> Workplane:
@@ -168,14 +174,13 @@ class Bearing(ABC):
         self,
         size: str,
         bearing_type: str,
-        capped: bool = True,
     ):
         """Parse Bearing input parameters"""
         self.size = size.strip()
         if bearing_type not in self.types():
             raise ValueError(f"{bearing_type} invalid, must be one of {self.types()}")
         self.bearing_type = bearing_type
-        self.capped = capped
+        self.capped = self.method_exists("cap")
         self.is_metric = self.size[0] == "M"
 
         try:
@@ -197,12 +202,6 @@ class Bearing(ABC):
 
     def make_bearing(self) -> Assembly:
         """Create bearing from the shapes defined in the derived class"""
-
-        def method_exists(method: str) -> bool:
-            """Did the derived class create this method"""
-            return hasattr(self.__class__, method) and callable(
-                getattr(self.__class__, method)
-            )
 
         outer_race = (
             Workplane("XZ").add(self.outer_race_section().val()).toPending().revolve()
@@ -238,14 +237,14 @@ class Bearing(ABC):
                     * Location(Vector(0, 0, self.bearing_dict["B"] / 2)),
                 )
 
-            if method_exists("cage"):
+            if self.method_exists("cage"):
                 bearing.add(self.cage())
 
         return bearing
 
     def default_inner_race_section(self):
         """Create 2D profile inner race"""
-        (d1, d, B, r) = (self.bearing_dict[p] for p in ["d1", "d", "B", "r"])
+        (d1, d, B, r12) = (self.bearing_dict[p] for p in ["d1", "d", "B", "r12"])
 
         section = (
             Workplane("XZ")
@@ -254,14 +253,14 @@ class Bearing(ABC):
             .rect((d1 - d) / 2, B)
             .reset()
             .vertices()
-            .fillet(r)
+            .fillet(r12)
             .finalize()
         )
         return section
 
     def default_outer_race_section(self) -> Workplane:
         """Create 2D profile inner race"""
-        (D1, D, B, r) = (self.bearing_dict[p] for p in ["D1", "D", "B", "r"])
+        (D1, D, B, r12) = (self.bearing_dict[p] for p in ["D1", "D", "B", "r12"])
 
         section = (
             Workplane("XZ")
@@ -270,7 +269,7 @@ class Bearing(ABC):
             .rect((D1 - D) / 2, B)
             .reset()
             .vertices()
-            .fillet(r)
+            .fillet(r12)
             .finalize()
         )
         return section
@@ -292,10 +291,26 @@ class Bearing(ABC):
         )
 
 
-class DeepGrooveBallBearing(Bearing):
+class SingleRowDeepGrooveBallBearing(Bearing):
 
     bearing_data = read_fastener_parameters_from_csv(
-        "deep_groove_ball_bearing_parameters.csv"
+        "single_row_deep_groove_ball_bearing_parameters.csv"
+    )
+
+    @property
+    def roller_diameter(self):
+        return self.default_roller_diameter()
+
+    outer_race_section = Bearing.default_outer_race_section
+    inner_race_section = Bearing.default_inner_race_section
+    roller = Bearing.default_roller
+    countersink_profile = Bearing.default_countersink_profile
+
+
+class SingleRowCappedDeepGrooveBallBearing(Bearing):
+
+    bearing_data = read_fastener_parameters_from_csv(
+        "single_row_capped_deep_groove_ball_bearing_parameters.csv"
     )
 
     @property
@@ -309,9 +324,9 @@ class DeepGrooveBallBearing(Bearing):
     countersink_profile = Bearing.default_countersink_profile
 
 
-class AngularContactBallBearing(Bearing):
+class SingleRowAngularContactBallBearing(Bearing):
     bearing_data = read_fastener_parameters_from_csv(
-        "angular_contact_ball_bearing_parameters.csv"
+        "single_row_angular_contact_ball_bearing_parameters.csv"
     )
 
     @property
@@ -319,7 +334,7 @@ class AngularContactBallBearing(Bearing):
         """Default roller diameter"""
         (d, d2, D) = (self.bearing_dict[p] for p in ["d", "d2", "D"])
         D2 = D - (d2 - d)
-        return 0.525 * (D2 - d2)
+        return 0.4 * (D2 - d2)
 
     def inner_race_section(self):
         (d, d1, d2, r12, B) = (
@@ -374,8 +389,14 @@ class AngularContactBallBearing(Bearing):
     countersink_profile = Bearing.default_countersink_profile
 
 
-angular = AngularContactBallBearing(size="M10-30-9", bearing_type="SKT", capped=False)
-bearing = DeepGrooveBallBearing(size="M8-22-7", bearing_type="SKT", capped=False)
+angular = SingleRowAngularContactBallBearing(size="M10-30-9", bearing_type="SKT")
+bearing = SingleRowDeepGrooveBallBearing(size="M8-22-7", bearing_type="SKT")
+capped = SingleRowCappedDeepGrooveBallBearing(size="M8-22-7", bearing_type="SKT")
+print(SingleRowAngularContactBallBearing.types())
+print(Bearing.select_by_size("M8-22-7"))
+print(SingleRowCappedDeepGrooveBallBearing.sizes("SKT"))
+
 if "show_object" in locals():
     show_object(angular.cq_object, name="angular")
     show_object(bearing.cq_object, name="bearing")
+    show_object(capped.cq_object, name="capped")
