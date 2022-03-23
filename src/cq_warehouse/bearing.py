@@ -130,6 +130,17 @@ class Bearing(ABC):
         return NotImplementedError
 
     @property
+    @abstractmethod
+    def roller_diameter(self):
+        """Each derived class must provide the roller diameter"""
+        return NotImplementedError
+
+    def default_roller_diameter(self):
+        """Default roller diameter"""
+        (d1, D1) = (self.bearing_dict[p] for p in ["d1", "D1"])
+        return 0.625 * (D1 - d1)
+
+    @property
     def info(self):
         """Return identifying information"""
         return f"{self.bearing_class}({self.bearing_type}): {self.size}"
@@ -178,7 +189,6 @@ class Bearing(ABC):
             ) from e
 
         (d1, D1) = (self.bearing_dict[p] for p in ["d1", "D1"])
-        self.roller_diameter = 0.625 * (D1 - d1)
         self.race_center_radius = (D1 + d1) / 4
         self.roller_count = int(
             1.8 * pi * self.race_center_radius / self.roller_diameter
@@ -288,8 +298,84 @@ class DeepGrooveBallBearing(Bearing):
         "deep_groove_ball_bearing_parameters.csv"
     )
 
+    @property
+    def roller_diameter(self):
+        return self.default_roller_diameter()
+
     outer_race_section = Bearing.default_outer_race_section
     inner_race_section = Bearing.default_inner_race_section
     roller = Bearing.default_roller
     cap = Bearing.default_cap
     countersink_profile = Bearing.default_countersink_profile
+
+
+class AngularContactBallBearing(Bearing):
+    bearing_data = read_fastener_parameters_from_csv(
+        "angular_contact_ball_bearing_parameters.csv"
+    )
+
+    @property
+    def roller_diameter(self):
+        """Default roller diameter"""
+        (d, d2, D) = (self.bearing_dict[p] for p in ["d", "d2", "D"])
+        D2 = D - (d2 - d)
+        return 0.525 * (D2 - d2)
+
+    def inner_race_section(self):
+        (d, d1, d2, r12, B) = (
+            self.bearing_dict[p] for p in ["d", "d1", "d2", "r12", "B"]
+        )
+
+        inner_race = (
+            Workplane("XZ")
+            .moveTo(d2 / 2 - r12, 0)
+            .radiusArc((d2 / 2, r12), -r12)
+            .spline([(d1 / 2, B - r12)], tangents=[(0, 1), (0, 1)], includeCurrent=True)
+            .radiusArc((d1 / 2 - r12, B), -r12)
+            .hLineTo(d / 2 + r12)
+            .radiusArc((d / 2, B - r12), -r12)
+            .vLineTo(r12)
+            .radiusArc((d / 2 + r12, 0), -r12)
+            .close()
+        )
+        return inner_race
+
+    def outer_race_section(self):
+        (d, D, D1, d2, r12, r34, B) = (
+            self.bearing_dict[p] for p in ["d", "D", "D1", "d2", "r12", "r34", "B"]
+        )
+        D2 = D - (d2 - d)
+        outer_race = (
+            Workplane("XZ")
+            .moveTo(D / 2 - r12, 0)
+            .radiusArc((D / 2, r12), -r12)
+            .vLineTo(B - r34)
+            .radiusArc((D / 2 - r34, B), -r34)
+            .hLineTo(D2 / 2 + r12)
+            .radiusArc((D2 / 2, B - r12), -r12)
+            .spline([(D1 / 2, r12)], tangents=[(0, -1), (0, -1)], includeCurrent=True)
+            .radiusArc((D1 / 2 + r12, 0), -r12)
+            .close()
+        )
+        return outer_race
+
+    def cap(self) -> Workplane:
+        (d, D, d2, B) = (self.bearing_dict[p] for p in ["d", "D", "d2", "B"])
+        D2 = D - (d2 - d)
+        return (
+            Workplane("XY", origin=(0, 0, B / 20))
+            .circle(D2 / 2)
+            .circle(d2 / 2)
+            .extrude(B / 20)
+        )
+
+    roller = Bearing.default_roller
+
+    countersink_profile = Bearing.default_countersink_profile
+
+
+angular = AngularContactBallBearing(size="M10-30-9", bearing_type="SKT", capped=False)
+bearing = DeepGrooveBallBearing(size="M8-22-7", bearing_type="SKT", capped=False)
+if "show_object" in locals():
+    show_object(angular.cq_object, name="angular")
+    show_object(bearing.cq_object, name="bearing")
