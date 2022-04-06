@@ -28,9 +28,20 @@ license:
 
 """
 from abc import ABC, abstractmethod
-from math import pi
+from math import atan2, pi, tan, radians, degrees, asin, sin
 from typing import Literal
-from cadquery import Vector, Assembly, Workplane, Location, Solid, Color
+from cadquery import (
+    Vector,
+    Assembly,
+    Workplane,
+    Location,
+    Solid,
+    Color,
+    Sketch,
+    Edge,
+    Shape,
+    Compound,
+)
 from cq_warehouse.fastener import (
     evaluate_parameter_dict,
     read_fastener_parameters_from_csv,
@@ -141,6 +152,16 @@ class Bearing(ABC):
         """Each derived class must provide the roller diameter"""
         return NotImplementedError
 
+    @property
+    @abstractmethod
+    def race_center_radius(self):
+        return NotImplementedError
+
+    def default_race_center_radius(self):
+        """Default roller race center radius"""
+        (d1, D1) = (self.bearing_dict[p] for p in ["d1", "D1"])
+        return (D1 + d1) / 4
+
     def default_roller_diameter(self):
         """Default roller diameter"""
         (d1, D1) = (self.bearing_dict[p] for p in ["d1", "D1"])
@@ -193,8 +214,6 @@ class Bearing(ABC):
                 f"{size} invalid, must be one of {self.sizes(self.bearing_type)}"
             ) from e
 
-        (d1, D1) = (self.bearing_dict[p] for p in ["d1", "D1"])
-        self.race_center_radius = (D1 + d1) / 4
         self.roller_count = int(
             1.8 * pi * self.race_center_radius / self.roller_diameter
         )
@@ -301,6 +320,10 @@ class SingleRowDeepGrooveBallBearing(Bearing):
     def roller_diameter(self):
         return self.default_roller_diameter()
 
+    @property
+    def race_center_radius(self):
+        return self.default_race_center_radius()
+
     outer_race_section = Bearing.default_outer_race_section
     inner_race_section = Bearing.default_inner_race_section
     roller = Bearing.default_roller
@@ -316,6 +339,10 @@ class SingleRowCappedDeepGrooveBallBearing(Bearing):
     @property
     def roller_diameter(self):
         return self.default_roller_diameter()
+
+    @property
+    def race_center_radius(self):
+        return self.default_race_center_radius()
 
     outer_race_section = Bearing.default_outer_race_section
     inner_race_section = Bearing.default_inner_race_section
@@ -335,6 +362,10 @@ class SingleRowAngularContactBallBearing(Bearing):
         (d, d2, D) = (self.bearing_dict[p] for p in ["d", "d2", "D"])
         D2 = D - (d2 - d)
         return 0.4 * (D2 - d2)
+
+    @property
+    def race_center_radius(self):
+        return self.default_race_center_radius()
 
     def inner_race_section(self):
         (d, d1, d2, r12, B) = (
@@ -399,6 +430,10 @@ class SingleRowCylindricalRollerBearing(Bearing):
     def roller_diameter(self):
         return self.default_roller_diameter()
 
+    @property
+    def race_center_radius(self):
+        return self.default_race_center_radius()
+
     outer_race_section = Bearing.default_outer_race_section
     inner_race_section = Bearing.default_inner_race_section
 
@@ -413,16 +448,148 @@ class SingleRowCylindricalRollerBearing(Bearing):
     countersink_profile = Bearing.default_countersink_profile
 
 
-angular = SingleRowAngularContactBallBearing(size="M10-30-9", bearing_type="SKT")
-bearing = SingleRowDeepGrooveBallBearing(size="M8-22-7", bearing_type="SKT")
-capped = SingleRowCappedDeepGrooveBallBearing(size="M8-22-7", bearing_type="SKT")
-roller = SingleRowCylindricalRollerBearing(size="M20-47-14", bearing_type="SKT")
-print(SingleRowAngularContactBallBearing.types())
-print(Bearing.select_by_size("M8-22-7"))
-print(SingleRowCappedDeepGrooveBallBearing.sizes("SKT"))
+class SingleRowTaperedRollerBearing(Bearing):
+    """Tapered Roller Bearing
 
-if "show_object" in locals():
-    show_object(angular.cq_object, name="angular")
-    show_object(bearing.cq_object, name="bearing")
-    show_object(capped.cq_object, name="capped")
-    show_object(roller.cq_object, name="roller")
+    Tapered roller bearings have tapered inner
+    and outer ring raceways and tapered rollers.
+    They are designed to accommodate combined
+    loads, i.e. simultaneously acting radial and
+    axial loads. The projection lines of the race-
+    ways meet at a common point on the bearing
+    axis to provide true rolling and low
+    friction. The axial load carrying capacity of
+    tapered roller bearings increases with
+    increasing contact angle.  A single row tapered
+    roller bearing is typically adjusted against a
+    second tapered roller bearing.
+
+    Single row tapered roller bearings are sep-
+    ar able, i.e. the inner ring with roller
+    and cage assembly (cone) can be mounted
+    separately from the outer ring (cup)."""
+
+    bearing_data = read_fastener_parameters_from_csv(
+        "single_row_tapered_roller_bearing_parameters.csv"
+    )
+
+    @property
+    def roller_diameter(self) -> float:
+        """Diameter of the larger end of the roller - increased diameter
+        allows for room for the cage between the rollers"""
+        roller = Workplane(self.roller())
+        return roller.faces(">Z").edges().val().radius() * 2.5
+
+    @property
+    def cone_angle(self) -> float:
+        """Angle of the inner cone raceway"""
+        (a, d1, Db) = (self.bearing_dict[p] for p in ["a", "d1", "Dbmin"])
+        cone_length = (Db / 2) / asin(radians(a))
+        return degrees(asin((d1 / 2) / cone_length))
+
+    @property
+    def roller_axis_angle(self) -> float:
+        """Angle of the central axis of the rollers"""
+        return (self.bearing_dict["a"] + self.cone_angle) / 2
+
+    @property
+    def roller_length(self) -> float:
+        """Roller length"""
+        return 0.7 * self.bearing_dict["B"]
+
+    @property
+    def cone_length(self) -> float:
+        """Distance to intersection of projection lines"""
+        (a, Db) = (self.bearing_dict[p] for p in ["a", "Dbmin"])
+        return (Db / 2) / asin(radians(a))
+
+    @property
+    def race_center_radius(self) -> float:
+        """Radius of cone to place the rollers"""
+        return (self.cone_length - self.roller_length / 2) * sin(
+            radians(self.roller_axis_angle)
+        )
+
+    def outer_race_section(self):
+        """Outer Cup"""
+        (D, C, Db, a, r34) = (
+            self.bearing_dict[p] for p in ["D", "C", "Dbmin", "a", "r34"]
+        )
+        cup_sketch = (
+            Sketch()
+            .push([(C / 2, D / 2 - (D - Db) / 4)])
+            .trapezoid((D - Db) / 2, C, a + 90, 90, 90)
+            .reset()
+            .vertices()
+            .fillet(r34)
+        )
+        cup = Workplane(
+            cup_sketch._faces.Faces()[0].rotate(Vector(), Vector(0, 1, 0), -90)
+        ).wires()
+
+        return cup
+
+    def inner_race_section(self):
+        """Central Cone"""
+        (d, B, da, r12, T) = (
+            self.bearing_dict[p] for p in ["d", "B", "da", "r12", "T"]
+        )
+        cone_sketch = (
+            Sketch()
+            .push([(T - B / 2, d / 2 + (da - d) / 2)])
+            .trapezoid((da - d) / 2, B, 90 + self.cone_angle, 90, -90)
+            .reset()
+            .vertices()
+            .fillet(r12)
+        )
+        cone = Workplane(
+            cone_sketch._faces.Faces()[0].rotate(Vector(), Vector(0, 1, 0), -90)
+        ).wires()
+        return cone
+
+    def roller(self) -> Solid:
+        """Tapered Roller"""
+        roller_cone_angle = self.bearing_dict["a"] - self.cone_angle
+        cone_radii = [
+            1.2 * (self.cone_length - l) * sin(radians(roller_cone_angle) / 2)
+            for l in [0, self.roller_length]
+        ]
+        return Solid.makeCone(
+            cone_radii[1],
+            cone_radii[0],
+            self.roller_length,
+            pnt=Vector(0, 0, -self.roller_length / 2),
+        ).rotate(Vector(), Vector(1, 0, 0), -self.roller_axis_angle)
+
+    countersink_profile = Bearing.default_countersink_profile
+
+    def cage(self) -> Compound:
+        """Cage holding the rollers together with the cone"""
+        thickness = 0.9 * self.bearing_dict["T"]
+        cage_radii = [
+            (self.cone_length - l) * sin(radians(self.roller_axis_angle)) + 0.5 * MM
+            for l in [0, thickness]
+        ]
+        cage_face = Solid.makeCone(cage_radii[1], cage_radii[0], thickness,).cut(
+            Solid.makeCone(
+                cage_radii[1] - 1 * MM,
+                cage_radii[0] - 1 * MM,
+                thickness,
+            )
+        )
+        return cage_face
+
+
+# angular = SingleRowAngularContactBallBearing(size="M10-30-9", bearing_type="SKT")
+# bearing = SingleRowDeepGrooveBallBearing(size="M8-22-7", bearing_type="SKT")
+# capped = SingleRowCappedDeepGrooveBallBearing(size="M8-22-7", bearing_type="SKT")
+# roller = SingleRowCylindricalRollerBearing(size="M20-47-14", bearing_type="SKT")
+# taper = SingleRowTaperedRollerBearing(size="M20-42-15", bearing_type="SKT")
+
+
+# if "show_object" in locals():
+#     show_object(angular.cq_object, name="angular")
+#     show_object(bearing.cq_object, name="bearing")
+#     show_object(capped.cq_object, name="capped")
+#     show_object(roller.cq_object, name="roller")
+#     show_object(taper.cq_object, name="taper")
