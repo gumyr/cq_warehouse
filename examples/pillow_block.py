@@ -1,6 +1,6 @@
 import cadquery as cq
 from cq_warehouse.fastener import SocketHeadCapScrew
-from cq_warehouse.bearing import DeepGrooveBallBearing
+from cq_warehouse.bearing import SingleRowDeepGrooveBallBearing
 import cq_warehouse.extensions
 
 height = 60.0
@@ -9,7 +9,7 @@ thickness = 10.0
 padding = 12.0
 
 # make the bearing
-bearing = DeepGrooveBallBearing(size="M8-22-7", bearing_type="SKT", capped=False)
+bearing = SingleRowDeepGrooveBallBearing(size="M8-22-7", bearing_type="SKT")
 # make the screw
 screw = SocketHeadCapScrew(
     size="M2-0.4", fastener_type="iso4762", length=16, simple=False
