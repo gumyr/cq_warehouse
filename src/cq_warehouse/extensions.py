@@ -1596,9 +1596,38 @@ Face.makeHoles = _face_makeHoles
 
 """
 
-Wire extensions: makeNonPlanarFace(), projectToShape(), embossToShape()
+Wire extensions: makeRect(), makeNonPlanarFace(), projectToShape(), embossToShape()
 
 """
+
+
+def _makeRect(width: float, height: float, center: Vector, normal: Vector) -> "Wire":
+    """Make Rectangle
+
+    Make a Rectangle centered on center with the given normal
+
+    Args:
+        width (float): width (local X)
+        height (float): height (local Y)
+        center (Vector): rectangle center point
+        normal (Vector): rectangle normal
+
+    Returns:
+        Wire: The centered rectangle
+    """
+    corners_local = [
+        (width / 2, height / 2),
+        (width / 2, -height / 2),
+        (-width / 2, -height / 2),
+        (-width / 2, height / 2),
+        (width / 2, height / 2),
+    ]
+    user_plane = Plane(origin=center, normal=normal)
+    corners_world = [user_plane.toWorldCoords(c) for c in corners_local]
+    return Wire.makePolygon(corners_world)
+
+
+Wire.makeRect = _makeRect
 
 
 def makeNonPlanarFace(
