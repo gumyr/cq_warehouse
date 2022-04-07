@@ -693,6 +693,20 @@ class Face(object):
             Face: 'self' with holes
         """
 class Wire(object):
+    def makeRect(width: float, height: float, center: Vector, normal: Vector) -> "Wire":
+        """Make Rectangle
+    
+        Make a Rectangle centered on center with the given normal
+    
+        Args:
+            width (float): width (local X)
+            height (float): height (local Y)
+            center (Vector): rectangle center point
+            normal (Vector): rectangle normal
+    
+        Returns:
+            Wire: The centered rectangle
+        """
     def makeNonPlanarFace(
         self,
         surfacePoints: list["Vector"] = None,
