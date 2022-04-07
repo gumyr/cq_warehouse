@@ -374,7 +374,7 @@ Which results in:
 The differences between this code and the Read the Docs version are:
 
 * screw and bearing dimensions aren't required
-* the bearing is created during instantiation of the ``DeepGrooveBallBearing`` class
+* the bearing is created during instantiation of the ``SingleRowDeepGrooveBallBearing`` class
 * the screw is created during instantiation of the ``SocketHeadCapScrew`` class
 * an assembly is created and later the base is added to that assembly
 * the call to cskHole is replaced with clearanceHole
