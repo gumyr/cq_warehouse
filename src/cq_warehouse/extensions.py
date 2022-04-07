@@ -697,15 +697,11 @@ def _textOnPath(
     result = Compound.makeCompound(
         [Solid.extrudeLinear(f, self.plane.zDir) for f in faces_on_path]
     )
+
     if cut:
-        new_solid = self._cutFromBase(result)
-    elif combine:
-        new_solid = self._combineWithBase(result)
-    else:
-        new_solid = self.newObject([result])
-    if clean:
-        new_solid = new_solid.clean()
-    return new_solid
+        combine = "cut"
+
+    return self._combineWithBase(result, combine, clean)
 
 
 Workplane.textOnPath = _textOnPath

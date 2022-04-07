@@ -31,6 +31,7 @@ import unittest
 import cadquery as cq
 from cq_warehouse.extensions import *
 from cq_warehouse.fastener import SocketHeadCapScrew, DomedCapNut, ChamferedWasher
+from cq_warehouse.bearing import SingleRowDeepGrooveBallBearing
 
 
 def _assertTupleAlmostEquals(self, expected, actual, places, msg=None):
@@ -60,6 +61,22 @@ class AssemblyTests(unittest.TestCase):
         rotation = test_assembly.loc.toTuple()[1]
         # In radians
         self.assertTupleAlmostEquals(rotation, (0, 0, math.pi / 2), 7)
+
+    def test_find_location(self):
+        test_assembly = (
+            cq.Assembly(cq.Workplane("XY").box(10, 10, 10), name="box")
+            .translate((20, 20, 20))
+            .rotate((0, 0, 1), 90)
+        )
+        test_location = test_assembly.findLocation("box")
+        self.assertTupleAlmostEquals(
+            test_location.position().toTuple(), (20, 20, 20), 7
+        )
+        self.assertTupleAlmostEquals(
+            test_location.rotation().toTuple(), (0, 0, math.pi / 2), 7
+        )
+        with self.assertRaises(ValueError):
+            test_assembly.findLocation("missing")
 
 
 class FaceTests(unittest.TestCase):
@@ -94,6 +111,19 @@ class FaceTests(unittest.TestCase):
         self.assertLess(cylinder_walls_with_holes.Area(), cylinder_wall.Area())
 
 
+class WireTests(unittest.TestCase):
+    """Test new Wire methods"""
+
+    def test_rect(self):
+        """Validate a rectangle"""
+        rectangle = cq.Wire.makeRect(
+            50, 20, center=cq.Vector(10, 5, 1), normal=cq.Vector(1, 1, 1)
+        )
+        rectangle_face = cq.Face.makeFromWires(rectangle, [])
+        self.assertTrue(rectangle.isValid())
+        self.assertAlmostEqual(rectangle_face.Area(), 1000, 4)
+
+
 class ShapeTests(unittest.TestCase):
     """Test new Shape methods"""
 
@@ -125,7 +155,12 @@ class WorkplaneTests(unittest.TestCase):
             .workplane()
             .circle(1.5)
             .textOnPath(
-                "text on a circle", fontsize=0.5, distance=-0.05, cut=True, clean=False
+                # "text on a circle", fontsize=0.5, distance=-0.05, cut=True, clean=False
+                "text on a circle",
+                fontsize=0.5,
+                distance=-0.05,
+                combine="cut",
+                clean=False,
             )
         )
         # combined object should have smaller volume
@@ -145,8 +180,8 @@ class WorkplaneTests(unittest.TestCase):
                 combine=True,
             )
         )
-        # combined object should have bigger volume
-        self.assertLess(box.val().Volume(), obj2.val().Volume())
+        # combined object should be smaller
+        self.assertLess(box.val().BoundingBox().zmax, obj2.val().BoundingBox().zmax)
 
         # verify that the number of top faces & solids is correct (NB: this is font specific)
         self.assertEqual(len(obj2.faces(">Z").vals()), 14)
@@ -161,7 +196,7 @@ class WorkplaneTests(unittest.TestCase):
                 fontsize=5,
                 distance=1,
                 start=0.1,
-                cut=False,
+                # cut=False,
             )
         )
         self.assertEqual(fox.val().intersect(dog.val()).Volume(), 0)
@@ -756,6 +791,42 @@ class FastenerTests(unittest.TestCase):
                 .workplane()
                 .insertHole(fastener=screw)
             )
+
+
+class BearingTests(unittest.TestCase):
+    def test_press_fit_hole(self):
+        bearing = SingleRowDeepGrooveBallBearing(size="M8-22-7", bearing_type="SKT")
+        pillow_block = cq.Assembly(None, name="pillow_block")
+        box = (
+            cq.Workplane("XY")
+            .box(10, 10, 10)
+            .faces(">Z")
+            .workplane()
+            .pressFitHole(bearing=bearing, baseAssembly=pillow_block)
+            .val()
+        )
+        self.assertLess(box.Volume(), 999.99)
+        self.assertEqual(len(pillow_block.children), 1)
+        self.assertEqual(pillow_block.fastenerQuantities(bom=False)[bearing], 1)
+        self.assertEqual(len(pillow_block.fastenerQuantities(bom=True)), 1)
+        self.assertEqual(len(pillow_block.fastenerQuantities(bom=True, deep=False)), 1)
+
+    def test_invalid_press_fit_hole(self):
+        for bearing_class in Bearing.__subclasses__():
+            bearing_type = list(bearing_class.types())[0]
+            bearing_size = bearing_class.sizes(bearing_type)[0]
+            if bearing_class in Bearing.__subclasses__():
+                bearing = bearing_class(size=bearing_size, bearing_type=bearing_type)
+            else:
+                bearing = bearing_class(size=bearing_size, bearing_type=bearing_type)
+            with self.assertRaises(ValueError):
+                (
+                    cq.Workplane("XY")
+                    .box(10, 10, 10)
+                    .faces(">Z")
+                    .workplane()
+                    .pressFitHole(bearing, depth=40, fit="Bad")
+                )
 
 
 if __name__ == "__main__":
