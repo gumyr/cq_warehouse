@@ -1,5 +1,6 @@
 from typing import Union, Tuple, Optional, Literal
 from fastener import Screw, Nut, Washer
+from bearing import Bearing
 class gp_Ax1:
     pass
 class T:
@@ -67,6 +68,21 @@ class Assembly(object):
     
         Returns:
             a list of cadquery Location objects for each fastener instance
+        """
+    def findLocation(self, target: str) -> Location:
+        """Find Location of named target
+    
+        Return the Location of the target object relative to the given Assembly
+        including the given Assembly.
+    
+        Args:
+            target (str): name of target object
+    
+        Raises:
+            ValueError: target object not in found in Assembly
+    
+        Returns:
+            cq.Location: Location of target relative to self
         """
 class Plane(object):
     def _toFromLocalCoords(
@@ -433,6 +449,36 @@ class Workplane(object):
         Returns:
             the shape on the workplane stack with a new clearance hole
         """
+    def pressFitHole(
+        self: T,
+        bearing: "Bearing",
+        interference: float = 0,
+        fit: Optional[Literal["Close", "Normal", "Loose"]] = "Normal",
+        depth: Optional[float] = None,
+        baseAssembly: Optional["Assembly"] = None,
+        clean: Optional[bool] = True,
+    ) -> T:
+        """Press Fit Hole
+    
+        Put a hole appropriate for a bearing at the provided location
+    
+        For more information on how to use pressFitHole() see
+        :ref:`Custom Holes <custom holes>`.
+    
+        Args:
+            bearing: A bearing instance
+            interference: The amount the decrease the hole radius from the bearing outer radius. Defaults to 0.
+            fit: one of "Close", "Normal", "Loose" which determines hole diameter for the bore. Defaults to "Normal".
+            depth: hole depth. Defaults to through part.
+            baseAssembly: Assembly to add faster to. Defaults to None.
+            clean: execute a clean operation remove extraneous internal features. Defaults to True.
+    
+        Raises:
+            ValueError: pressFitHole only accepts bearings of type Bearing
+    
+        Returns:
+            the shape on the workplane stack with a new press fit hole
+        """
     def tapHole(
         self: T,
         fastener: Union["Nut", "Screw"],
@@ -647,6 +693,20 @@ class Face(object):
             Face: 'self' with holes
         """
 class Wire(object):
+    def makeRect(width: float, height: float, center: Vector, normal: Vector) -> "Wire":
+        """Make Rectangle
+    
+        Make a Rectangle centered on center with the given normal
+    
+        Args:
+            width (float): width (local X)
+            height (float): height (local Y)
+            center (Vector): rectangle center point
+            normal (Vector): rectangle normal
+    
+        Returns:
+            Wire: The centered rectangle
+        """
     def makeNonPlanarFace(
         self,
         surfacePoints: list["Vector"] = None,
@@ -890,6 +950,18 @@ class Location(object):
     
         Returns:
             Location as String
+        """
+    def position(self):
+        """Extract Position component
+    
+        Returns:
+            Vector: Position part of Location
+        """
+    def rotation(self):
+        """Extract Rotation component
+    
+        Returns:
+            Vector: Rotation part of Location
         """
 def makeNonPlanarFace(
     exterior: Union["Wire", list["Edge"]],

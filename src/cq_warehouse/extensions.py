@@ -57,6 +57,7 @@ from cadquery import (
     DirectionMinMaxSelector,
 )
 from cq_warehouse.fastener import Screw, Nut, Washer, HeatSetNut
+from cq_warehouse.bearing import Bearing
 from cq_warehouse.thread import IsoThread
 
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace
@@ -152,6 +153,7 @@ def _fastener_quantities(self, bom: bool = True, deep: bool = True) -> dict:
         fastener usage summary
     """
     from cq_warehouse.fastener import Screw, Nut, Washer
+    from cq_warehouse.bearing import Bearing
 
     assembly_list = []
     if deep:
@@ -163,7 +165,7 @@ def _fastener_quantities(self, bom: bool = True, deep: bool = True) -> dict:
     fasteners = []
     for sub_assembly in assembly_list:
         for value in sub_assembly.metadata.values():
-            if isinstance(value, (Screw, Nut, Washer)):
+            if isinstance(value, (Screw, Nut, Washer, Bearing)):
                 fasteners.append(value)
 
     unique_fasteners = set(fasteners)
@@ -223,7 +225,7 @@ def _fastener_locations(self, fastener: Union["Nut", "Screw"]) -> list[Location]
 Assembly.fastenerLocations = _fastener_locations
 
 
-def _find_Location(self, target: str) -> cq.Location:
+def _find_Location(self, target: str) -> Location:
     """Find Location of named target
 
     Return the Location of the target object relative to the given Assembly
@@ -258,7 +260,7 @@ def _find_Location(self, target: str) -> cq.Location:
     return reduce(lambda l1, l2: l1 * l2, locations)
 
 
-cq.Assembly.findLocation = _find_Location
+Assembly.findLocation = _find_Location
 
 """
 
@@ -695,15 +697,11 @@ def _textOnPath(
     result = Compound.makeCompound(
         [Solid.extrudeLinear(f, self.plane.zDir) for f in faces_on_path]
     )
+
     if cut:
-        new_solid = self._cutFromBase(result)
-    elif combine:
-        new_solid = self._combineWithBase(result)
-    else:
-        new_solid = self.newObject([result])
-    if clean:
-        new_solid = new_solid.clean()
-    return new_solid
+        combine = "cut"
+
+    return self._combineWithBase(result, combine, clean)
 
 
 Workplane.textOnPath = _textOnPath
@@ -1045,6 +1043,57 @@ def _insertHole(
     )
 
 
+def _pressFitHole(
+    self: T,
+    bearing: "Bearing",
+    interference: float = 0,
+    fit: Optional[Literal["Close", "Normal", "Loose"]] = "Normal",
+    depth: Optional[float] = None,
+    baseAssembly: Optional["Assembly"] = None,
+    clean: Optional[bool] = True,
+) -> T:
+    """Press Fit Hole
+
+    Put a hole appropriate for a bearing at the provided location
+
+    For more information on how to use pressFitHole() see
+    :ref:`Custom Holes <custom holes>`.
+
+    Args:
+        bearing: A bearing instance
+        interference: The amount the decrease the hole radius from the bearing outer radius. Defaults to 0.
+        fit: one of "Close", "Normal", "Loose" which determines hole diameter for the bore. Defaults to "Normal".
+        depth: hole depth. Defaults to through part.
+        baseAssembly: Assembly to add faster to. Defaults to None.
+        clean: execute a clean operation remove extraneous internal features. Defaults to True.
+
+    Raises:
+        ValueError: pressFitHole only accepts bearings of type Bearing
+
+    Returns:
+        the shape on the workplane stack with a new press fit hole
+    """
+    from cq_warehouse.bearing import Bearing
+
+    if not isinstance(bearing, Bearing):
+        raise ValueError("pressFitHole only accepts bearings")
+
+    if depth is None:
+        depth = self.largestDimension()
+
+    return self.fastenerHole(
+        hole_diameters=bearing.clearance_hole_diameters,
+        fastener=bearing,
+        depth=depth,
+        washers=[],
+        countersinkProfile=bearing.countersink_profile(interference),
+        fit=fit,
+        counterSunk=True,
+        baseAssembly=baseAssembly,
+        clean=clean,
+    )
+
+
 def _tapHole(
     self: T,
     fastener: Union["Nut", "Screw"],
@@ -1163,6 +1212,7 @@ def _threadedHole(
 
 Workplane.clearanceHole = _clearanceHole
 Workplane.insertHole = _insertHole
+Workplane.pressFitHole = _pressFitHole
 Workplane.tapHole = _tapHole
 Workplane.threadedHole = _threadedHole
 
@@ -1542,9 +1592,38 @@ Face.makeHoles = _face_makeHoles
 
 """
 
-Wire extensions: makeNonPlanarFace(), projectToShape(), embossToShape()
+Wire extensions: makeRect(), makeNonPlanarFace(), projectToShape(), embossToShape()
 
 """
+
+
+def _makeRect(width: float, height: float, center: Vector, normal: Vector) -> "Wire":
+    """Make Rectangle
+
+    Make a Rectangle centered on center with the given normal
+
+    Args:
+        width (float): width (local X)
+        height (float): height (local Y)
+        center (Vector): rectangle center point
+        normal (Vector): rectangle normal
+
+    Returns:
+        Wire: The centered rectangle
+    """
+    corners_local = [
+        (width / 2, height / 2),
+        (width / 2, -height / 2),
+        (-width / 2, -height / 2),
+        (-width / 2, height / 2),
+        (width / 2, height / 2),
+    ]
+    user_plane = Plane(origin=center, normal=normal)
+    corners_world = [user_plane.toWorldCoords(c) for c in corners_local]
+    return Wire.makePolygon(corners_world)
+
+
+Wire.makeRect = _makeRect
 
 
 def makeNonPlanarFace(
