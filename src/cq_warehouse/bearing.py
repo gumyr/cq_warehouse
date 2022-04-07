@@ -28,8 +28,7 @@ license:
 
 """
 from abc import ABC, abstractmethod
-from math import atan2, pi, tan, radians, degrees, asin, sin
-from typing import Literal
+from math import pi, radians, degrees, asin, sin
 from cadquery import (
     Vector,
     Assembly,
@@ -38,8 +37,6 @@ from cadquery import (
     Solid,
     Color,
     Sketch,
-    Edge,
-    Shape,
     Compound,
 )
 from cq_warehouse.fastener import (
@@ -61,7 +58,6 @@ class Bearing(ABC):
     Args:
         size (str): bearing size, e.g. "M8-22-7"
         bearing_type (str): type identifier - e.g. "SKT"
-        capped (bool, optional): create sealed bearings. Defaults to True.
 
     Raises:
         ValueError: bearing_type is invalid
@@ -94,15 +90,22 @@ class Bearing(ABC):
 
     @property
     def bore_diameter(self) -> float:
+        """Diameter of central hole"""
         return self.bearing_dict["d"]
 
     @property
     def outer_diameter(self) -> float:
+        """Bearing outer diameter"""
         return self.bearing_dict["D"]
 
     @property
-    def width(self) -> float:
-        return self.bearing_dict["B"]
+    def thickness(self) -> float:
+        """Bearing thickness"""
+        return (
+            self.bearing_dict["T"]
+            if self.bearing_class == "SingleRowTaperedRollerBearing"
+            else self.bearing_dict["B"]
+        )
 
     @property
     def cq_object(self):
@@ -119,43 +122,38 @@ class Bearing(ABC):
     @abstractmethod
     def bearing_data(cls):
         """Each derived class must provide a bearing_data dictionary"""
-        return NotImplementedError
+        return NotImplementedError  # pragma: no cover
 
     @abstractmethod
     def inner_race_section(self) -> Workplane:
         """Each derived class must provide the section of the inner race"""
-        return NotImplementedError
+        return NotImplementedError  # pragma: no cover
 
     @abstractmethod
     def outer_race_section(self) -> Workplane:
         """Each derived class must provide the section of the outer race"""
-        return NotImplementedError
+        return NotImplementedError  # pragma: no cover
 
     @abstractmethod
     def roller(self) -> Solid:
         """Each derived class must provide the roller object - a sphere, cylinder or cone"""
-        return NotImplementedError
-
-    # @abstractmethod
-    # def cap(self) -> Workplane:
-    #     """Each derived class must provide a sealing cap"""
-    #     return NotImplementedError
+        return NotImplementedError  # pragma: no cover
 
     @abstractmethod
     def countersink_profile(self) -> Workplane:
         """Each derived class must provide the profile of a countersink cutter"""
-        return NotImplementedError
+        return NotImplementedError  # pragma: no cover
 
     @property
     @abstractmethod
     def roller_diameter(self):
         """Each derived class must provide the roller diameter"""
-        return NotImplementedError
+        return NotImplementedError  # pragma: no cover
 
     @property
     @abstractmethod
     def race_center_radius(self):
-        return NotImplementedError
+        return NotImplementedError  # pragma: no cover
 
     def default_race_center_radius(self):
         """Default roller race center radius"""
@@ -311,6 +309,16 @@ class Bearing(ABC):
 
 
 class SingleRowDeepGrooveBallBearing(Bearing):
+    """Single Row Deep Groove Ball Bearing
+
+    Deep groove ball bearings are particularly
+    versatile. They are simple in design, non-
+    separable, suitable for high and very high
+    speeds and are robust in operation, requiring
+    little maintenance. Because deep groove ball
+    bearings are the most widely used bearing
+    type, they are available in many
+    designs, variants and sizes."""
 
     bearing_data = read_fastener_parameters_from_csv(
         "single_row_deep_groove_ball_bearing_parameters.csv"
@@ -331,6 +339,10 @@ class SingleRowDeepGrooveBallBearing(Bearing):
 
 
 class SingleRowCappedDeepGrooveBallBearing(Bearing):
+    """Single Row Capped Deep Groove Ball Bearings
+
+    Deep groove ball bearings capped with a seal or
+    shield on both sides."""
 
     bearing_data = read_fastener_parameters_from_csv(
         "single_row_capped_deep_groove_ball_bearing_parameters.csv"
@@ -352,6 +364,23 @@ class SingleRowCappedDeepGrooveBallBearing(Bearing):
 
 
 class SingleRowAngularContactBallBearing(Bearing):
+    """Single Row Angular Contact Ball Bearing
+
+    Angular contact ball bearings have raceways
+    in the inner and outer rings that are displaced
+    relative to each other in the direction of the
+    bearing axis. This means that they are
+    designed to accommodate combined loads, i.e.
+    simultaneously acting radial and axial loads.
+    The axial load carrying capacity of angular
+    contact ball bearings increases with increasing
+    contact angle. The contact angle is defined
+    as the angle between the line joining the points
+    of contact of the ball and the raceways in the
+    radial plane, along which the load is transmit-
+    ted from one raceway to another, and a line
+    perpendicular to the bearing axis."""
+
     bearing_data = read_fastener_parameters_from_csv(
         "single_row_angular_contact_ball_bearing_parameters.csv"
     )
@@ -421,6 +450,11 @@ class SingleRowAngularContactBallBearing(Bearing):
 
 
 class SingleRowCylindricalRollerBearing(Bearing):
+    """Single Row Cylindrical Roller Bearings
+
+    Suitable for very heavy radial loads at moderate speeds,
+    roller bearings use cylindrical rollers instead of
+    spherical ball bearings."""
 
     bearing_data = read_fastener_parameters_from_csv(
         "single_row_cylindrical_roller_bearing_parameters.csv"
@@ -578,18 +612,3 @@ class SingleRowTaperedRollerBearing(Bearing):
             )
         )
         return cage_face
-
-
-# angular = SingleRowAngularContactBallBearing(size="M10-30-9", bearing_type="SKT")
-# bearing = SingleRowDeepGrooveBallBearing(size="M8-22-7", bearing_type="SKT")
-# capped = SingleRowCappedDeepGrooveBallBearing(size="M8-22-7", bearing_type="SKT")
-# roller = SingleRowCylindricalRollerBearing(size="M20-47-14", bearing_type="SKT")
-# taper = SingleRowTaperedRollerBearing(size="M20-42-15", bearing_type="SKT")
-
-
-# if "show_object" in locals():
-#     show_object(angular.cq_object, name="angular")
-#     show_object(bearing.cq_object, name="bearing")
-#     show_object(capped.cq_object, name="capped")
-#     show_object(roller.cq_object, name="roller")
-#     show_object(taper.cq_object, name="taper")
