@@ -5,6 +5,10 @@ Many mechanical designs will contain bearings of some kind. The
 bearing sub-package provides a set of classes that
 create many different types of parametric bearings.
 
+Bearings are created as CadQuery Assemblies and with accurate
+external dimensions but simplified internal structure to avoid
+excess creation time.
+
 Holes for the bearings can be created with a :meth:`~extensions_doc.Workplane.pressFitHole`
 method which can automatically place the bearing into an Assembly and bore a hole
 for an axle if the part is thicker than the bearing.
