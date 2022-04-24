@@ -50,6 +50,7 @@ from cadquery import (
     Location,
     Shape,
     Solid,
+    Sketch,
     Vector,
     Vertex,
     Wire,
@@ -549,7 +550,7 @@ Vertex.toVector = _vertex_to_vector
 """
 
 Workplane extensions: textOnPath(), hexArray(), thicken(), fastenerHole(), clearanceHole(),
-                      tapHole(), threadedHole(), pushFastenerLocations()
+                      tapHole(), threadedHole(), pushFastenerLocations(), makeFingerJoints()
 
 """
 
@@ -1251,9 +1252,90 @@ def _push_fastener_locations(
 
 Workplane.pushFastenerLocations = _push_fastener_locations
 
+
+def _makeFingerJoints_workplane(
+    self: T,
+    materialThickness: float,
+    targetFingerWidth: float,
+    kerfWidth: float = 0.0,
+    baseAssembly: "Assembly" = None,
+) -> T:
+    """makeFingerJoints
+
+    Starting with a base object and a set of selected edges, create Faces with
+    finger joints that they could be laser cut from flat material.
+
+    Example:
+
+        For example, make a simple open topped laser cut box.
+
+    .. code-block:: python
+
+        finger_jointed_box_assembly = Assembly()
+        finger_jointed_faces = (
+            Workplane("XY")
+            .box(100, 80, 60)
+            .edges("not >Z")
+            .makeFingerJoints(
+                materialThickness=5,
+                targetFingerWidth=10,
+                kerfWidth=1,
+                baseAssembly=finger_jointed_box_assembly,
+            )
+        )
+
+
+    The assembly part is optional but if present the Assembly will
+    contain the parts as if they were laser cut from a material of the
+    given thickness.
+
+    Args:
+        self (T): workplane
+        materialThickness (float): thickness of finger joints
+        targetFingerWidth (float): approximate with of notch - actual finger width
+            will be calculated such that there are an integer number of fingers on Edge
+        kerfWidth (float, optional): Extra size to add (or subtract) to account
+            for the kerf of the laser cutter. Defaults to 0.0.
+        baseAssembly (Assembly, optional): Assembly to add parts to
+
+    Raises:
+        ValueError: Missing Solid object
+        ValueError: Missing finger joint Edges
+
+    Returns:
+        T: Faces ready to be exported to DXF files and laser cut
+    """
+    solid_reference = self.findSolid(searchStack=True, searchParents=True)
+    if not solid_reference:
+        raise ValueError(
+            "A solid object must be present to define the finger jointed faces"
+        )
+
+    # finger_joint_edges = self.ctx.popPendingEdges()
+    # finger_joint_edges = cast(list[Edge], self.edges().vals())
+    finger_joint_edges = self.edges().vals()
+    if not finger_joint_edges:
+        raise ValueError(
+            "A pending edge(s) must be present to defined the finger jointed edges"
+        )
+
+    jointed_faces = solid_reference.makeFingerJointFaces(
+        finger_joint_edges, materialThickness, targetFingerWidth, kerfWidth
+    )
+
+    if baseAssembly:
+        solid_reference.makeFingerJointAssembly(
+            jointed_faces, materialThickness, baseAssembly
+        )
+
+    return self.newObject(jointed_faces)
+
+
+Workplane.makeFingerJoints = _makeFingerJoints_workplane
+
 """
 
-Face extensions: thicken(), projectToShape(), embossToShape()
+Face extensions: thicken(), projectToShape(), embossToShape(), makeHoles(), makeFingerJoints()
 
 """
 
@@ -1588,6 +1670,63 @@ def _face_makeHoles(self, interiorWires: list["Wire"]) -> "Face":
 
 
 Face.makeHoles = _face_makeHoles
+
+
+def _makeFingerJoints_face(
+    self: "Face",
+    fingerJointEdge: "Edge",
+    materialThickness: float,
+    targetFingerWidth: float,
+    alignToBottom: bool = True,
+) -> "Face":
+    """makeFingerJoints
+
+    Given a Face and an Edge, create finger joints by cutting notches.
+
+    Args:
+        self (Face): Face to modify
+        fingerJointEdge (Edge): Edge of Face to modify
+        materialThickness (float): thickness of the notch from edge
+        targetFingerWidth (float): approximate with of notch - actual finger width
+            will be calculated such that there are an integer number of fingers on Edge
+        alignToBottom (bool, optional): start with a finger or notch. Defaults to True.
+
+    Returns:
+        Face: the Face with notches on one edge
+    """
+    edge_length = fingerJointEdge.Length()
+    finger_count = round(edge_length / (targetFingerWidth))
+    finger_width = edge_length / (finger_count)
+    box_face_center = self.Center()
+
+    box_edge_origin = fingerJointEdge.positionAt(0)
+    box_edge_tangent = fingerJointEdge.tangentAt(0)
+    edge_plane = Plane(
+        origin=box_edge_origin,
+        xDir=box_edge_tangent,
+        normal=box_edge_tangent.cross(box_face_center - box_edge_origin),
+    )
+    box_face_center_local = edge_plane.toLocalCoords(box_face_center)
+    box_face_y_direction = 1 if box_face_center_local.y >= 0 else -1
+    finger_offset = finger_width / 2 if alignToBottom else -finger_width / 2
+    face_local = edge_plane.toLocalCoords(self)
+    new_face = (
+        Sketch()
+        .face(face_local.outerWire())
+        .push([(finger_offset, 0)])
+        .rarray(
+            2 * finger_width,
+            box_face_y_direction * materialThickness / 2,
+            finger_count,
+            1,
+        )
+        .rect(finger_width, materialThickness, mode="s")
+        ._faces.Faces()[0]
+    )
+    return edge_plane.fromLocalCoords(new_face)
+
+
+Face.makeFingerJoints = _makeFingerJoints_face
 
 
 """
@@ -2120,7 +2259,8 @@ Edge.embossToShape = _embossEdgeToShape
 
 """
 
-Shape extensions: transformed(), findIntersection(), projectText(), embossText()
+Shape extensions: transformed(), findIntersection(), projectText(), embossText(), makeFingerJointFaces(),
+    makeFingerJointAssembly()
 
 """
 
@@ -2389,6 +2529,110 @@ def _embossText(
 
 
 Shape.embossText = _embossText
+
+
+def _makeFingerJointFaces_solid(
+    self: "Shape",
+    fingerJointEdges: list["Edge"],
+    materialThickness: float,
+    targetFingerWidth: float,
+    kerfWidth: float = 0.0,
+) -> list["Face"]:
+    """makeFingerJointFaces
+
+    Extract Faces from the given shape and create Faces with finger joints
+    cut into the given Edges.
+
+    Args:
+        self (Shape): the base shape defining the finger jointed object
+        fingerJointEdges (list[Edge]): the Edges to convert to finger joints
+        materialThickness (float): thickness of the notch from edge
+        targetFingerWidth (float): approximate with of notch - actual finger width
+            will be calculated such that there are an integer number of fingers on Edge
+        kerfWidth (float, optional): Extra size to add (or subtract) to account
+            for the kerf of the laser cutter. Defaults to 0.0.
+
+    Raises:
+        ValueError: provide Edge is not shared by two Faces
+
+    Returns:
+        list[Face]: faces with finger joint cut into selected edges
+    """
+
+    # Store the faces for modification
+    face_list = self.Faces()
+
+    # Appropriate Edges are adjacent to two Faces - build this relationship
+    edge_adjacency = {}
+    for common_edge in fingerJointEdges:
+        adjacent_face_indices = [
+            i for i, face in enumerate(face_list) if common_edge in face.Edges()
+        ]
+        if adjacent_face_indices:
+            if len(adjacent_face_indices) != 2:
+                raise ValueError("Edge is invalid")
+            edge_adjacency[common_edge] = adjacent_face_indices
+
+    # Make complimentary tabs in faces adjacent to common edges
+    for common_edge, adjacent_face_indices in edge_adjacency.items():
+        face_list[adjacent_face_indices[0]] = face_list[
+            adjacent_face_indices[0]
+        ].makeFingerJoints(common_edge, materialThickness, targetFingerWidth, True)
+        face_list[adjacent_face_indices[1]] = face_list[
+            adjacent_face_indices[1]
+        ].makeFingerJoints(common_edge, materialThickness, targetFingerWidth, False)
+
+    # Determine which faces have tabs
+    tabbed_face_indices = set(
+        i for face_list in edge_adjacency.values() for i in face_list
+    )
+    tabbed_faces = [face_list[i] for i in tabbed_face_indices]
+
+    # If kerf compensation is requested, increase the outer and decrease inner sizes
+    if kerfWidth != 0.0:
+        tabbed_faces = [
+            Face.makeFromWires(
+                f.outerWire().offset2D(kerfWidth / 2)[0],
+                [i.offset2D(-kerfWidth / 2)[0] for i in f.innerWires()],
+            )
+            for f in tabbed_faces
+        ]
+
+    return tabbed_faces
+
+
+Shape.makeFingerJointFaces = _makeFingerJointFaces_solid
+
+
+def _makeFingerJointAssembly(
+    self,
+    fingerJointedFaces: list["Face"],
+    materialThickness: float,
+    baseAssembly: "Assembly",
+) -> "Assembly":
+    """makeFingerJointAssembly
+
+    Added thickened faces representing laser cut parts into given Assembly.
+
+    Args:
+        fingerJointedFaces (list[Face]): Faces of the finger jointed object
+        materialThickness (float): thickness of material
+        baseAssembly (Assembly): Assembly to add parts to
+
+    Returns:
+        Assembly: the finger jointed object
+    """
+    part_center = self.Center()
+    for finger_jointed_face in fingerJointedFaces:
+        baseAssembly.add(
+            finger_jointed_face.thicken(
+                materialThickness, part_center - finger_jointed_face.Center()
+            )
+        )
+    return baseAssembly
+
+
+Shape.makeFingerJointAssembly = _makeFingerJointAssembly
 
 """
 

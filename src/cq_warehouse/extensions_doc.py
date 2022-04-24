@@ -563,6 +563,58 @@ class Workplane(object):
         Returns:
             Location objects on the workplane stack
         """
+    def makeFingerJoints(
+        self: T,
+        materialThickness: float,
+        targetFingerWidth: float,
+        kerfWidth: float = 0.0,
+        baseAssembly: "Assembly" = None,
+    ) -> T:
+        """makeFingerJoints
+    
+        Starting with a base object and a set of selected edges, create Faces with
+        finger joints that they could be laser cut from flat material.
+    
+        Example:
+    
+            For example, make a simple open topped laser cut box.
+    
+        .. code-block:: python
+    
+            finger_jointed_box_assembly = Assembly()
+            finger_jointed_faces = (
+                Workplane("XY")
+                .box(100, 80, 60)
+                .edges("not >Z")
+                .makeFingerJoints(
+                    materialThickness=5,
+                    targetFingerWidth=10,
+                    kerfWidth=1,
+                    baseAssembly=finger_jointed_box_assembly,
+                )
+            )
+    
+    
+        The assembly part is optional but if present the Assembly will
+        contain the parts as if they were laser cut from a material of the
+        given thickness.
+    
+        Args:
+            self (T): workplane
+            materialThickness (float): thickness of finger joints
+            targetFingerWidth (float): approximate with of notch - actual finger width
+                will be calculated such that there are an integer number of fingers on Edge
+            kerfWidth (float, optional): Extra size to add (or subtract) to account
+                for the kerf of the laser cutter. Defaults to 0.0.
+            baseAssembly (Assembly, optional): Assembly to add parts to
+    
+        Raises:
+            ValueError: Missing Solid object
+            ValueError: Missing finger joint Edges
+    
+        Returns:
+            T: Faces ready to be exported to DXF files and laser cut
+        """
 class Face(object):
     def thicken(self, depth: float, direction: "Vector" = None) -> "Solid":
         """Thicken Face
@@ -691,6 +743,28 @@ class Face(object):
     
         Returns:
             Face: 'self' with holes
+        """
+    def makeFingerJoints(
+        self: "Face",
+        fingerJointEdge: "Edge",
+        materialThickness: float,
+        targetFingerWidth: float,
+        alignToBottom: bool = True,
+    ) -> "Face":
+        """makeFingerJoints
+    
+        Given a Face and an Edge, create finger joints by cutting notches.
+    
+        Args:
+            self (Face): Face to modify
+            fingerJointEdge (Edge): Edge of Face to modify
+            materialThickness (float): thickness of the notch from edge
+            targetFingerWidth (float): approximate with of notch - actual finger width
+                will be calculated such that there are an integer number of fingers on Edge
+            alignToBottom (bool, optional): start with a finger or notch. Defaults to True.
+    
+        Returns:
+            Face: the Face with notches on one edge
         """
 class Wire(object):
     def makeRect(width: float, height: float, center: Vector, normal: Vector) -> "Wire":
@@ -941,6 +1015,51 @@ class Shape(object):
     
         Returns:
             The embossed text
+        """
+    def makeFingerJointFaces(
+        self: "Shape",
+        fingerJointEdges: list["Edge"],
+        materialThickness: float,
+        targetFingerWidth: float,
+        kerfWidth: float = 0.0,
+    ) -> list["Face"]:
+        """makeFingerJointFaces
+    
+        Extract Faces from the given shape and create Faces with finger joints
+        cut into the given Edges.
+    
+        Args:
+            self (Shape): the base shape defining the finger jointed object
+            fingerJointEdges (list[Edge]): the Edges to convert to finger joints
+            materialThickness (float): thickness of the notch from edge
+            targetFingerWidth (float): approximate with of notch - actual finger width
+                will be calculated such that there are an integer number of fingers on Edge
+            kerfWidth (float, optional): Extra size to add (or subtract) to account
+                for the kerf of the laser cutter. Defaults to 0.0.
+    
+        Raises:
+            ValueError: provide Edge is not shared by two Faces
+    
+        Returns:
+            list[Face]: faces with finger joint cut into selected edges
+        """
+    def makeFingerJointAssembly(
+        self,
+        fingerJointedFaces: list["Face"],
+        materialThickness: float,
+        baseAssembly: "Assembly",
+    ) -> "Assembly":
+        """makeFingerJointAssembly
+    
+        Added thickened faces representing laser cut parts into given Assembly.
+    
+        Args:
+            fingerJointedFaces (list[Face]): Faces of the finger jointed object
+            materialThickness (float): thickness of material
+            baseAssembly (Assembly): Assembly to add parts to
+    
+        Returns:
+            Assembly: the finger jointed object
         """
 class Location(object):
     def __str__(self):
