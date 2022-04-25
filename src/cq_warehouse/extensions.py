@@ -1712,7 +1712,7 @@ def _makeFingerJoints_face(
     face_local = edge_plane.toLocalCoords(self)
     new_face = (
         Sketch()
-        .face(face_local.outerWire())
+        .face(Compound.makeCompound([face_local]))
         .push([(finger_offset, 0)])
         .rarray(
             2 * finger_width,
