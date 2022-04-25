@@ -1706,21 +1706,14 @@ def _makeFingerJoints_face(
         xDir=box_edge_tangent,
         normal=box_edge_tangent.cross(box_face_center - box_edge_origin),
     )
-    box_face_center_local = edge_plane.toLocalCoords(box_face_center)
-    box_face_y_direction = 1 if box_face_center_local.y >= 0 else -1
     finger_offset = finger_width / 2 if alignToBottom else -finger_width / 2
     face_local = edge_plane.toLocalCoords(self)
     new_face = (
         Sketch()
         .face(Compound.makeCompound([face_local]))
         .push([(finger_offset, 0)])
-        .rarray(
-            2 * finger_width,
-            box_face_y_direction * materialThickness / 2,
-            finger_count,
-            1,
-        )
-        .rect(finger_width, materialThickness, mode="s")
+        .rarray(2 * finger_width, 0, finger_count, 1)
+        .rect(finger_width, 2 * materialThickness, mode="s")
         ._faces.Faces()[0]
     )
     return edge_plane.fromLocalCoords(new_face)
