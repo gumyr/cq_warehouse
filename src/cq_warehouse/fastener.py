@@ -2107,7 +2107,13 @@ class SetScrew(Screw):
             .extrude(self.length - t)
             .mirror()
         )
-        return core.union(thread.cq_object.translate((0, 0, -thread.length))).val()
+
+        if self.simple:
+            ret = core
+        else:
+            ret = core.union(thread.cq_object.translate((0, 0, -thread.length)))
+
+        return ret.val()
 
     def make_head(self):
         """There is no head on a setscrew"""
