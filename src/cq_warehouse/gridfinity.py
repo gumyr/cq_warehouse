@@ -2,7 +2,7 @@
 
 Cadquery GridFinity Implementation
 
-name: extensions.py
+name: gridfinity.py
 by:   Jern
 date: 2022-04-13
 
