@@ -477,6 +477,7 @@ def _getSignedAngle(self, v: "Vector", normal: "Vector" = None) -> float:
         gp_normal = gp_Vec(0, 0, -1)
     else:
         gp_normal = normal.wrapped
+    # gp_normal = normal.wrapped if normal else gp_Vec(0, 0, -1)
     return self.wrapped.AngleWithRef(v.wrapped, gp_normal)
 
 
@@ -1372,10 +1373,16 @@ def _makeFingerJoints_workplane(
         finger_joint_edges, materialThickness, targetFingerWidth, kerfWidth
     )
 
+    # If the assembly is requested, create Solids from faces and store them
     if baseAssembly:
-        solid_reference.makeFingerJointAssembly(
-            jointed_faces, materialThickness, baseAssembly
-        )
+        part_center = solid_reference.Center()
+        for finger_jointed_face in jointed_faces:
+            part = finger_jointed_face.thicken(
+                materialThickness, part_center - finger_jointed_face.Center()
+            )
+            baseAssembly.add(
+                part, color=Color(random.random(), random.random(), random.random())
+            )
 
     return self.newObject(jointed_faces)
 
@@ -1383,10 +1390,10 @@ def _makeFingerJoints_workplane(
 Workplane.makeFingerJoints = _makeFingerJoints_workplane
 
 
-def _repairFingerJoints(
+def __repairFingerJoints(
     self: "Face", fingerJointEdge: "Edge", materialThickness: float, edgeEnd: bool
 ) -> "Face":
-    """repairFingerJoints
+    """Repair Finger Joints
 
     Fill in the corner of the face with a materialThickness square.
 
@@ -1425,7 +1432,7 @@ def _repairFingerJoints(
     return edge_plane.fromLocalCoords(new_face)
 
 
-Face.repairFingerJoints = _repairFingerJoints
+Face._repairFingerJoints = __repairFingerJoints
 
 """
 
@@ -1485,7 +1492,7 @@ def _face_thicken(self, depth: float, direction: "Vector" = None) -> "Solid":
     except StdFail_NotDone as e:
         raise RuntimeError("Error applying thicken to given Face") from e
 
-    return result
+    return result.clean()
 
 
 Face.thicken = _face_thicken
@@ -1772,7 +1779,7 @@ def _makeFingerJoints_face(
     materialThickness: float,
     targetFingerWidth: float,
     alignToBottom: bool = True,
-    shortenInitialNotch: bool = False,
+    externalCorner: bool = True,
 ) -> "Face":
     """makeFingerJoints
 
@@ -1785,6 +1792,8 @@ def _makeFingerJoints_face(
         targetFingerWidth (float): approximate with of notch - actual finger width
             will be calculated such that there are an integer number of fingers on Edge
         alignToBottom (bool, optional): start with a finger or notch. Defaults to True.
+        externalCorner (bool, optional): cut from external corners, add to internal corners.
+            Defaults to True.
 
     Returns:
         Face: the Face with notches on one edge
@@ -1801,19 +1810,36 @@ def _makeFingerJoints_face(
         xDir=edge_tangent,
         normal=edge_tangent.cross(face_center - edge_origin),
     )
-    initial_offset = materialThickness / 2 if shortenInitialNotch else 0
-    finger_offset = finger_width / 2 if alignToBottom else -finger_width / 2
+    if alignToBottom and finger_count % 2 == 0:
+        finger_offset = -finger_width / 2
+        tab_count = finger_count // 2
+    elif alignToBottom and finger_count % 2 == 1:
+        finger_offset = 0
+        tab_count = (finger_count + 1) // 2
+    elif not alignToBottom and finger_count % 2 == 0:
+        finger_offset = +finger_width / 2
+        tab_count = finger_count // 2
+    elif not alignToBottom and finger_count % 2 == 1:
+        finger_offset = 0
+        tab_count = finger_count // 2
+
     face_local = edge_plane.toLocalCoords(self)
-    notch_widths = iter(
-        [finger_width - materialThickness if shortenInitialNotch else finger_width]
-        + [finger_width] * (finger_count - 1)
+    # notch_widths = iter(
+    #     [finger_width - materialThickness if shortenInitialNotch else finger_width]
+    #     + [finger_width] * (finger_count - 1)
+    # )
+    print(
+        f"{externalCorner=},{finger_count=},{finger_offset=},{finger_offset=},{tab_count=}"
     )
+    combine_mode = "s" if externalCorner else "a"
     new_face = (
         Sketch()
         .face(Compound.makeCompound([face_local]))
-        .push([(finger_offset + initial_offset, 0)])
-        .rarray(2 * finger_width, 0, finger_count, 1)
-        .rect(next(notch_widths), 2 * materialThickness, mode="s")
+        .push([(edge_length / 2 + finger_offset, 0)])
+        .rarray(2 * finger_width, 0, tab_count, 1)
+        # .rect(next(notch_widths), 2 * materialThickness, mode=combine_mode)
+        .rect(finger_width, 2 * materialThickness, mode=combine_mode)
+        .clean()
         ._faces.Faces()[0]
     )
     return edge_plane.fromLocalCoords(new_face)
@@ -2352,8 +2378,7 @@ Edge.embossToShape = _embossEdgeToShape
 
 """
 
-Shape extensions: transformed(), findIntersection(), projectText(), embossText(), makeFingerJointFaces(),
-    makeFingerJointAssembly()
+Shape extensions: transformed(), findIntersection(), projectText(), embossText(), makeFingerJointFaces()
 
 """
 
@@ -2652,8 +2677,13 @@ def _makeFingerJointFaces_solid(
         list[Face]: faces with finger joint cut into selected edges
     """
 
+    # TODO: interior corners required tabs to be added, not removed
+    # TODO: if faces are not perpendicular, corners may be missing at vertex is present
+    # TODO: the depth of the tab should take the angle of the faces into account
+
     # Store the faces for modification
     working_faces = self.Faces()
+    working_face_areas = [f.Area() for f in working_faces]
 
     # Appropriate Edges are adjacent to two Faces - build this relationship
     edge_adjacency = {}
@@ -2666,55 +2696,90 @@ def _makeFingerJointFaces_solid(
                 raise ValueError("Edge is invalid")
             edge_adjacency[common_edge] = adjacent_face_indices
 
+    print(f"{len(edge_adjacency)=}")
+    # External edges need tabs cut from the face while internal edges need extended tabs.
+    # Faces that aren't perpendicular need the tab depth to be calculated based on the
+    # angle between the faces. To facilitate this, calculate the angle between faces
+    # and determine if this is an internal corner.
+    corner_angles = {}
+    external_corner = {}
+    for common_edge, adjacent_face_indices in edge_adjacency.items():
+        face_centers = [working_faces[i].Center() for i in adjacent_face_indices]
+        face_normals = [
+            working_faces[i].normalAt(working_faces[i].Center())
+            for i in adjacent_face_indices
+        ]
+        internal_edge_reference_plane = cq.Plane(
+            origin=face_centers[0], normal=face_normals[0]
+        )
+        localized_opposite_center = internal_edge_reference_plane.toLocalCoords(
+            face_centers[1]
+        )
+        external_corner[common_edge] = localized_opposite_center.z < 0
+        corner_angles[common_edge] = abs(
+            face_normals[0].getSignedAngle(face_normals[1], common_edge.tangentAt(0))
+        )
+
+    print(f"{corner_angles=}")
+
     # Make complimentary tabs in faces adjacent to common edges
     for common_edge, adjacent_face_indices in edge_adjacency.items():
-        working_faces[adjacent_face_indices[0]] = working_faces[
-            adjacent_face_indices[0]
-        ].makeFingerJoints(common_edge, materialThickness, targetFingerWidth, True)
-        working_faces[adjacent_face_indices[1]] = working_faces[
-            adjacent_face_indices[1]
-        ].makeFingerJoints(common_edge, materialThickness, targetFingerWidth, False)
+        primary_index = adjacent_face_indices[0]
+        secondary_index = adjacent_face_indices[1]
+        if working_face_areas[primary_index] > working_face_areas[secondary_index]:
+            primary_index, secondary_index = secondary_index, primary_index
+        for i in [primary_index, secondary_index]:
+            working_faces[i] = working_faces[i].makeFingerJoints(
+                common_edge,
+                materialThickness,
+                targetFingerWidth,
+                alignToBottom=i == primary_index,
+                externalCorner=external_corner[common_edge],
+            )
 
     #
     # ------ Repair ------
     #
     # Unfortunately it's possible that notches will be located in three (or more) adjacent
-    # faces resulting in a missing corner - let's find them
-    finger_joint_corners = list(
-        set([v for e in fingerJointEdges for v in e.Vertices()])
-    )
-    working_faces_corners = [
-        v
-        for v in finger_joint_corners
-        for face_indices in edge_adjacency.values()
-        for face_index in face_indices
-        if Compound.makeCompound([working_faces[face_index]]).isInside(v.toVector())
-    ]
-    missing_corners = [
-        v for v in finger_joint_corners if v not in working_faces_corners
-    ]
-    # print(f"{len(missing_corners)=}")
-    # TODO: FIX, the wrong corner is being fixed
-    for missing_corner in missing_corners:
-        # print(f"{missing_corner.toVector()=}")
+    # faces resulting in a missing corner - let's find and fix them
+    #
+    # When the faces aren't perpendicular with each other its possible for a triangular
+    # section to be present which "fools" this algorithm.
+    #
+    # finger_joint_corners = list(
+    #     set([v for e in fingerJointEdges for v in e.Vertices()])
+    # )
+    # working_faces_corners = [
+    #     v
+    #     for v in finger_joint_corners
+    #     for face_indices in edge_adjacency.values()
+    #     for face_index in face_indices
+    #     if Compound.makeCompound([working_faces[face_index]]).isInside(v.toVector())
+    # ]
+    # missing_corners = [
+    #     v for v in finger_joint_corners if v not in working_faces_corners
+    # ]
+    # # print(f"{len(missing_corners)=}")
+    # for missing_corner in missing_corners:
+    #     # print(f"{missing_corner.toVector()=}")
 
-        edge_with_missing_corner = [
-            e for e in fingerJointEdges if missing_corner == e.Vertices()[0]
-        ][0]
-        # print(f"{edge_with_missing_corner.Vertices()[0].toVector()=}")
-        # print(f"{edge_with_missing_corner.Vertices()[1].toVector()=}")
-        face_with_missing_corner = [
-            i
-            for i, f in enumerate(self.Faces())
-            if edge_with_missing_corner in f.Edges()
-        ][0]
-        working_faces[face_with_missing_corner] = working_faces[
-            face_with_missing_corner
-        ].repairFingerJoints(
-            edge_with_missing_corner,
-            materialThickness,
-            edge_with_missing_corner.positionAt(0).toVertex() != missing_corner,
-        )
+    #     edge_with_missing_corner = [
+    #         e for e in fingerJointEdges if missing_corner == e.Vertices()[0]
+    #     ][0]
+    #     # print(f"{edge_with_missing_corner.Vertices()[0].toVector()=}")
+    #     # print(f"{edge_with_missing_corner.Vertices()[1].toVector()=}")
+    #     face_with_missing_corner = [
+    #         i
+    #         for i, f in enumerate(self.Faces())
+    #         if edge_with_missing_corner in f.Edges()
+    #     ][0]
+    #     working_faces[face_with_missing_corner] = working_faces[
+    #         face_with_missing_corner
+    #     ]._repairFingerJoints(
+    #         edge_with_missing_corner,
+    #         materialThickness,
+    #         edge_with_missing_corner.positionAt(0).toVertex() != missing_corner,
+    #     )
 
     # Determine which faces have tabs
     tabbed_face_indices = set(
@@ -2738,40 +2803,9 @@ def _makeFingerJointFaces_solid(
 Shape.makeFingerJointFaces = _makeFingerJointFaces_solid
 
 
-def _makeFingerJointAssembly(
-    self,
-    fingerJointedFaces: list["Face"],
-    materialThickness: float,
-    baseAssembly: "Assembly",
-) -> "Assembly":
-    """makeFingerJointAssembly
-
-    Added thickened faces representing laser cut parts into given Assembly.
-
-    Args:
-        fingerJointedFaces (list[Face]): Faces of the finger jointed object
-        materialThickness (float): thickness of material
-        baseAssembly (Assembly): Assembly to add parts to
-
-    Returns:
-        Assembly: the finger jointed object
-    """
-    part_center = self.Center()
-    for finger_jointed_face in fingerJointedFaces:
-        part = finger_jointed_face.thicken(
-            materialThickness, part_center - finger_jointed_face.Center()
-        )
-        baseAssembly.add(
-            part, color=Color(random.random(), random.random(), random.random())
-        )
-    return baseAssembly
-
-
-Shape.makeFingerJointAssembly = _makeFingerJointAssembly
-
 """
 
-Location extensions: __str__()
+Location extensions: __str__(), position(), rotation()
 
 """
 
