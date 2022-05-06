@@ -1309,6 +1309,7 @@ def _makeFingerJoints_workplane(
     targetFingerWidth: float,
     kerfWidth: float = 0.0,
     baseAssembly: "Assembly" = None,
+    fingerLocations: dict = None,
 ) -> T:
     """makeFingerJoints
 
@@ -1347,6 +1348,7 @@ def _makeFingerJoints_workplane(
         kerfWidth (float, optional): Extra size to add (or subtract) to account
             for the kerf of the laser cutter. Defaults to 0.0.
         baseAssembly (Assembly, optional): Assembly to add parts to
+        fingerLocations (dict, optional): Location of center of fingers per edge
 
     Raises:
         ValueError: Missing Solid object
@@ -1366,10 +1368,10 @@ def _makeFingerJoints_workplane(
     finger_joint_edges = self.edges().vals()
     if not finger_joint_edges:
         raise ValueError(
-            "A pending edge(s) must be present to defined the finger jointed edges"
+            "An edge(s) must be present to defined the finger jointed edges"
         )
 
-    jointed_faces = solid_reference.makeFingerJointFaces(
+    jointed_faces, finger_locations_per_edge = solid_reference.makeFingerJointFaces(
         finger_joint_edges, materialThickness, targetFingerWidth, kerfWidth
     )
 
@@ -1383,6 +1385,10 @@ def _makeFingerJoints_workplane(
             baseAssembly.add(
                 part, color=Color(random.random(), random.random(), random.random())
             )
+
+    # Return the location of the fingers if requested (typically to add fasteners)
+    if fingerLocations:
+        fingerLocations = finger_locations_per_edge
 
     return self.newObject(jointed_faces)
 
@@ -1824,25 +1830,30 @@ def _makeFingerJoints_face(
         tab_count = finger_count // 2
 
     face_local = edge_plane.toLocalCoords(self)
-    # notch_widths = iter(
-    #     [finger_width - materialThickness if shortenInitialNotch else finger_width]
-    #     + [finger_width] * (finger_count - 1)
-    # )
-    print(
-        f"{externalCorner=},{finger_count=},{finger_offset=},{finger_offset=},{tab_count=}"
+
+    # Note aligning the dir of the finger with that of the localized face is
+    # required to get the fuse operations to work
+    finger = Face.makePlane(
+        2 * materialThickness,
+        finger_width,
+        basePnt=Vector(),
+        dir=face_local.normalAt(Vector()),
     )
-    combine_mode = "s" if externalCorner else "a"
-    new_face = (
-        Sketch()
-        .face(Compound.makeCompound([face_local]))
-        .push([(edge_length / 2 + finger_offset, 0)])
-        .rarray(2 * finger_width, 0, tab_count, 1)
-        # .rect(next(notch_widths), 2 * materialThickness, mode=combine_mode)
-        .rect(finger_width, 2 * materialThickness, mode=combine_mode)
-        .clean()
-        ._faces.Faces()[0]
-    )
-    return edge_plane.fromLocalCoords(new_face)
+    x_offset = (tab_count - 1) * finger_width - edge_length / 2 + finger_offset
+    finger_positions = [
+        Vector(i * 2 * finger_width - x_offset, 0, 0) for i in range(tab_count)
+    ]
+    finger_locations = [
+        Location(edge_plane.fromLocalCoords(v), self.normalAt(face_center), 0)
+        for v in finger_positions
+    ]
+    for position in finger_positions:
+        if externalCorner:
+            face_local = face_local.cut(finger.translate(position))
+        else:
+            face_local = face_local.fuse(finger.translate(position))
+    new_face = edge_plane.fromLocalCoords(face_local.clean().Faces()[0])
+    return (new_face, finger_locations)
 
 
 Face.makeFingerJoints = _makeFingerJoints_face
@@ -2696,7 +2707,7 @@ def _makeFingerJointFaces_solid(
                 raise ValueError("Edge is invalid")
             edge_adjacency[common_edge] = adjacent_face_indices
 
-    print(f"{len(edge_adjacency)=}")
+    # print(f"{len(edge_adjacency)=}")
     # External edges need tabs cut from the face while internal edges need extended tabs.
     # Faces that aren't perpendicular need the tab depth to be calculated based on the
     # angle between the faces. To facilitate this, calculate the angle between faces
@@ -2720,23 +2731,41 @@ def _makeFingerJointFaces_solid(
             face_normals[0].getSignedAngle(face_normals[1], common_edge.tangentAt(0))
         )
 
-    print(f"{corner_angles=}")
+    # print(f"{corner_angles=}")
 
+    # face_count = {i: (0, 0) for i in range(len(working_faces))}
+
+    finger_locations_per_edge = {}
     # Make complimentary tabs in faces adjacent to common edges
     for common_edge, adjacent_face_indices in edge_adjacency.items():
-        primary_index = adjacent_face_indices[0]
-        secondary_index = adjacent_face_indices[1]
-        if working_face_areas[primary_index] > working_face_areas[secondary_index]:
-            primary_index, secondary_index = secondary_index, primary_index
-        for i in [primary_index, secondary_index]:
-            working_faces[i] = working_faces[i].makeFingerJoints(
+        primary_face_index = adjacent_face_indices[0]
+        secondary_face_index = adjacent_face_indices[1]
+        if (
+            working_face_areas[primary_face_index]
+            < working_face_areas[secondary_face_index]
+        ):
+            primary_face_index, secondary_face_index = (
+                secondary_face_index,
+                primary_face_index,
+            )
+
+        for i in [primary_face_index, secondary_face_index]:
+            working_faces[i], finger_locations = working_faces[i].makeFingerJoints(
                 common_edge,
                 materialThickness,
                 targetFingerWidth,
-                alignToBottom=i == primary_index,
+                alignToBottom=i == primary_face_index,
                 externalCorner=external_corner[common_edge],
             )
-
+            # face_count[i] = (
+            #     face_count[i][0] + int(i == primary_face_index),
+            #     face_count[i][1] + int(i == secondary_face_index),
+            # )
+            if common_edge in finger_locations_per_edge:
+                finger_locations_per_edge[common_edge].extend(finger_locations)
+            else:
+                finger_locations_per_edge[common_edge] = finger_locations
+    # print(f"{face_count=}")
     #
     # ------ Repair ------
     #
@@ -2797,7 +2826,7 @@ def _makeFingerJointFaces_solid(
             for f in tabbed_faces
         ]
 
-    return tabbed_faces
+    return (tabbed_faces, finger_locations_per_edge)
 
 
 Shape.makeFingerJointFaces = _makeFingerJointFaces_solid
