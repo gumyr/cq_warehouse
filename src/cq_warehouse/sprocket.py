@@ -95,7 +95,7 @@ class Sprocket:
             o_radius = self.pitch_radius + self.roller_diameter / 4
         else:
             o_radius = sqrt(
-                self.pitch_radius ** 2 - (self.chain_pitch / 2) ** 2
+                self.pitch_radius**2 - (self.chain_pitch / 2) ** 2
             ) + sqrt(
                 (self.chain_pitch - self.roller_diameter / 2) ** 2
                 - (self.chain_pitch / 2) ** 2
@@ -248,42 +248,42 @@ def make_tooth_outline(
     roller_rad = roller_diameter / 2 + clearance
     tooth_a_degrees = 360 / num_teeth
     half_tooth_a = radians(tooth_a_degrees / 2)
-    pitch_rad = sqrt(chain_pitch ** 2 / (2 * (1 - cos(radians(tooth_a_degrees)))))
+    pitch_rad = sqrt(chain_pitch**2 / (2 * (1 - cos(radians(tooth_a_degrees)))))
     outer_rad = pitch_rad + roller_rad / 2
 
     # Calculate the a at which the tooth arc intersects the outside edge arc
     outer_intersect_a_r = asin(
         (
-            outer_rad ** 3 * (-(pitch_rad * sin(half_tooth_a)))
+            outer_rad**3 * (-(pitch_rad * sin(half_tooth_a)))
             + sqrt(
-                outer_rad ** 6 * (-((pitch_rad * cos(half_tooth_a)) ** 2))
+                outer_rad**6 * (-((pitch_rad * cos(half_tooth_a)) ** 2))
                 + 2
-                * outer_rad ** 4
+                * outer_rad**4
                 * (chain_pitch - roller_rad) ** 2
                 * (pitch_rad * cos(half_tooth_a)) ** 2
-                + 2 * outer_rad ** 4 * (pitch_rad * cos(half_tooth_a)) ** 4
+                + 2 * outer_rad**4 * (pitch_rad * cos(half_tooth_a)) ** 4
                 + 2
-                * outer_rad ** 4
+                * outer_rad**4
                 * (pitch_rad * cos(half_tooth_a)) ** 2
                 * (pitch_rad * sin(half_tooth_a)) ** 2
-                - outer_rad ** 2
+                - outer_rad**2
                 * (chain_pitch - roller_rad) ** 4
                 * (pitch_rad * cos(half_tooth_a)) ** 2
                 + 2
-                * outer_rad ** 2
+                * outer_rad**2
                 * (chain_pitch - roller_rad) ** 2
                 * (pitch_rad * cos(half_tooth_a)) ** 4
                 + 2
-                * outer_rad ** 2
+                * outer_rad**2
                 * (chain_pitch - roller_rad) ** 2
                 * (pitch_rad * cos(half_tooth_a)) ** 2
                 * (pitch_rad * sin(half_tooth_a)) ** 2
-                - outer_rad ** 2 * (pitch_rad * cos(half_tooth_a)) ** 6
+                - outer_rad**2 * (pitch_rad * cos(half_tooth_a)) ** 6
                 - 2
-                * outer_rad ** 2
+                * outer_rad**2
                 * (pitch_rad * cos(half_tooth_a)) ** 4
                 * (pitch_rad * sin(half_tooth_a)) ** 2
-                - outer_rad ** 2
+                - outer_rad**2
                 * (pitch_rad * cos(half_tooth_a)) ** 2
                 * (pitch_rad * sin(half_tooth_a)) ** 4
             )
@@ -298,8 +298,8 @@ def make_tooth_outline(
         / (
             2
             * (
-                outer_rad ** 2 * (pitch_rad * cos(half_tooth_a)) ** 2
-                + outer_rad ** 2 * (pitch_rad * sin(half_tooth_a)) ** 2
+                outer_rad**2 * (pitch_rad * cos(half_tooth_a)) ** 2
+                + outer_rad**2 * (pitch_rad * sin(half_tooth_a)) ** 2
             )
         )
     )
@@ -316,7 +316,7 @@ def make_tooth_outline(
     )
     # The location of the tip of the spike if there is no "flat" section
     spike_pt = Vector(
-        sqrt(pitch_rad ** 2 - (chain_pitch / 2) ** 2)
+        sqrt(pitch_rad**2 - (chain_pitch / 2) ** 2)
         + sqrt((chain_pitch - roller_rad) ** 2 - (chain_pitch / 2) ** 2),
         0,
     )
@@ -333,7 +333,7 @@ def make_tooth_outline(
             .radiusArc(start_pt.flipY().toTuple(), -roller_rad)
             .consolidateWires()
             .translate((-pitch_rad, 0, 0))
-            .rotate((0, 0, 0), (0, 0, 1), 90)
+            # .rotate((0, 0, 0), (0, 0, 1), 90) # polarArray start angle, and rotation fix (#1006)
         )
     else:  # "Spiky" sprockets
         tooth = (
@@ -345,7 +345,7 @@ def make_tooth_outline(
             .radiusArc(start_pt.flipY().toTuple(), -roller_rad)
             .consolidateWires()
             .translate((-pitch_rad, 0, 0))
-            .rotate((0, 0, 0), (0, 0, 1), 90)
+            # .rotate((0, 0, 0), (0, 0, 1), 90)# polarArray start angle, and rotation fix (#1006)
         )
     return tooth.val()
 
