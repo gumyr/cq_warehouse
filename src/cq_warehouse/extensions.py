@@ -1382,7 +1382,9 @@ def _makeFingerJoints_workplane(
             "An edge(s) must be present to defined the finger jointed edges"
         )
 
-    jointed_faces, finger_locations_per_edge = solid_reference.makeFingerJointFaces(
+    logging.debug("Starting new finger jointed shape")
+
+    jointed_faces = solid_reference.makeFingerJointFaces(
         finger_joint_edges, materialThickness, targetFingerWidth, kerfWidth
     )
     # print(len(finger_locations_per_edge))
@@ -1396,11 +1398,14 @@ def _makeFingerJoints_workplane(
             baseAssembly.add(
                 part, color=Color(random.random(), random.random(), random.random())
             )
+        logging.debug(f"{baseAssembly.doObjectsIntersect()=}")
 
     # Return the location of the fingers if requested (typically to add fasteners)
     # if fingerLocations:
     #     for e, locs in finger_locations_per_edge.items():
     #         fingerLocations[e] = locs
+
+    logging.debug("Completed finger jointed shape")
 
     return self.newObject(jointed_faces)
 
@@ -1410,7 +1415,8 @@ Workplane.makeFingerJoints = _makeFingerJoints_workplane
 
 """
 
-Face extensions: thicken(), projectToShape(), embossToShape(), makeHoles(), makeFingerJoints()
+Face extensions: thicken(), projectToShape(), embossToShape(), makeHoles(), makeFingerJoints(),
+                 isInside()
 
 """
 
@@ -1747,14 +1753,34 @@ def _face_makeHoles(self, interiorWires: list["Wire"]) -> "Face":
 Face.makeHoles = _face_makeHoles
 
 
+def _isInside_face(self, point: VectorLike, tolerance: float = 1.0e-6) -> bool:
+    """Point inside Face
+
+    Returns whether or not the point is inside a Face within the specified tolerance.
+    Points on the edge of the Face are considered inside.
+
+    Args:
+        point (VectorLike): tuple or Vector representing 3D point to be tested
+        tolerance (float, optional): tolerance for inside determination. Defaults to 1.0e-6.
+
+    Returns:
+        bool: indicating whether or not point is within Face
+    """
+    return Compound.makeCompound([self]).isInside(point, tolerance)
+
+
+Face.isInside = _isInside_face
+
+
 def _makeFingerJoints_face(
     self: "Face",
     fingerJointEdge: "Edge",
     fingerDepth: float,
     targetFingerWidth: float,
-    cornerFaceCounter: dict,
+    cornerCutFaces: dict,
     alignToBottom: bool = True,
     externalCorner: bool = True,
+    faceIndex: int = 0,
 ) -> "Face":
     """makeFingerJoints
 
@@ -1824,14 +1850,9 @@ def _makeFingerJoints_face(
     finger_positions = [
         Vector(i * 2 * finger_width - x_offset, 0, 0) for i in range(tab_count)
     ]
-    finger_locations = [
-        Location(edge_plane.fromLocalCoords(v), self.normalAt(face_center), 0)
-        for v in finger_positions
-    ]
 
     # Align the Face to the given Edge
     face_local = edge_plane.toLocalCoords(self)
-    y_direction = 1 if face_local.Center().y > 1 else -1
 
     # Note that Face.makePlane doesn't work here as a rectangle creator
     # as it is inconsistent as to what is the x direction.
@@ -1903,43 +1924,42 @@ def _makeFingerJoints_face(
             corner = None
 
         # Update the cornerFaceCounter with current cuts
-        corner_adder = (
-            1
-            if Compound.makeCompound([face_local]).isInside(
-                (fingerDepth / 2, y_direction * fingerDepth / 2, 0)
+        # corner_adder = (
+        #     1
+        #     if face_local.isInside((fingerDepth / 2, 0, 0))
+        #     or face_local.isInside((edge_length - fingerDepth / 2, 0, 0))
+        #     else 0
+        # )
+        corner_adder = face_local.isInside(
+            (fingerDepth / 2, 0, 0)
+        ) or face_local.isInside((edge_length - fingerDepth / 2, 0, 0))
+        cq.Face.operation = cq.Face.cut if externalCorner else cq.Face.fuse
+        tab_type = {finger: "whole", start_part_finger: "start", end_part_finger: "end"}
+        vertex_type = {True: "start", False: "end"}
+        if corner is not None:
+            # if corner in cornerCutFaces:
+            #     cornerCutFaces[corner] += corner_adder
+            # else:
+            #     cornerCutFaces[corner] = corner_adder
+            if corner in cornerCutFaces and corner_adder:
+                cornerCutFaces[corner].add(faceIndex)
+            else:
+                cornerCutFaces[corner] = set([faceIndex])
+            # tab = finger if cornerCutFaces[corner] < 3 else part_finger
+            tab = finger if len(cornerCutFaces[corner]) < 3 else part_finger
+            face_local = face_local.operation(tab.translate(position))
+            logging.debug(
+                f"Corner {corner}, vertex={vertex_type[corner==start_vertex]}, "
+                f"{len(cornerCutFaces[corner])=}, normal={self.normalAt(face_center)}, tab={tab_type[tab]}"
             )
-            else -1
-        )
-        if corner in cornerFaceCounter:
-            cornerFaceCounter[corner] += corner_adder
         else:
-            cornerFaceCounter[corner] = corner_adder
+            face_local = face_local.operation(finger.translate(position))
 
-        if externalCorner:
-            # Cut notches into the face
-            if corner is not None:
-                if cornerFaceCounter[corner] < 3:
-                    face_local = face_local.cut(finger.translate(position))
-                else:
-                    face_local = face_local.cut(part_finger.translate(position))
-            else:
-                face_local = face_local.cut(finger.translate(position))
-        else:
-            # Add fingers to the face
-            if corner is not None:
-                if cornerFaceCounter[corner] > -3:
-                    face_local = face_local.fuse(finger.translate(position))
-                else:
-                    face_local = face_local.fuse(part_finger.translate(position))
-            else:
-                face_local = face_local.fuse(finger.translate(position))
+        face_local = face_local.clean().Faces()[0]
 
-    new_face = edge_plane.fromLocalCoords(face_local.clean().Faces()[0])
+    new_face = edge_plane.fromLocalCoords(face_local)
 
-    # for v in fingerJointEdge.Vertices():
-    #     current_value = cornerCounter[v] if v in cornerCounter else 0
-    #     cornerCounter[v] = current_value + 1
-    return (new_face, finger_locations)
+    return new_face
 
 
 Face.makeFingerJoints = _makeFingerJoints_face
@@ -2856,18 +2876,15 @@ def _makeFingerJointFaces_solid(
             )
 
         for i in [primary_face_index, secondary_face_index]:
-            working_faces[i], finger_locations = working_faces[i].makeFingerJoints(
+            working_faces[i] = working_faces[i].makeFingerJoints(
                 common_edge,
                 finger_depths[common_edge],
                 targetFingerWidth,
                 corner_face_counter,
                 alignToBottom=i == primary_face_index,
                 externalCorner=external_corners[common_edge],
+                faceIndex=i,
             )
-            if common_edge in finger_locations_per_edge:
-                finger_locations_per_edge[common_edge].extend(finger_locations)
-            else:
-                finger_locations_per_edge[common_edge] = finger_locations
 
     # Determine which faces have tabs
     tabbed_face_indices = set(
@@ -2885,7 +2902,7 @@ def _makeFingerJointFaces_solid(
             for f in tabbed_faces
         ]
 
-    return (tabbed_faces, finger_locations_per_edge)
+    return tabbed_faces
 
 
 Shape.makeFingerJointFaces = _makeFingerJointFaces_solid
