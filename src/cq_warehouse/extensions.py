@@ -1924,12 +1924,6 @@ def _makeFingerJoints_face(
             corner = None
 
         # Update the cornerFaceCounter with current cuts
-        # corner_adder = (
-        #     1
-        #     if face_local.isInside((fingerDepth / 2, 0, 0))
-        #     or face_local.isInside((edge_length - fingerDepth / 2, 0, 0))
-        #     else 0
-        # )
         corner_adder = face_local.isInside(
             (fingerDepth / 2, 0, 0)
         ) or face_local.isInside((edge_length - fingerDepth / 2, 0, 0))
@@ -1937,16 +1931,15 @@ def _makeFingerJoints_face(
         tab_type = {finger: "whole", start_part_finger: "start", end_part_finger: "end"}
         vertex_type = {True: "start", False: "end"}
         if corner is not None:
-            # if corner in cornerCutFaces:
-            #     cornerCutFaces[corner] += corner_adder
-            # else:
-            #     cornerCutFaces[corner] = corner_adder
             if corner in cornerCutFaces and corner_adder:
                 cornerCutFaces[corner].add(faceIndex)
             else:
                 cornerCutFaces[corner] = set([faceIndex])
-            # tab = finger if cornerCutFaces[corner] < 3 else part_finger
-            tab = finger if len(cornerCutFaces[corner]) < 3 else part_finger
+            if externalCorner:
+                tab = finger if len(cornerCutFaces[corner]) < 3 else part_finger
+            else:
+                tab = part_finger if len(cornerCutFaces[corner]) < 3 else finger
+
             face_local = face_local.operation(tab.translate(position))
             logging.debug(
                 f"Corner {corner}, vertex={vertex_type[corner==start_vertex]}, "
