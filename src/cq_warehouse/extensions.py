@@ -1856,61 +1856,25 @@ def _makeFingerJoints_face(
 
     # Note that Face.makePlane doesn't work here as a rectangle creator
     # as it is inconsistent as to what is the x direction.
-    # TODO: change these out with Faces made from Wires
-    # finger = cq.Face.makeFromWires(
-    #     cq.Wire.makeRect(
-    #         finger_width,
-    #         2 * fingerDepth,
-    #         center=cq.Vector(),
-    #         normal=face_local.normalAt(Vector()) * -1,
-    #     ),
-    #     [],
-    # )
-    # start_part_finger = cq.Face.makeFromWires(
-    #     cq.Wire.makeRect(
-    #         finger_width - fingerDepth,
-    #         2 * fingerDepth,
-    #         center=cq.Vector(fingerDepth / 2, 0, 0),
-    #         normal=face_local.normalAt(Vector()) * -1,
-    #     ),
-    #     [],
-    # )
-    # end_part_finger = cq.Face.makeFromWires(
-    #     cq.Wire.makeRect(
-    #         finger_width - fingerDepth,
-    #         2 * fingerDepth,
-    #         center=cq.Vector(-fingerDepth / 2, 0, 0),
-    #         normal=face_local.normalAt(Vector()) * -1,
-    #     ),
-    #     [],
-    # )
-
-    finger = (
-        Workplane("XY").rect(finger_width, 2 * fingerDepth).extrude(1).faces("<Z").val()
+    finger = cq.Face.makeFromWires(
+        cq.Wire.makeRect(
+            finger_width,
+            2 * fingerDepth,
+            center=cq.Vector(),
+            normal=face_local.normalAt(Vector()) * -1,
+        ),
+        [],
     )
-    start_part_finger = (
-        Workplane("XY")
-        .center(fingerDepth / 2, 0)
-        .rect(finger_width - fingerDepth, 2 * fingerDepth)
-        .extrude(1)
-        .faces("<Z")
-        .val()
+    start_part_finger = cq.Face.makeFromWires(
+        cq.Wire.makeRect(
+            finger_width - fingerDepth,
+            2 * fingerDepth,
+            center=cq.Vector(fingerDepth / 2, 0, 0),
+            normal=face_local.normalAt(Vector()) * -1,
+        ),
+        [],
     )
-    end_part_finger = (
-        Workplane("XY")
-        .center(-fingerDepth / 2, 0)
-        .rect(finger_width - fingerDepth, 2 * fingerDepth)
-        .extrude(1)
-        .faces("<Z")
-        .val()
-    )
-    # Aligning the dir of the finger with that of the localized face is
-    # required to get the fuse operations to work.
-    if face_local.normalAt(Vector()).z > 0:
-        # if face_local.normalAt(Vector()).z < 0:
-        finger = finger.rotate((0, 0, 0), (1, 0, 0), 180)
-        start_part_finger = start_part_finger.rotate((0, 0, 0), (1, 0, 0), 180)
-        end_part_finger = end_part_finger.rotate((0, 0, 0), (1, 0, 0), 180)
+    end_part_finger = start_part_finger.translate((-fingerDepth, 0, 0))
 
     for position in finger_positions:
         # Is this a corner, if so which one
