@@ -1320,7 +1320,6 @@ def _makeFingerJoints_workplane(
     targetFingerWidth: float,
     kerfWidth: float = 0.0,
     baseAssembly: "Assembly" = None,
-    fingerLocations: dict = None,
 ) -> T:
     """makeFingerJoints
 
@@ -1359,7 +1358,6 @@ def _makeFingerJoints_workplane(
         kerfWidth (float, optional): Extra size to add (or subtract) to account
             for the kerf of the laser cutter. Defaults to 0.0.
         baseAssembly (Assembly, optional): Assembly to add parts to
-        fingerLocations (dict, optional): Location of center of fingers per edge
 
     Raises:
         ValueError: Missing Solid object
@@ -1821,7 +1819,7 @@ def _makeFingerJoints_face(
     edge_plane = Plane(
         origin=edge_origin,
         xDir=edge_tangent,
-        normal=edge_tangent.cross(face_center - edge_origin),
+        normal=edge_tangent.cross((face_center - edge_origin).normalized()),
     )
     # Need to determine the vertex that corresponds to the positionAt(0) point
     end_vertex_index = int(edge_origin == fingerJointEdge.Vertices()[0].toVector())
@@ -1861,6 +1859,7 @@ def _makeFingerJoints_face(
             finger_width,
             2 * fingerDepth,
             center=cq.Vector(),
+            xDir=cq.Vector(1, 0, 0),
             normal=face_local.normalAt(Vector()) * -1,
         ),
         [],
@@ -1870,14 +1869,19 @@ def _makeFingerJoints_face(
             finger_width - fingerDepth,
             2 * fingerDepth,
             center=cq.Vector(fingerDepth / 2, 0, 0),
+            xDir=cq.Vector(1, 0, 0),
             normal=face_local.normalAt(Vector()) * -1,
         ),
         [],
     )
     end_part_finger = start_part_finger.translate((-fingerDepth, 0, 0))
 
+    # Logging strings
+    tab_type = {finger: "whole", start_part_finger: "start", end_part_finger: "end"}
+    vertex_type = {True: "start", False: "end"}
+
     for position in finger_positions:
-        # Is this a corner, if so which one
+        # Is this a corner?, if so which one
         if position.x == finger_width / 2:
             corner = start_vertex
             part_finger = start_part_finger
@@ -1887,15 +1891,14 @@ def _makeFingerJoints_face(
         else:
             corner = None
 
-        # Update the cornerFaceCounter with current cuts
-        corner_adder = face_local.isInside(
-            (fingerDepth / 2, 0, 0)
-        ) or face_local.isInside((edge_length - fingerDepth / 2, 0, 0))
+        # To avoid missing corners (or extra inside corners) check to see if
+        # the corner is already notched
+        corner_not_cut = face_local.isInside(position)
+
         cq.Face.operation = cq.Face.cut if externalCorner else cq.Face.fuse
-        tab_type = {finger: "whole", start_part_finger: "start", end_part_finger: "end"}
-        vertex_type = {True: "start", False: "end"}
+
         if corner is not None:
-            if corner in cornerCutFaces and corner_adder:
+            if corner in cornerCutFaces and corner_not_cut:
                 cornerCutFaces[corner].add(faceIndex)
             else:
                 cornerCutFaces[corner] = set([faceIndex])
@@ -1904,14 +1907,17 @@ def _makeFingerJoints_face(
             else:
                 tab = part_finger if len(cornerCutFaces[corner]) < 3 else finger
 
+            cut_area = face_local.intersect(tab.translate(position)).Area()
             face_local = face_local.operation(tab.translate(position))
             logging.debug(
                 f"Corner {corner}, vertex={vertex_type[corner==start_vertex]}, "
-                f"{len(cornerCutFaces[corner])=}, normal={self.normalAt(face_center)}, tab={tab_type[tab]}"
+                f"{len(cornerCutFaces[corner])=}, normal={self.normalAt(face_center)}, tab={tab_type[tab]}, "
+                f"{cut_area=:.0f}, {tab.Area()/2=:.0f}"
             )
         else:
             face_local = face_local.operation(finger.translate(position))
 
+        # Need to clean and revert the generated Compound back to a Face
         face_local = face_local.clean().Faces()[0]
 
     new_face = edge_plane.fromLocalCoords(face_local)
@@ -1929,7 +1935,9 @@ Wire extensions: makeRect(), makeNonPlanarFace(), projectToShape(), embossToShap
 """
 
 
-def _makeRect(width: float, height: float, center: Vector, normal: Vector) -> "Wire":
+def _makeRect(
+    width: float, height: float, center: Vector, normal: Vector, xDir: Vector = None
+) -> "Wire":
     """Make Rectangle
 
     Make a Rectangle centered on center with the given normal
@@ -1939,6 +1947,7 @@ def _makeRect(width: float, height: float, center: Vector, normal: Vector) -> "W
         height (float): height (local Y)
         center (Vector): rectangle center point
         normal (Vector): rectangle normal
+        xDir (Vector, optional): x direction. Defaults to None.
 
     Returns:
         Wire: The centered rectangle
@@ -1950,7 +1959,10 @@ def _makeRect(width: float, height: float, center: Vector, normal: Vector) -> "W
         (-width / 2, height / 2),
         (width / 2, height / 2),
     ]
-    user_plane = Plane(origin=center, normal=normal)
+    if xDir is None:
+        user_plane = Plane(origin=center, normal=normal)
+    else:
+        user_plane = Plane(origin=center, xDir=xDir, normal=normal)
     corners_world = [user_plane.toWorldCoords(c) for c in corners_local]
     return Wire.makePolygon(corners_world)
 
