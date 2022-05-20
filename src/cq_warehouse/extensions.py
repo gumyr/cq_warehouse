@@ -1810,7 +1810,6 @@ def _makeFingerJoints_face(
     """
     edge_length = fingerJointEdge.Length()
     finger_count = round(edge_length / targetFingerWidth)
-    # finger_count = 2 * round(edge_length / (2 * targetFingerWidth))
     finger_width = edge_length / (finger_count)
     face_center = self.Center()
 
@@ -1880,6 +1879,12 @@ def _makeFingerJoints_face(
     tab_type = {finger: "whole", start_part_finger: "start", end_part_finger: "end"}
     vertex_type = {True: "start", False: "end"}
 
+    def cutCornerCount(corner: Vertex) -> int:
+        if corner in cornerCutFaces:
+            return len(cornerCutFaces[corner])
+        else:
+            return 0
+
     for position in finger_positions:
         # Is this a corner?, if so which one
         if position.x == finger_width / 2:
@@ -1891,28 +1896,28 @@ def _makeFingerJoints_face(
         else:
             corner = None
 
-        # To avoid missing corners (or extra inside corners) check to see if
-        # the corner is already notched
-        corner_not_cut = face_local.isInside(position)
-
         cq.Face.operation = cq.Face.cut if externalCorner else cq.Face.fuse
 
         if corner is not None:
-            if corner in cornerCutFaces and corner_not_cut:
-                cornerCutFaces[corner].add(faceIndex)
-            else:
-                cornerCutFaces[corner] = set([faceIndex])
+            # To avoid missing corners (or extra inside corners) check to see if
+            # the corner is already notched
+            if not face_local.isInside(position):
+                if corner in cornerCutFaces:
+                    cornerCutFaces[corner].add(faceIndex)
+                else:
+                    cornerCutFaces[corner] = set([faceIndex])
             if externalCorner:
-                tab = finger if len(cornerCutFaces[corner]) < 3 else part_finger
+                tab = finger if cutCornerCount(corner) < 3 else part_finger
             else:
-                tab = part_finger if len(cornerCutFaces[corner]) < 3 else finger
+                tab = part_finger if cutCornerCount(corner) < 3 else finger
 
-            cut_area = face_local.intersect(tab.translate(position)).Area()
+            # Modify the face
             face_local = face_local.operation(tab.translate(position))
+
             logging.debug(
                 f"Corner {corner}, vertex={vertex_type[corner==start_vertex]}, "
-                f"{len(cornerCutFaces[corner])=}, normal={self.normalAt(face_center)}, tab={tab_type[tab]}, "
-                f"{cut_area=:.0f}, {tab.Area()/2=:.0f}"
+                f"{cutCornerCount(corner)=}, normal={self.normalAt(face_center)}, tab={tab_type[tab]}, "
+                f"{face_local.intersect(tab.translate(position)).Area()=:.0f}, {tab.Area()/2=:.0f}"
             )
         else:
             face_local = face_local.operation(finger.translate(position))
@@ -1920,6 +1925,7 @@ def _makeFingerJoints_face(
         # Need to clean and revert the generated Compound back to a Face
         face_local = face_local.clean().Faces()[0]
 
+    # Relocate the face back to its original position
     new_face = edge_plane.fromLocalCoords(face_local)
 
     return new_face
@@ -2771,7 +2777,7 @@ def _makeFingerJointFaces_solid(
 
     # Build relationship between vertices, edges and faces
     edge_adjacency = {}  # Faces that share this edge (2)
-    vertex_adjacency = {}  # Faces that share this vertex (2 or more)
+    edge_vertex_adjacency = {}  # Faces that share this vertex
     for common_edge in fingerJointEdges:
         adjacent_face_indices = [
             i for i, face in enumerate(working_faces) if common_edge in face.Edges()
@@ -2781,14 +2787,10 @@ def _makeFingerJointFaces_solid(
                 raise ValueError("Edge is invalid")
             edge_adjacency[common_edge] = adjacent_face_indices
         for v in common_edge.Vertices():
-            if v in vertex_adjacency:
-                vertex_adjacency[v].update(adjacent_face_indices)
+            if v in edge_vertex_adjacency:
+                edge_vertex_adjacency[v].update(adjacent_face_indices)
             else:
-                vertex_adjacency[v] = set(adjacent_face_indices)
-
-    # for v in vertex_adjacency.keys():
-    #     print(f"{v},{vertex_adjacency[v]}")
-    # print(f"{len(edge_adjacency)=}")
+                edge_vertex_adjacency[v] = set(adjacent_face_indices)
 
     # External edges need tabs cut from the face while internal edges need extended tabs.
     # Faces that aren't perpendicular need the tab depth to be calculated based on the
@@ -2820,19 +2822,22 @@ def _makeFingerJointFaces_solid(
             ),
         )
 
-    finger_locations_per_edge = {}
-    corner_face_counter = {}
-    # corner_face_counter = {
-    #     v: set(
-    #         [
-    #             working_faces[f]
-    #             for f in vertex_adjacency[v]
-    #             for v in vertex_adjacency.keys()
-    #         ]
-    #     )
-    # }
+    # If a face is not used (open) it's considered as notched at all corners
+    corner_cut_faces = {}
+    for i, f in enumerate(working_faces):
+        for v in f.Vertices():
+            if i not in edge_vertex_adjacency[v]:
+                if v in corner_cut_faces:
+                    corner_cut_faces[v].add(i)
+                else:
+                    corner_cut_faces[v] = set([i])
+
+    # print(f"{corner_cut_faces=}")
+
     # Make complimentary tabs in faces adjacent to common edges
     for common_edge, adjacent_face_indices in edge_adjacency.items():
+        # For cosmetic reasons, try to be consistent in the notch pattern
+        # by using the face area as the selection factor
         primary_face_index = adjacent_face_indices[0]
         secondary_face_index = adjacent_face_indices[1]
         if (
@@ -2849,7 +2854,7 @@ def _makeFingerJointFaces_solid(
                 common_edge,
                 finger_depths[common_edge],
                 targetFingerWidth,
-                corner_face_counter,
+                corner_cut_faces,
                 alignToBottom=i == primary_face_index,
                 externalCorner=external_corners[common_edge],
                 faceIndex=i,
