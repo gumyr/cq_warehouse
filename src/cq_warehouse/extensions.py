@@ -1775,7 +1775,8 @@ def _makeFingerJoints_face(
     fingerJointEdge: "Edge",
     fingerDepth: float,
     targetFingerWidth: float,
-    cornerCutFaces: dict,
+    cornerFaceCounter: dict,
+    open_internal_vertices: dict,
     alignToBottom: bool = True,
     externalCorner: bool = True,
     faceIndex: int = 0,
@@ -1879,11 +1880,8 @@ def _makeFingerJoints_face(
     tab_type = {finger: "whole", start_part_finger: "start", end_part_finger: "end"}
     vertex_type = {True: "start", False: "end"}
 
-    def cutCornerCount(corner: Vertex) -> int:
-        if corner in cornerCutFaces:
-            return len(cornerCutFaces[corner])
-        else:
-            return 0
+    def lenCornerFaceCounter(corner: Vertex) -> int:
+        return len(cornerFaceCounter[corner]) if corner in cornerFaceCounter else 0
 
     for position in finger_positions:
         # Is this a corner?, if so which one
@@ -1901,22 +1899,31 @@ def _makeFingerJoints_face(
         if corner is not None:
             # To avoid missing corners (or extra inside corners) check to see if
             # the corner is already notched
-            if not face_local.isInside(position):
-                if corner in cornerCutFaces:
-                    cornerCutFaces[corner].add(faceIndex)
+            if (
+                face_local.isInside(position)
+                and externalCorner
+                or not face_local.isInside(position)
+                and not externalCorner
+            ):
+                if corner in cornerFaceCounter:
+                    cornerFaceCounter[corner].add(faceIndex)
                 else:
-                    cornerCutFaces[corner] = set([faceIndex])
+                    cornerFaceCounter[corner] = set([faceIndex])
             if externalCorner:
-                tab = finger if cutCornerCount(corner) < 3 else part_finger
+                tab = finger if lenCornerFaceCounter(corner) < 3 else part_finger
             else:
-                tab = part_finger if cutCornerCount(corner) < 3 else finger
+                # tab = part_finger if lenCornerFaceCounter(corner) < 3 else finger
+                if corner in open_internal_vertices:
+                    tab = finger
+                else:
+                    tab = part_finger if lenCornerFaceCounter(corner) < 3 else finger
 
             # Modify the face
             face_local = face_local.operation(tab.translate(position))
 
             logging.debug(
                 f"Corner {corner}, vertex={vertex_type[corner==start_vertex]}, "
-                f"{cutCornerCount(corner)=}, normal={self.normalAt(face_center)}, tab={tab_type[tab]}, "
+                f"{lenCornerFaceCounter(corner)=}, normal={self.normalAt(face_center)}, tab={tab_type[tab]}, "
                 f"{face_local.intersect(tab.translate(position)).Area()=:.0f}, {tab.Area()/2=:.0f}"
             )
         else:
@@ -2741,7 +2748,7 @@ def _embossText(
 Shape.embossText = _embossText
 
 
-def _makeFingerJointFaces_solid(
+def _makeFingerJointFaces_shape(
     self: "Shape",
     fingerJointEdges: list["Edge"],
     materialThickness: float,
@@ -2750,8 +2757,8 @@ def _makeFingerJointFaces_solid(
 ) -> list["Face"]:
     """makeFingerJointFaces
 
-    Extract Faces from the given shape and create Faces with finger joints
-    cut into the given Edges.
+    Extract Faces from the given Shape (Solid or Compound) and create Faces with finger
+    joints cut into the given Edges.
 
     Args:
         self (Shape): the base shape defining the finger jointed object
@@ -2822,17 +2829,30 @@ def _makeFingerJointFaces_solid(
             ),
         )
 
+    vertices_with_internal_edge = {}
+    for e in fingerJointEdges:
+        for v in e.Vertices():
+            if v in vertices_with_internal_edge:
+                vertices_with_internal_edge[v] = (
+                    vertices_with_internal_edge[v] or not external_corners[e]
+                )
+            else:
+                vertices_with_internal_edge[v] = not external_corners[e]
+    print(f"{vertices_with_internal_edge=}")
+
     # If a face is not used (open) it's considered as notched at all corners
-    corner_cut_faces = {}
+    open_internal_vertices = {}
     for i, f in enumerate(working_faces):
         for v in f.Vertices():
-            if i not in edge_vertex_adjacency[v]:
-                if v in corner_cut_faces:
-                    corner_cut_faces[v].add(i)
-                else:
-                    corner_cut_faces[v] = set([i])
+            if vertices_with_internal_edge[v]:
+                if i not in edge_vertex_adjacency[v]:
+                    if v in open_internal_vertices:
+                        open_internal_vertices[v].add(i)
+                    else:
+                        open_internal_vertices[v] = set([i])
 
-    # print(f"{corner_cut_faces=}")
+    print(f"{open_internal_vertices=}")
+    corner_face_counter = {}
 
     # Make complimentary tabs in faces adjacent to common edges
     for common_edge, adjacent_face_indices in edge_adjacency.items():
@@ -2854,7 +2874,8 @@ def _makeFingerJointFaces_solid(
                 common_edge,
                 finger_depths[common_edge],
                 targetFingerWidth,
-                corner_cut_faces,
+                corner_face_counter,
+                open_internal_vertices,
                 alignToBottom=i == primary_face_index,
                 externalCorner=external_corners[common_edge],
                 faceIndex=i,
@@ -2879,7 +2900,7 @@ def _makeFingerJointFaces_solid(
     return tabbed_faces
 
 
-Shape.makeFingerJointFaces = _makeFingerJointFaces_solid
+Shape.makeFingerJointFaces = _makeFingerJointFaces_shape
 
 
 """
