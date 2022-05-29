@@ -84,6 +84,28 @@ class Assembly(object):
         Returns:
             cq.Location: Location of target relative to self
         """
+    def doObjectsIntersect(self, tolerance: float = 1e-5) -> bool:
+        """Do Objects Intersect
+    
+        Determine if any of the objects within an Assembly intersect by
+        intersecting each of the shapes with each other and checking for
+        a common volume.
+    
+        Args:
+            self (Assembly): Assembly to test
+            tolerance (float, optional): maximum allowable volume difference. Defaults to 1e-5.
+    
+        Returns:
+            bool: do the object intersect
+        """
+    def areObjectsValid(self) -> bool:
+        """Are Objects Valid
+    
+        Check the validity of all the objects in this Assembly
+    
+        Returns:
+            bool: all objects are valid
+        """
 class Plane(object):
     def _toFromLocalCoords(
         self, obj: Union["VectorLike", "Shape", "BoundBox"], to: bool = True
@@ -744,12 +766,29 @@ class Face(object):
         Returns:
             Face: 'self' with holes
         """
+    def isInside(self, point: VectorLike, tolerance: float = 1.0e-6) -> bool:
+        """Point inside Face
+    
+        Returns whether or not the point is inside a Face within the specified tolerance.
+        Points on the edge of the Face are considered inside.
+    
+        Args:
+            point (VectorLike): tuple or Vector representing 3D point to be tested
+            tolerance (float, optional): tolerance for inside determination. Defaults to 1.0e-6.
+    
+        Returns:
+            bool: indicating whether or not point is within Face
+        """
     def makeFingerJoints(
         self: "Face",
         fingerJointEdge: "Edge",
-        materialThickness: float,
+        fingerDepth: float,
         targetFingerWidth: float,
+        cornerFaceCounter: dict,
+        open_internal_vertices: dict,
         alignToBottom: bool = True,
+        externalCorner: bool = True,
+        faceIndex: int = 0,
     ) -> "Face":
         """makeFingerJoints
     
@@ -758,16 +797,20 @@ class Face(object):
         Args:
             self (Face): Face to modify
             fingerJointEdge (Edge): Edge of Face to modify
-            materialThickness (float): thickness of the notch from edge
+            fingerDepth (float): thickness of the notch from edge
             targetFingerWidth (float): approximate with of notch - actual finger width
                 will be calculated such that there are an integer number of fingers on Edge
             alignToBottom (bool, optional): start with a finger or notch. Defaults to True.
+            externalCorner (bool, optional): cut from external corners, add to internal corners.
+                Defaults to True.
     
         Returns:
             Face: the Face with notches on one edge
         """
 class Wire(object):
-    def makeRect(width: float, height: float, center: Vector, normal: Vector) -> "Wire":
+    def makeRect(
+        width: float, height: float, center: Vector, normal: Vector, xDir: Vector = None
+    ) -> "Wire":
         """Make Rectangle
     
         Make a Rectangle centered on center with the given normal
@@ -777,6 +820,7 @@ class Wire(object):
             height (float): height (local Y)
             center (Vector): rectangle center point
             normal (Vector): rectangle normal
+            xDir (Vector, optional): x direction. Defaults to None.
     
         Returns:
             Wire: The centered rectangle
@@ -1025,8 +1069,8 @@ class Shape(object):
     ) -> list["Face"]:
         """makeFingerJointFaces
     
-        Extract Faces from the given shape and create Faces with finger joints
-        cut into the given Edges.
+        Extract Faces from the given Shape (Solid or Compound) and create Faces with finger
+        joints cut into the given Edges.
     
         Args:
             self (Shape): the base shape defining the finger jointed object
@@ -1042,24 +1086,6 @@ class Shape(object):
     
         Returns:
             list[Face]: faces with finger joint cut into selected edges
-        """
-    def makeFingerJointAssembly(
-        self,
-        fingerJointedFaces: list["Face"],
-        materialThickness: float,
-        baseAssembly: "Assembly",
-    ) -> "Assembly":
-        """makeFingerJointAssembly
-    
-        Added thickened faces representing laser cut parts into given Assembly.
-    
-        Args:
-            fingerJointedFaces (list[Face]): Faces of the finger jointed object
-            materialThickness (float): thickness of material
-            baseAssembly (Assembly): Assembly to add parts to
-    
-        Returns:
-            Assembly: the finger jointed object
         """
 class Location(object):
     def __str__(self):

@@ -87,8 +87,8 @@ from OCP.gp import gp_Vec, gp_Pnt, gp_Ax1, gp_Dir, gp_Trsf, gp, gp_GTrsf
 logging.basicConfig(
     filename="cq_warehouse.log",
     encoding="utf-8",
-    level=logging.DEBUG,
-    # level=logging.CRITICAL,
+    # level=logging.DEBUG,
+    level=logging.CRITICAL,
     format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)s - %(funcName)20s() ] - %(message)s",
 )
 
@@ -1776,7 +1776,7 @@ def _makeFingerJoints_face(
     fingerDepth: float,
     targetFingerWidth: float,
     cornerFaceCounter: dict,
-    open_internal_vertices: dict,
+    openInternalVertices: dict,
     alignToBottom: bool = True,
     externalCorner: bool = True,
     faceIndex: int = 0,
@@ -1791,23 +1791,14 @@ def _makeFingerJoints_face(
         fingerDepth (float): thickness of the notch from edge
         targetFingerWidth (float): approximate with of notch - actual finger width
             will be calculated such that there are an integer number of fingers on Edge
+        cornerFaceCounter (dict): the set of faces associated with every corner
+        openInternalVertices (dict): is a vertex part an opening?
         alignToBottom (bool, optional): start with a finger or notch. Defaults to True.
         externalCorner (bool, optional): cut from external corners, add to internal corners.
             Defaults to True.
 
     Returns:
         Face: the Face with notches on one edge
-    """
-
-    """
-    To fix the missing corner problem:
-    - determine the vertex at each end of the line
-    - for each vertex, build a list of notched faces
-    - before notching a corner, ensure no more than two faces have been
-      notched for this vertex
-      - if already two, shorten the notch by notch depth away from ends of edge
-    - update vertex notched faces dictionary
-
     """
     edge_length = fingerJointEdge.Length()
     finger_count = round(edge_length / targetFingerWidth)
@@ -1913,7 +1904,7 @@ def _makeFingerJoints_face(
                 tab = finger if lenCornerFaceCounter(corner) < 3 else part_finger
             else:
                 # tab = part_finger if lenCornerFaceCounter(corner) < 3 else finger
-                if corner in open_internal_vertices:
+                if corner in openInternalVertices:
                     tab = finger
                 else:
                     tab = part_finger if lenCornerFaceCounter(corner) < 3 else finger
@@ -2829,6 +2820,8 @@ def _makeFingerJointFaces_shape(
             ),
         )
 
+    # To avoid missing internal corners with open boxes, determine which vertices
+    # are adjacent to the open face(s)
     vertices_with_internal_edge = {}
     for e in fingerJointEdges:
         for v in e.Vertices():
@@ -2838,9 +2831,6 @@ def _makeFingerJointFaces_shape(
                 )
             else:
                 vertices_with_internal_edge[v] = not external_corners[e]
-    print(f"{vertices_with_internal_edge=}")
-
-    # If a face is not used (open) it's considered as notched at all corners
     open_internal_vertices = {}
     for i, f in enumerate(working_faces):
         for v in f.Vertices():
@@ -2851,7 +2841,7 @@ def _makeFingerJointFaces_shape(
                     else:
                         open_internal_vertices[v] = set([i])
 
-    print(f"{open_internal_vertices=}")
+    # Keep track of the numbers of fingers/notches in the corners
     corner_face_counter = {}
 
     # Make complimentary tabs in faces adjacent to common edges
