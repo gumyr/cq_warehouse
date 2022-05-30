@@ -28,8 +28,7 @@ To create these boxes, one just needs to create the solid object, select edges, 
 
 
 .. warning::
-
-	Not all shapes will result in a valid set of finger jointed box patterns.
+    Not all shapes will result in a valid set of finger jointed box patterns.
 
     Although the goal of this package is to enable the creation of a finger jointed
     box from any object with planar faces, this goal has not been fully achieved.
@@ -40,11 +39,17 @@ To create these boxes, one just needs to create the solid object, select edges, 
 The Workplane used to create a finger jointed box must contain a solid object
 (actually a Solid or Compound object), and one or more Edges that is to be jointed.
 In the above example, all of the edges are selected except for those on the top
-of the object which results in an open box. The resulting faces can be edited further
-if required. Here is an example of what the faces created for a simple box:
+of the object which results in an open box. The resulting faces can be further
+modified if required.
+
+Here is an example of finger jointed faces of a simple box:
 
 .. image:: finger_jointed_box_faces.png
 	:alt: finger_jointed_box_faces
+
+Notice how the finger joints on the nearest corner are in a different pattern than
+the simple fingers on the other parts of the box? This is done to avoid the
+creation of a missing corner.
 
 Finger joint size is calculated internally such that an integer number of finger joints
 are present on each edge - i.e. if the ``targetFingerWidth`` would result in a partial

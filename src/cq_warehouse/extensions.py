@@ -1372,8 +1372,6 @@ def _makeFingerJoints_workplane(
             "A solid object must be present to define the finger jointed faces"
         )
 
-    # finger_joint_edges = self.ctx.popPendingEdges()
-    # finger_joint_edges = cast(list[Edge], self.edges().vals())
     finger_joint_edges = self.edges().vals()
     if not finger_joint_edges:
         raise ValueError(
@@ -1385,7 +1383,6 @@ def _makeFingerJoints_workplane(
     jointed_faces = solid_reference.makeFingerJointFaces(
         finger_joint_edges, materialThickness, targetFingerWidth, kerfWidth
     )
-    # print(len(finger_locations_per_edge))
     # If the assembly is requested, create Solids from faces and store them
     if baseAssembly:
         part_center = solid_reference.Center()
@@ -1397,11 +1394,6 @@ def _makeFingerJoints_workplane(
                 part, color=Color(random.random(), random.random(), random.random())
             )
         logging.debug(f"{baseAssembly.doObjectsIntersect()=}")
-
-    # Return the location of the fingers if requested (typically to add fasteners)
-    # if fingerLocations:
-    #     for e, locs in finger_locations_per_edge.items():
-    #         fingerLocations[e] = locs
 
     logging.debug("Completed finger jointed shape")
 
@@ -1796,6 +1788,7 @@ def _makeFingerJoints_face(
         alignToBottom (bool, optional): start with a finger or notch. Defaults to True.
         externalCorner (bool, optional): cut from external corners, add to internal corners.
             Defaults to True.
+        faceIndex (int, optional): the index of the current face. Defaults to 0.
 
     Returns:
         Face: the Face with notches on one edge
@@ -2766,9 +2759,6 @@ def _makeFingerJointFaces_shape(
     Returns:
         list[Face]: faces with finger joint cut into selected edges
     """
-
-    # TODO: Internal edges cause excess corners
-
     # Store the faces for modification
     working_faces = self.Faces()
     working_face_areas = [f.Area() for f in working_faces]

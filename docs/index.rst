@@ -72,6 +72,7 @@ Table Of Contents
     chain.rst
     drafting.rst
     extensions.rst
+    finger_jointed_boxes.rst
     fastener.rst
     sprocket.rst
     thread.rst
