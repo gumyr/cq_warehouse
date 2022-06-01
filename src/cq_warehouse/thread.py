@@ -53,9 +53,6 @@ def imperial_str_to_float(measure: str) -> float:
     return result
 
 
-cq.Shape
-
-
 class Thread:
     """Helical thread
 
@@ -124,6 +121,33 @@ class Thread:
     @property
     def cq_object(self):
         """A cadquery Solid thread as defined by class attributes"""
+        # Create base cylindrical thread
+        number_faded_ends = self.end_finishes.count("fade")
+        cylindrical_thread_length = self.length + self.pitch * (
+            1 - 1 * number_faded_ends
+        )
+        if self.end_finishes[0] == "fade":
+            cylindrical_thread_displacement = self.pitch / 2
+        else:
+            cylindrical_thread_displacement = -self.pitch / 2
+
+        # Either create a cylindrical thread for further processing
+        # or create a cylindrical thread segment with faded ends
+        if number_faded_ends == 0:
+            self._cq_object = self.make_thread_solid(
+                cylindrical_thread_length
+            ).translate((0, 0, cylindrical_thread_displacement))
+        else:
+            self.make_thread_with_faded_ends(
+                number_faded_ends,
+                cylindrical_thread_length,
+                cylindrical_thread_displacement,
+            )
+
+        # Square off ends if requested
+        self.square_off_ends()
+        # Chamfer ends if requested
+        self.chamfer_ends()
         return self._cq_object
 
     def __init__(
@@ -165,33 +189,33 @@ class Thread:
         self.tooth_height = abs(self.apex_radius - self.root_radius)
         self.taper = 360 if taper_angle is None else taper_angle
 
-        # Create base cylindrical thread
-        number_faded_ends = self.end_finishes.count("fade")
-        cylindrical_thread_length = self.length + self.pitch * (
-            1 - 1 * number_faded_ends
-        )
-        if self.end_finishes[0] == "fade":
-            cylindrical_thread_displacement = self.pitch / 2
-        else:
-            cylindrical_thread_displacement = -self.pitch / 2
+        # # Create base cylindrical thread
+        # number_faded_ends = self.end_finishes.count("fade")
+        # cylindrical_thread_length = self.length + self.pitch * (
+        #     1 - 1 * number_faded_ends
+        # )
+        # if self.end_finishes[0] == "fade":
+        #     cylindrical_thread_displacement = self.pitch / 2
+        # else:
+        #     cylindrical_thread_displacement = -self.pitch / 2
 
-        # Either create a cylindrical thread for further processing
-        # or create a cylindrical thread segment with faded ends
-        if number_faded_ends == 0:
-            self._cq_object = self.make_thread_solid(
-                cylindrical_thread_length
-            ).translate((0, 0, cylindrical_thread_displacement))
-        else:
-            self.make_thread_with_faded_ends(
-                number_faded_ends,
-                cylindrical_thread_length,
-                cylindrical_thread_displacement,
-            )
+        # # Either create a cylindrical thread for further processing
+        # # or create a cylindrical thread segment with faded ends
+        # if number_faded_ends == 0:
+        #     self._cq_object = self.make_thread_solid(
+        #         cylindrical_thread_length
+        #     ).translate((0, 0, cylindrical_thread_displacement))
+        # else:
+        #     self.make_thread_with_faded_ends(
+        #         number_faded_ends,
+        #         cylindrical_thread_length,
+        #         cylindrical_thread_displacement,
+        #     )
 
-        # Square off ends if requested
-        self.square_off_ends()
-        # Chamfer ends if requested
-        self.chamfer_ends()
+        # # Square off ends if requested
+        # self.square_off_ends()
+        # # Chamfer ends if requested
+        # self.chamfer_ends()
 
     def make_thread_with_faded_ends(
         self,
