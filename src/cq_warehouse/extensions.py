@@ -37,7 +37,8 @@ import math
 import random
 from itertools import combinations
 from functools import reduce
-from typing import Optional, Literal, Union, Tuple
+from token import OP
+from typing import Optional, Literal, Union, Tuple, Iterable
 import cadquery as cq
 from cadquery.occ_impl.shapes import VectorLike
 from cadquery.cq import T
@@ -59,7 +60,16 @@ from cadquery import (
     DirectionMinMaxSelector,
     Color,
 )
-from cq_warehouse.fastener import Screw, Nut, Washer, HeatSetNut
+from cq_warehouse.fastener import (
+    Screw,
+    Nut,
+    Washer,
+    HeatSetNut,
+    DomedCapNut,
+    HexNut,
+    UnchamferedHexagonNut,
+    SquareNut,
+)
 from cq_warehouse.bearing import Bearing
 from cq_warehouse.thread import IsoThread
 
@@ -856,6 +866,7 @@ def _fastenerHole(
     fit: Optional[Literal["Close", "Normal", "Loose"]] = None,
     material: Optional[Literal["Soft", "Hard"]] = None,
     counterSunk: Optional[bool] = True,
+    captiveNut: Optional[bool] = False,
     baseAssembly: Optional["Assembly"] = None,
     hand: Optional[Literal["right", "left"]] = None,
     simple: Optional[bool] = False,
@@ -875,6 +886,7 @@ def _fastenerHole(
         fit: one of "Close", "Normal", "Loose" which determines clearance hole diameter. Defaults to None.
         material: on of "Soft", "Hard" which determines tap hole size. Defaults to None.
         counterSunk: Is the fastener countersunk into the part?. Defaults to True.
+        captiveNut: Countersink with a rectangular, filleted, hole. Defaults to False.
         baseAssembly: Assembly to add faster to. Defaults to None.
         hand: tap hole twist direction either "right" or "left". Defaults to None.
         simple: tap hole thread complexity selector. Defaults to False.
@@ -897,7 +909,30 @@ def _fastenerHole(
     # Setscrews' countersink_profile is None so check if it exists
     # countersink_profile = fastener.countersink_profile(fit)
     countersink_profile = countersinkProfile
-    if counterSunk and not countersink_profile is None:
+    if captiveNut:
+        clearance = fastener.clearance_hole_diameters[fit] - fastener.thread_diameter
+        head_offset = countersink_profile.vertices(">Z").val().Z
+        if isinstance(fastener, (DomedCapNut, HexNut, UnchamferedHexagonNut)):
+            rect_width = fastener.nut_diameter + clearance
+            rect_height = fastener.nut_diameter * math.sin(math.pi / 3) + clearance
+        elif isinstance(fastener, SquareNut):
+            rect_height = fastener.nut_diameter * math.sqrt(2) / 2 + clearance
+            rect_width = rect_height + 2 * fastener.nut_diameter / 4 + clearance
+        else:
+            raise ValueError(
+                "Only DomedCapNut, HexNut, UnchamferedHexagonNut or SquareNut can be captive"
+            )
+        countersink_cutter = (
+            cq.Workplane("XY")
+            .sketch()
+            .rect(rect_width, rect_height)
+            .vertices()
+            .fillet(fastener.nut_diameter / 4)
+            .finalize()
+            .extrude(-head_offset)
+            .val()
+        )
+    elif counterSunk and not countersink_profile is None:
         head_offset = countersink_profile.vertices(">Z").val().Z
         countersink_cutter = (
             countersink_profile.revolve().translate((0, 0, -head_offset)).val()
@@ -1003,6 +1038,7 @@ def _clearanceHole(
     fit: Optional[Literal["Close", "Normal", "Loose"]] = "Normal",
     depth: Optional[float] = None,
     counterSunk: Optional[bool] = True,
+    captiveNut: Optional[bool] = False,
     baseAssembly: Optional["Assembly"] = None,
     clean: Optional[bool] = True,
 ) -> T:
@@ -1035,6 +1071,13 @@ def _clearanceHole(
             "clearanceHole doesn't accept fasteners of type HeatSetNut - use insertHole instead"
         )
 
+    if captiveNut and not isinstance(
+        fastener, (DomedCapNut, HexNut, UnchamferedHexagonNut, SquareNut)
+    ):
+        raise ValueError(
+            "Only DomedCapNut, HexNut, UnchamferedHexagonNut or SquareNut can be captive"
+        )
+
     if depth is None:
         depth = self.largestDimension()
 
@@ -1046,6 +1089,7 @@ def _clearanceHole(
         fit=fit,
         depth=depth,
         counterSunk=counterSunk,
+        captiveNut=captiveNut,
         baseAssembly=baseAssembly,
         clean=clean,
     )
@@ -2461,7 +2505,8 @@ Edge.embossToShape = _embossEdgeToShape
 
 """
 
-Shape extensions: transformed(), findIntersection(), projectText(), embossText(), makeFingerJointFaces()
+Shape extensions: transformed(), findIntersection(), projectText(), embossText(), makeFingerJointFaces(),
+                  maxFillet()
 
 """
 
@@ -2882,6 +2927,66 @@ def _makeFingerJointFaces_shape(
 
 Shape.makeFingerJointFaces = _makeFingerJointFaces_shape
 
+
+def _maxFillet(
+    self: "Shape",
+    edgeList: Iterable["Edge"],
+    tolerance=0.1,
+    maxIterations: int = 10,
+) -> float:
+    """Find Maximum Fillet Size
+
+    Find the largest fillet radius for the given Shape and Edges with a
+    recursive binary search.
+
+    Args:
+        edgeList (Iterable[Edge]): a list of Edge objects, which must belong to this solid
+        tolerance (float, optional): maximum error from actual value. Defaults to 0.1.
+        maxIterations (int, optional): maximum number of recursive iterations. Defaults to 10.
+
+    Raises:
+        RuntimeError: failed to find the max value
+        ValueError: the provided Shape is invalid
+
+    Returns:
+        float: maximum fillet radius
+
+    As an example:
+        max_fillet_radius = my_shape.maxFillet(shape_edges)
+    or:
+        max_fillet_radius = my_shape.maxFillet(shape_edges, tolerance=0.5, maxIterations=8)
+
+    """
+
+    def __maxFillet(window_min: float, window_max: float, current_iteration: int):
+        window_mid = (window_min + window_max) / 2
+
+        if current_iteration == maxIterations:
+            raise RuntimeError(
+                f"Failed to find the max value within {tolerance} in {maxIterations}"
+            )
+
+        # Do these numbers work? - if not try with the smaller window
+        try:
+            if not self.fillet(window_mid, edgeList).isValid():
+                raise StdFail_NotDone
+        except StdFail_NotDone:
+            return __maxFillet(window_min, window_mid, current_iteration + 1)
+
+        # These numbers work, are they close enough? - if not try larger window
+        if window_mid - window_min <= tolerance:
+            return window_mid
+        else:
+            return __maxFillet(window_mid, window_max, current_iteration + 1)
+
+    if not self.isValid():
+        raise ValueError("Invalid Shape")
+    max_radius = __maxFillet(0.0, 2 * self.BoundingBox().DiagonalLength, 0)
+
+    return max_radius
+
+
+Shape.maxFillet = _maxFillet
 
 """
 

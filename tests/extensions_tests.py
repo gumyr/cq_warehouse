@@ -78,6 +78,25 @@ class AssemblyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             test_assembly.findLocation("missing")
 
+    def test_areObjectsValid(self):
+        valid = cq.Assembly(cq.Solid.makeSphere(1))
+        self.assertTrue(valid.areObjectsValid())
+        invalid = cq.Assembly(cq.Workplane("XY").box(1, 1, 1).edges().fillet(0.7))
+        self.assertFalse(invalid.areObjectsValid())
+
+    def test_doObjectsIntersect(self):
+        test_assembly = cq.Assembly(cq.Solid.makeSphere(1))
+        test_assembly.add(
+            cq.Assembly(cq.Solid.makeSphere(1), loc=cq.Location(cq.Vector(10, 10, 10)))
+        )
+        self.assertFalse(test_assembly.doObjectsIntersect())
+        test_assembly.add(
+            cq.Assembly(
+                cq.Solid.makeBox(5, 5, 5), loc=cq.Location(cq.Vector(10, 10, 10))
+            )
+        )
+        self.assertTrue(test_assembly.doObjectsIntersect())
+
 
 class FaceTests(unittest.TestCase):
     """Test new Face methods - not including projection or emboss"""
@@ -141,6 +160,31 @@ class ShapeTests(unittest.TestCase):
         )
         difference = workplane_transformed.cut(shape_transformed).val().Volume()
         self.assertAlmostEqual(difference, 0.0, 7)
+
+    def test_maxFillet(self):
+        # Invalid object
+        with self.assertRaises(Exception):
+            cq.Workplane("XY").box(1, 1, 1).fillet(0.7).maxFillet()
+
+        # Test Solids and Workplanes
+        test_solids = [cq.Solid.makeBox(10, 8, 2), Solid.makeCone(5, 3, 8)]
+        test_workplanes = [
+            cq.Workplane("XY").box(10, 8, 2).box(8, 6, 4, combine=True),
+            cq.Workplane("XY").box(10, 8, 2),
+            cq.Workplane("XY").polygon(6, 10).workplane(offset=10).polygon(6, 6).loft(),
+        ]
+        test_workplane_edge_selectors = ["", ">Z", ""]
+
+        for i, test_object in enumerate(test_solids):
+            with self.subTest("solids" + str(i)):
+                test_object.maxFillet(test_object.Edges())
+
+        for i, test_object in enumerate(test_workplanes):
+            with self.subTest("workplanes" + str(i)):
+                edges_to_fillet = test_object.edges(
+                    test_workplane_edge_selectors[i]
+                ).vals()
+                test_object.val().maxFillet(edges_to_fillet)
 
 
 class WorkplaneTests(unittest.TestCase):
@@ -555,6 +599,18 @@ class FastenerTests(unittest.TestCase):
         self.assertEqual(pillow_block.fastenerQuantities(bom=False)[screw], 1)
         self.assertEqual(len(pillow_block.fastenerQuantities(bom=True)), 1)
         self.assertEqual(len(pillow_block.fastenerQuantities(bom=True, deep=False)), 1)
+
+    def test_captive_clearance_hole(self):
+        nut = HexNut(size="M6-1", fastener_type="iso4033")
+        box = (
+            cq.Workplane("XY")
+            .box(10, 10, 10)
+            .faces(">Z")
+            .workplane()
+            .clearanceHole(fastener=nut, captiveNut=True)
+            .val()
+        )
+        self.assertLess(box.Volume(), 999.99)
 
     def test_invalid_clearance_hole(self):
         for fastener_class in Screw.__subclasses__() + Nut.__subclasses__():
