@@ -30,7 +30,12 @@ import math
 import unittest
 import cadquery as cq
 from cq_warehouse.extensions import *
-from cq_warehouse.fastener import SocketHeadCapScrew, DomedCapNut, ChamferedWasher
+from cq_warehouse.fastener import (
+    SocketHeadCapScrew,
+    DomedCapNut,
+    ChamferedWasher,
+    HexNutWithFlange,
+)
 from cq_warehouse.bearing import SingleRowDeepGrooveBallBearing
 
 
@@ -601,16 +606,31 @@ class FastenerTests(unittest.TestCase):
         self.assertEqual(len(pillow_block.fastenerQuantities(bom=True, deep=False)), 1)
 
     def test_captive_clearance_hole(self):
-        nut = HexNut(size="M6-1", fastener_type="iso4033")
-        box = (
-            cq.Workplane("XY")
-            .box(10, 10, 10)
-            .faces(">Z")
-            .workplane()
-            .clearanceHole(fastener=nut, captiveNut=True)
-            .val()
-        )
-        self.assertLess(box.Volume(), 999.99)
+        nut_classes = [HexNut, SquareNut]
+        nut_types = ["iso4033", "din557"]
+        for c, t in zip(nut_classes, nut_types):
+            with self.subTest("class" + c.__name__):
+                nut = c(size="M6-1", fastener_type=t)
+                box = (
+                    cq.Workplane("XY")
+                    .box(10, 10, 10)
+                    .faces(">Z")
+                    .workplane()
+                    .clearanceHole(fastener=nut, captiveNut=True)
+                    .val()
+                )
+                self.assertLess(box.Volume(), 999.99)
+
+    def test_captive_clearance_hole_error(self):
+        nut = HexNutWithFlange(size="M6-1", fastener_type="din1665")
+        with self.assertRaises(ValueError):
+            (
+                cq.Workplane("XY")
+                .box(10, 10, 10)
+                .faces(">Z")
+                .workplane()
+                .clearanceHole(fastener=nut, captiveNut=True)
+            )
 
     def test_invalid_clearance_hole(self):
         for fastener_class in Screw.__subclasses__() + Nut.__subclasses__():

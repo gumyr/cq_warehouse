@@ -23,7 +23,7 @@ Here is a list of the classes (and fastener types) provided:
 
   * ``BradTeeNut``: Hilitchi
   * ``DomedCapNut``: din1587
-  * ``HeatSetNut``: McMaster-Carr
+  * ``HeatSetNut``: McMaster-Carr, Hilitchi
   * ``HexNut``: iso4033, iso4035, iso4032
   * ``HexNutWithFlange``: din1665
   * ``UnchamferedHexagonNut``: iso4036
@@ -149,7 +149,7 @@ parameters. All derived nuts inherit the same API as the base Nut class.
 
 * ``BradTeeNut``: Hilitchi
 * ``DomedCapNut``: din1587
-* ``HeatSetNut``: McMaster-Carr
+* ``HeatSetNut``: McMaster-Carr, Hilitchi
 * ``HexNut``: iso4033, iso4035, iso4032
 * ``HexNutWithFlange``: din1665
 * ``UnchamferedHexagonNut``: iso4036
@@ -407,6 +407,19 @@ Note that with imperial sized holes (e.g. 7/16), the drill sizes could be a frac
 or a numbered or lettered size (e.g. U). This information can be added to your designs with the
 :ref:`drafting <drafting>` sub-package.
 
+
+The :meth:`~extensions_doc.Workplane.clearanceHole` method has a ``captiveNut`` parameter that
+when used with a hex or square nut will create a hole that captures the nut such that it
+can't spin.  Here is an example:
+
+.. literalinclude:: ../examples/captive_nuts.py
+
+Which results in:
+
+.. image:: captive_nuts.png
+	:alt: captive_nuts
+
+The space around the nuts is controlled by the ``fit`` parameter.
 
 The :meth:`~extensions_doc.Workplane.insertHole` is much like the previous three custom hole
 methods but creates holes for heat set inserts in plastic parts - commonly used in 3D printing.

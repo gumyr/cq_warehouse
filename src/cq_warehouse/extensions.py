@@ -913,21 +913,20 @@ def _fastenerHole(
         clearance = fastener.clearance_hole_diameters[fit] - fastener.thread_diameter
         head_offset = countersink_profile.vertices(">Z").val().Z
         if isinstance(fastener, (DomedCapNut, HexNut, UnchamferedHexagonNut)):
+            fillet_radius = fastener.nut_diameter / 4
             rect_width = fastener.nut_diameter + clearance
             rect_height = fastener.nut_diameter * math.sin(math.pi / 3) + clearance
         elif isinstance(fastener, SquareNut):
+            fillet_radius = fastener.nut_diameter / 8
             rect_height = fastener.nut_diameter * math.sqrt(2) / 2 + clearance
-            rect_width = rect_height + 2 * fastener.nut_diameter / 4 + clearance
-        else:
-            raise ValueError(
-                "Only DomedCapNut, HexNut, UnchamferedHexagonNut or SquareNut can be captive"
-            )
+            rect_width = rect_height + 2 * fillet_radius + clearance
+
         countersink_cutter = (
             cq.Workplane("XY")
             .sketch()
             .rect(rect_width, rect_height)
             .vertices()
-            .fillet(fastener.nut_diameter / 4)
+            .fillet(fillet_radius)
             .finalize()
             .extrude(-head_offset)
             .val()
