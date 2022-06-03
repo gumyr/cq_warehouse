@@ -407,6 +407,8 @@ Note that with imperial sized holes (e.g. 7/16), the drill sizes could be a frac
 or a numbered or lettered size (e.g. U). This information can be added to your designs with the
 :ref:`drafting <drafting>` sub-package.
 
+Captive Nuts
+============
 
 The :meth:`~extensions_doc.Workplane.clearanceHole` method has a ``captiveNut`` parameter that
 when used with a hex or square nut will create a hole that captures the nut such that it
@@ -420,6 +422,9 @@ Which results in:
 	:alt: captive_nuts
 
 The space around the nuts is controlled by the ``fit`` parameter.
+
+Insert Nuts
+===========
 
 The :meth:`~extensions_doc.Workplane.insertHole` is much like the previous three custom hole
 methods but creates holes for heat set inserts in plastic parts - commonly used in 3D printing.

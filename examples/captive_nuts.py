@@ -11,12 +11,13 @@ block = (
     .faces(">Z")
     .workplane()
     .pushPoints([(-12.5, 0)])
-    .clearanceHole(fastener=hex_nut, captiveNut=True, baseAssembly=test_assembly)
+    .clearanceHole(
+        fastener=hex_nut, fit="Loose", captiveNut=True, baseAssembly=test_assembly
+    )
     .pushPoints([(+12.5, 0)])
     .clearanceHole(fastener=square_nut, captiveNut=True, baseAssembly=test_assembly)
 )
 test_assembly.add(block, color=cq.Color("tan"))
 
 if "show_object" in locals():
-    show_object(block, name="block")
     show_object(test_assembly, name="test_assembly")
