@@ -860,9 +860,9 @@ def _fastenerHole(
     self: T,
     hole_diameters: dict,
     fastener: Union["Nut", "Screw"],
-    depth: float,
     washers: list["Washer"],
     countersinkProfile: "Workplane",
+    depth: Optional[float] = None,
     fit: Optional[Literal["Close", "Normal", "Loose"]] = None,
     material: Optional[Literal["Soft", "Hard"]] = None,
     counterSunk: Optional[bool] = True,
@@ -880,9 +880,9 @@ def _fastenerHole(
     Args:
         hole_diameters: either clearance or tap hole diameter specifications
         fastener: A nut or screw instance
-        depth: hole depth
         washers: A list of washer instances, can be empty
         countersinkProfile: the 2D side profile of the fastener (not including a screw's shaft)
+        depth: hole depth. Defaults to through part.
         fit: one of "Close", "Normal", "Loose" which determines clearance hole diameter. Defaults to None.
         material: on of "Soft", "Hard" which determines tap hole size. Defaults to None.
         counterSunk: Is the fastener countersunk into the part?. Defaults to True.
@@ -905,6 +905,15 @@ def _fastenerHole(
 
     bore_direction = Vector(0, 0, -1)
     origin = Vector(0, 0, 0)
+
+    # If no depth is given go through part, else align screw to bottom of hole
+    if depth is None:
+        hole_depth_offset = 0
+        depth = self.largestDimension()
+    elif isinstance(fastener, Screw):
+        hole_depth_offset = fastener.length - depth
+    else:
+        hole_depth_offset = 0
 
     # Setscrews' countersink_profile is None so check if it exists
     # countersink_profile = fastener.countersink_profile(fit)
@@ -1000,7 +1009,12 @@ def _fastenerHole(
                 loc=hole_loc
                 * Location(
                     bore_direction
-                    * (head_offset - fastener.length_offset() - washer_thicknesses)
+                    * (
+                        head_offset
+                        - fastener.length_offset()
+                        - washer_thicknesses
+                        - hole_depth_offset
+                    )
                 ),
             )
             # Create a metadata entry associating the auto-generated name & fastener
@@ -1077,9 +1091,6 @@ def _clearanceHole(
             "Only DomedCapNut, HexNut, UnchamferedHexagonNut or SquareNut can be captive"
         )
 
-    if depth is None:
-        depth = self.largestDimension()
-
     return self.fastenerHole(
         hole_diameters=fastener.clearance_hole_diameters,
         fastener=fastener,
@@ -1132,9 +1143,6 @@ def _insertHole(
     if not isinstance(fastener, HeatSetNut):
         raise ValueError("insertHole only accepts fasteners of type HeatSetNut")
 
-    if depth is None:
-        depth = self.largestDimension()
-
     return self.fastenerHole(
         hole_diameters=fastener.clearance_hole_diameters,
         fastener=fastener,
@@ -1182,9 +1190,6 @@ def _pressFitHole(
 
     if not isinstance(bearing, Bearing):
         raise ValueError("pressFitHole only accepts bearings")
-
-    if depth is None:
-        depth = self.largestDimension()
 
     return self.fastenerHole(
         hole_diameters=bearing.clearance_hole_diameters,
@@ -1239,9 +1244,6 @@ def _tapHole(
         raise ValueError(
             "tapHole doesn't accept fasteners of type HeatSetNut - use insertHole instead"
         )
-
-    if depth is None:
-        depth = self.largestDimension()
 
     return self.fastenerHole(
         hole_diameters=fastener.tap_hole_diameters,
