@@ -1,4 +1,4 @@
-from typing import Union, Tuple, Optional, Literal
+from typing import Union, Tuple, Optional, Literal, Iterable
 from fastener import Screw, Nut, Washer
 from bearing import Bearing
 class gp_Ax1:
@@ -83,6 +83,28 @@ class Assembly(object):
     
         Returns:
             cq.Location: Location of target relative to self
+        """
+    def doObjectsIntersect(self, tolerance: float = 1e-5) -> bool:
+        """Do Objects Intersect
+    
+        Determine if any of the objects within an Assembly intersect by
+        intersecting each of the shapes with each other and checking for
+        a common volume.
+    
+        Args:
+            self (Assembly): Assembly to test
+            tolerance (float, optional): maximum allowable volume difference. Defaults to 1e-5.
+    
+        Returns:
+            bool: do the object intersect
+        """
+    def areObjectsValid(self) -> bool:
+        """Are Objects Valid
+    
+        Check the validity of all the objects in this Assembly
+    
+        Returns:
+            bool: all objects are valid
         """
 class Plane(object):
     def _toFromLocalCoords(
@@ -348,12 +370,13 @@ class Workplane(object):
         self: T,
         hole_diameters: dict,
         fastener: Union["Nut", "Screw"],
-        depth: float,
         washers: list["Washer"],
         countersinkProfile: "Workplane",
+        depth: Optional[float] = None,
         fit: Optional[Literal["Close", "Normal", "Loose"]] = None,
         material: Optional[Literal["Soft", "Hard"]] = None,
         counterSunk: Optional[bool] = True,
+        captiveNut: Optional[bool] = False,
         baseAssembly: Optional["Assembly"] = None,
         hand: Optional[Literal["right", "left"]] = None,
         simple: Optional[bool] = False,
@@ -367,12 +390,13 @@ class Workplane(object):
         Args:
             hole_diameters: either clearance or tap hole diameter specifications
             fastener: A nut or screw instance
-            depth: hole depth
             washers: A list of washer instances, can be empty
             countersinkProfile: the 2D side profile of the fastener (not including a screw's shaft)
+            depth: hole depth. Defaults to through part.
             fit: one of "Close", "Normal", "Loose" which determines clearance hole diameter. Defaults to None.
             material: on of "Soft", "Hard" which determines tap hole size. Defaults to None.
             counterSunk: Is the fastener countersunk into the part?. Defaults to True.
+            captiveNut: Countersink with a rectangular, filleted, hole. Defaults to False.
             baseAssembly: Assembly to add faster to. Defaults to None.
             hand: tap hole twist direction either "right" or "left". Defaults to None.
             simple: tap hole thread complexity selector. Defaults to False.
@@ -391,6 +415,7 @@ class Workplane(object):
         fit: Optional[Literal["Close", "Normal", "Loose"]] = "Normal",
         depth: Optional[float] = None,
         counterSunk: Optional[bool] = True,
+        captiveNut: Optional[bool] = False,
         baseAssembly: Optional["Assembly"] = None,
         clean: Optional[bool] = True,
     ) -> T:
@@ -563,6 +588,58 @@ class Workplane(object):
         Returns:
             Location objects on the workplane stack
         """
+    def makeFingerJoints(
+        self: T,
+        materialThickness: float,
+        targetFingerWidth: float,
+        kerfWidth: float = 0.0,
+        baseAssembly: "Assembly" = None,
+    ) -> T:
+        """makeFingerJoints
+    
+        Starting with a base object and a set of selected edges, create Faces with
+        finger joints that they could be laser cut from flat material.
+    
+        Example:
+    
+            For example, make a simple open topped laser cut box.
+    
+        .. code-block:: python
+    
+            finger_jointed_box_assembly = Assembly()
+            finger_jointed_faces = (
+                Workplane("XY")
+                .box(100, 80, 60)
+                .edges("not >Z")
+                .makeFingerJoints(
+                    materialThickness=5,
+                    targetFingerWidth=10,
+                    kerfWidth=1,
+                    baseAssembly=finger_jointed_box_assembly,
+                )
+            )
+    
+    
+        The assembly part is optional but if present the Assembly will
+        contain the parts as if they were laser cut from a material of the
+        given thickness.
+    
+        Args:
+            self (T): workplane
+            materialThickness (float): thickness of finger joints
+            targetFingerWidth (float): approximate with of notch - actual finger width
+                will be calculated such that there are an integer number of fingers on Edge
+            kerfWidth (float, optional): Extra size to add (or subtract) to account
+                for the kerf of the laser cutter. Defaults to 0.0.
+            baseAssembly (Assembly, optional): Assembly to add parts to
+    
+        Raises:
+            ValueError: Missing Solid object
+            ValueError: Missing finger joint Edges
+    
+        Returns:
+            T: Faces ready to be exported to DXF files and laser cut
+        """
 class Face(object):
     def thicken(self, depth: float, direction: "Vector" = None) -> "Solid":
         """Thicken Face
@@ -692,8 +769,54 @@ class Face(object):
         Returns:
             Face: 'self' with holes
         """
+    def isInside(self, point: VectorLike, tolerance: float = 1.0e-6) -> bool:
+        """Point inside Face
+    
+        Returns whether or not the point is inside a Face within the specified tolerance.
+        Points on the edge of the Face are considered inside.
+    
+        Args:
+            point (VectorLike): tuple or Vector representing 3D point to be tested
+            tolerance (float, optional): tolerance for inside determination. Defaults to 1.0e-6.
+    
+        Returns:
+            bool: indicating whether or not point is within Face
+        """
+    def makeFingerJoints(
+        self: "Face",
+        fingerJointEdge: "Edge",
+        fingerDepth: float,
+        targetFingerWidth: float,
+        cornerFaceCounter: dict,
+        openInternalVertices: dict,
+        alignToBottom: bool = True,
+        externalCorner: bool = True,
+        faceIndex: int = 0,
+    ) -> "Face":
+        """makeFingerJoints
+    
+        Given a Face and an Edge, create finger joints by cutting notches.
+    
+        Args:
+            self (Face): Face to modify
+            fingerJointEdge (Edge): Edge of Face to modify
+            fingerDepth (float): thickness of the notch from edge
+            targetFingerWidth (float): approximate with of notch - actual finger width
+                will be calculated such that there are an integer number of fingers on Edge
+            cornerFaceCounter (dict): the set of faces associated with every corner
+            openInternalVertices (dict): is a vertex part an opening?
+            alignToBottom (bool, optional): start with a finger or notch. Defaults to True.
+            externalCorner (bool, optional): cut from external corners, add to internal corners.
+                Defaults to True.
+            faceIndex (int, optional): the index of the current face. Defaults to 0.
+    
+        Returns:
+            Face: the Face with notches on one edge
+        """
 class Wire(object):
-    def makeRect(width: float, height: float, center: Vector, normal: Vector) -> "Wire":
+    def makeRect(
+        width: float, height: float, center: Vector, normal: Vector, xDir: Vector = None
+    ) -> "Wire":
         """Make Rectangle
     
         Make a Rectangle centered on center with the given normal
@@ -703,6 +826,7 @@ class Wire(object):
             height (float): height (local Y)
             center (Vector): rectangle center point
             normal (Vector): rectangle normal
+            xDir (Vector, optional): x direction. Defaults to None.
     
         Returns:
             Wire: The centered rectangle
@@ -941,6 +1065,62 @@ class Shape(object):
     
         Returns:
             The embossed text
+        """
+    def makeFingerJointFaces(
+        self: "Shape",
+        fingerJointEdges: list["Edge"],
+        materialThickness: float,
+        targetFingerWidth: float,
+        kerfWidth: float = 0.0,
+    ) -> list["Face"]:
+        """makeFingerJointFaces
+    
+        Extract Faces from the given Shape (Solid or Compound) and create Faces with finger
+        joints cut into the given Edges.
+    
+        Args:
+            self (Shape): the base shape defining the finger jointed object
+            fingerJointEdges (list[Edge]): the Edges to convert to finger joints
+            materialThickness (float): thickness of the notch from edge
+            targetFingerWidth (float): approximate with of notch - actual finger width
+                will be calculated such that there are an integer number of fingers on Edge
+            kerfWidth (float, optional): Extra size to add (or subtract) to account
+                for the kerf of the laser cutter. Defaults to 0.0.
+    
+        Raises:
+            ValueError: provide Edge is not shared by two Faces
+    
+        Returns:
+            list[Face]: faces with finger joint cut into selected edges
+        """
+    def maxFillet(
+        self: "Shape",
+        edgeList: Iterable["Edge"],
+        tolerance=0.1,
+        maxIterations: int = 10,
+    ) -> float:
+        """Find Maximum Fillet Size
+    
+        Find the largest fillet radius for the given Shape and Edges with a
+        recursive binary search.
+    
+        Args:
+            edgeList (Iterable[Edge]): a list of Edge objects, which must belong to this solid
+            tolerance (float, optional): maximum error from actual value. Defaults to 0.1.
+            maxIterations (int, optional): maximum number of recursive iterations. Defaults to 10.
+    
+        Raises:
+            RuntimeError: failed to find the max value
+            ValueError: the provided Shape is invalid
+    
+        Returns:
+            float: maximum fillet radius
+    
+        As an example:
+            max_fillet_radius = my_shape.maxFillet(shape_edges)
+        or:
+            max_fillet_radius = my_shape.maxFillet(shape_edges, tolerance=0.5, maxIterations=8)
+    
         """
 class Location(object):
     def __str__(self):

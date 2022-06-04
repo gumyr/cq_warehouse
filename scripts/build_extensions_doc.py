@@ -82,7 +82,7 @@ def code_location(
     """locate python code within a module
 
     Finds the start and end lines for a class, method or function within a
-    larger python module. Method names must be specificed as 'class.method'
+    larger python module. Method names must be specified as 'class.method'
     to ensure they are unique.
 
     Args:
@@ -293,7 +293,7 @@ def main(argv):
     doc_file = open(doc_file_path, "w")
     doc_file.writelines(
         [
-            "from typing import Union, Tuple, Optional, Literal\n"
+            "from typing import Union, Tuple, Optional, Literal, Iterable\n"
             "from fastener import Screw, Nut, Washer\n"
             "from bearing import Bearing\n"
             "class gp_Ax1:\n    pass\n",

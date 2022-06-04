@@ -224,6 +224,23 @@ class TestNuts(unittest.TestCase):
         heatset = HeatSetNut(size="M3-0.5-Standard", fastener_type="McMaster-Carr")
         self.assertTrue(isinstance(heatset.fill_factor, float))
 
+    def test_simple(self):
+        for nut_class in Nut.__subclasses__():
+            nut_type = list(nut_class.types())[0]
+            nut_size = nut_class.sizes(fastener_type=nut_type)[0]
+            with self.subTest(
+                screw_class=nut_class.__name__,
+                fastener_type=nut_type,
+                size=nut_size,
+            ):
+                simple_nut = nut_class(
+                    size=nut_size, fastener_type=nut_type, simple=True
+                )
+                nut = nut_class(size=nut_size, fastener_type=nut_type, simple=False)
+                self.assertLess(
+                    len(simple_nut.cq_object.Edges()), len(nut.cq_object.Edges())
+                )
+
 
 class TestScrews(unittest.TestCase):
     """Test creation of all screws"""
@@ -356,6 +373,25 @@ class TestScrews(unittest.TestCase):
             screw.tap_hole_diameters["Soft"]
 
         self.assertIsNone(screw.nominal_lengths)
+
+    def test_simple(self):
+        for screw_class in Screw.__subclasses__():
+            screw_type = list(screw_class.types())[0]
+            screw_size = screw_class.sizes(fastener_type=screw_type)[0]
+            with self.subTest(
+                screw_class=screw_class.__name__,
+                fastener_type=screw_type,
+                size=screw_size,
+            ):
+                simple_screw = screw_class(
+                    size=screw_size, fastener_type=screw_type, length=10, simple=True
+                )
+                screw = screw_class(
+                    size=screw_size, fastener_type=screw_type, length=10, simple=False
+                )
+                self.assertLess(
+                    len(simple_screw.cq_object.Edges()), len(screw.cq_object.Edges())
+                )
 
 
 if __name__ == "__main__":

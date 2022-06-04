@@ -31,12 +31,14 @@ license:
     limitations under the License.
 
 """
-from re import X
 import sys
 import logging
 import math
+import random
+from itertools import combinations
 from functools import reduce
-from typing import Optional, Literal, Union, Tuple
+from token import OP
+from typing import Optional, Literal, Union, Tuple, Iterable
 import cadquery as cq
 from cadquery.occ_impl.shapes import VectorLike
 from cadquery.cq import T
@@ -50,13 +52,24 @@ from cadquery import (
     Location,
     Shape,
     Solid,
+    Sketch,
     Vector,
     Vertex,
     Wire,
     Workplane,
     DirectionMinMaxSelector,
+    Color,
 )
-from cq_warehouse.fastener import Screw, Nut, Washer, HeatSetNut
+from cq_warehouse.fastener import (
+    Screw,
+    Nut,
+    Washer,
+    HeatSetNut,
+    DomedCapNut,
+    HexNut,
+    UnchamferedHexagonNut,
+    SquareNut,
+)
 from cq_warehouse.bearing import Bearing
 from cq_warehouse.thread import IsoThread
 
@@ -84,14 +97,15 @@ from OCP.gp import gp_Vec, gp_Pnt, gp_Ax1, gp_Dir, gp_Trsf, gp, gp_GTrsf
 logging.basicConfig(
     filename="cq_warehouse.log",
     encoding="utf-8",
-    level=logging.DEBUG,
-    # level=logging.CRITICAL,
+    # level=logging.DEBUG,
+    level=logging.CRITICAL,
     format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)s - %(funcName)20s() ] - %(message)s",
 )
 
 """
 
-Assembly extensions: rotate(), translate(), fastenerQuantities(), fastenerLocations(), findLocation()
+Assembly extensions: rotate(), translate(), fastenerQuantities(), fastenerLocations(), findLocation(),
+                    doObjectsIntersect(), areObjectsValid()
 
 """
 
@@ -262,6 +276,63 @@ def _find_Location(self, target: str) -> Location:
 
 Assembly.findLocation = _find_Location
 
+
+def _doObjectsIntersect(self, tolerance: float = 1e-5) -> bool:
+    """Do Objects Intersect
+
+    Determine if any of the objects within an Assembly intersect by
+    intersecting each of the shapes with each other and checking for
+    a common volume.
+
+    Args:
+        self (Assembly): Assembly to test
+        tolerance (float, optional): maximum allowable volume difference. Defaults to 1e-5.
+
+    Returns:
+        bool: do the object intersect
+    """
+    shapes = [
+        shape.moved(self.findLocation(name))
+        if isinstance(shape, Shape)
+        else shape.val().moved(self.findLocation(name))
+        for name, part in self.traverse()
+        for shape in part.shapes
+    ]
+    shape_index_pairs = [
+        tuple(map(int, comb))
+        for comb in combinations([i for i in range(len(shapes))], 2)
+    ]
+    for shape_index_pair in shape_index_pairs:
+        common_volume = (
+            shapes[shape_index_pair[0]].intersect(shapes[shape_index_pair[1]]).Volume()
+        )
+        if common_volume > tolerance:
+            return True
+    return False
+
+
+Assembly.doObjectsIntersect = _doObjectsIntersect
+
+
+def _areObjectsValid(self) -> bool:
+    """Are Objects Valid
+
+    Check the validity of all the objects in this Assembly
+
+    Returns:
+        bool: all objects are valid
+    """
+    parts = [shape for _name, part in self.traverse() for shape in part.shapes]
+    return all(
+        [
+            part.isValid() if isinstance(part, Shape) else part.val().isValid()
+            for part in parts
+        ]
+    )
+
+
+Assembly.areObjectsValid = _areObjectsValid
+
 """
 
 Plane extensions: toLocalCoords(), toWorldCoords()
@@ -427,6 +498,7 @@ def _getSignedAngle(self, v: "Vector", normal: "Vector" = None) -> float:
         gp_normal = gp_Vec(0, 0, -1)
     else:
         gp_normal = normal.wrapped
+    # gp_normal = normal.wrapped if normal else gp_Vec(0, 0, -1)
     return self.wrapped.AngleWithRef(v.wrapped, gp_normal)
 
 
@@ -549,7 +621,7 @@ Vertex.toVector = _vertex_to_vector
 """
 
 Workplane extensions: textOnPath(), hexArray(), thicken(), fastenerHole(), clearanceHole(),
-                      tapHole(), threadedHole(), pushFastenerLocations()
+                      tapHole(), threadedHole(), pushFastenerLocations(), makeFingerJoints()
 
 """
 
@@ -788,12 +860,13 @@ def _fastenerHole(
     self: T,
     hole_diameters: dict,
     fastener: Union["Nut", "Screw"],
-    depth: float,
     washers: list["Washer"],
     countersinkProfile: "Workplane",
+    depth: Optional[float] = None,
     fit: Optional[Literal["Close", "Normal", "Loose"]] = None,
     material: Optional[Literal["Soft", "Hard"]] = None,
     counterSunk: Optional[bool] = True,
+    captiveNut: Optional[bool] = False,
     baseAssembly: Optional["Assembly"] = None,
     hand: Optional[Literal["right", "left"]] = None,
     simple: Optional[bool] = False,
@@ -807,12 +880,13 @@ def _fastenerHole(
     Args:
         hole_diameters: either clearance or tap hole diameter specifications
         fastener: A nut or screw instance
-        depth: hole depth
         washers: A list of washer instances, can be empty
         countersinkProfile: the 2D side profile of the fastener (not including a screw's shaft)
+        depth: hole depth. Defaults to through part.
         fit: one of "Close", "Normal", "Loose" which determines clearance hole diameter. Defaults to None.
         material: on of "Soft", "Hard" which determines tap hole size. Defaults to None.
         counterSunk: Is the fastener countersunk into the part?. Defaults to True.
+        captiveNut: Countersink with a rectangular, filleted, hole. Defaults to False.
         baseAssembly: Assembly to add faster to. Defaults to None.
         hand: tap hole twist direction either "right" or "left". Defaults to None.
         simple: tap hole thread complexity selector. Defaults to False.
@@ -832,10 +906,41 @@ def _fastenerHole(
     bore_direction = Vector(0, 0, -1)
     origin = Vector(0, 0, 0)
 
+    # If no depth is given go through part, else align screw to bottom of hole
+    if depth is None:
+        hole_depth_offset = 0
+        depth = self.largestDimension()
+    elif isinstance(fastener, Screw):
+        hole_depth_offset = fastener.length - depth
+    else:
+        hole_depth_offset = 0
+
     # Setscrews' countersink_profile is None so check if it exists
     # countersink_profile = fastener.countersink_profile(fit)
     countersink_profile = countersinkProfile
-    if counterSunk and not countersink_profile is None:
+    if captiveNut:
+        clearance = fastener.clearance_hole_diameters[fit] - fastener.thread_diameter
+        head_offset = countersink_profile.vertices(">Z").val().Z
+        if isinstance(fastener, (DomedCapNut, HexNut, UnchamferedHexagonNut)):
+            fillet_radius = fastener.nut_diameter / 4
+            rect_width = fastener.nut_diameter + clearance
+            rect_height = fastener.nut_diameter * math.sin(math.pi / 3) + clearance
+        elif isinstance(fastener, SquareNut):
+            fillet_radius = fastener.nut_diameter / 8
+            rect_height = fastener.nut_diameter * math.sqrt(2) / 2 + clearance
+            rect_width = rect_height + 2 * fillet_radius + clearance
+
+        countersink_cutter = (
+            cq.Workplane("XY")
+            .sketch()
+            .rect(rect_width, rect_height)
+            .vertices()
+            .fillet(fillet_radius)
+            .finalize()
+            .extrude(-head_offset)
+            .val()
+        )
+    elif counterSunk and not countersink_profile is None:
         head_offset = countersink_profile.vertices(">Z").val().Z
         countersink_cutter = (
             countersink_profile.revolve().translate((0, 0, -head_offset)).val()
@@ -904,7 +1009,12 @@ def _fastenerHole(
                 loc=hole_loc
                 * Location(
                     bore_direction
-                    * (head_offset - fastener.length_offset() - washer_thicknesses)
+                    * (
+                        head_offset
+                        - fastener.length_offset()
+                        - washer_thicknesses
+                        - hole_depth_offset
+                    )
                 ),
             )
             # Create a metadata entry associating the auto-generated name & fastener
@@ -941,6 +1051,7 @@ def _clearanceHole(
     fit: Optional[Literal["Close", "Normal", "Loose"]] = "Normal",
     depth: Optional[float] = None,
     counterSunk: Optional[bool] = True,
+    captiveNut: Optional[bool] = False,
     baseAssembly: Optional["Assembly"] = None,
     clean: Optional[bool] = True,
 ) -> T:
@@ -973,8 +1084,12 @@ def _clearanceHole(
             "clearanceHole doesn't accept fasteners of type HeatSetNut - use insertHole instead"
         )
 
-    if depth is None:
-        depth = self.largestDimension()
+    if captiveNut and not isinstance(
+        fastener, (DomedCapNut, HexNut, UnchamferedHexagonNut, SquareNut)
+    ):
+        raise ValueError(
+            "Only DomedCapNut, HexNut, UnchamferedHexagonNut or SquareNut can be captive"
+        )
 
     return self.fastenerHole(
         hole_diameters=fastener.clearance_hole_diameters,
@@ -984,6 +1099,7 @@ def _clearanceHole(
         fit=fit,
         depth=depth,
         counterSunk=counterSunk,
+        captiveNut=captiveNut,
         baseAssembly=baseAssembly,
         clean=clean,
     )
@@ -1026,9 +1142,6 @@ def _insertHole(
 
     if not isinstance(fastener, HeatSetNut):
         raise ValueError("insertHole only accepts fasteners of type HeatSetNut")
-
-    if depth is None:
-        depth = self.largestDimension()
 
     return self.fastenerHole(
         hole_diameters=fastener.clearance_hole_diameters,
@@ -1077,9 +1190,6 @@ def _pressFitHole(
 
     if not isinstance(bearing, Bearing):
         raise ValueError("pressFitHole only accepts bearings")
-
-    if depth is None:
-        depth = self.largestDimension()
 
     return self.fastenerHole(
         hole_diameters=bearing.clearance_hole_diameters,
@@ -1134,9 +1244,6 @@ def _tapHole(
         raise ValueError(
             "tapHole doesn't accept fasteners of type HeatSetNut - use insertHole instead"
         )
-
-    if depth is None:
-        depth = self.largestDimension()
 
     return self.fastenerHole(
         hole_diameters=fastener.tap_hole_diameters,
@@ -1251,9 +1358,100 @@ def _push_fastener_locations(
 
 Workplane.pushFastenerLocations = _push_fastener_locations
 
+
+def _makeFingerJoints_workplane(
+    self: T,
+    materialThickness: float,
+    targetFingerWidth: float,
+    kerfWidth: float = 0.0,
+    baseAssembly: "Assembly" = None,
+) -> T:
+    """makeFingerJoints
+
+    Starting with a base object and a set of selected edges, create Faces with
+    finger joints that they could be laser cut from flat material.
+
+    Example:
+
+        For example, make a simple open topped laser cut box.
+
+    .. code-block:: python
+
+        finger_jointed_box_assembly = Assembly()
+        finger_jointed_faces = (
+            Workplane("XY")
+            .box(100, 80, 60)
+            .edges("not >Z")
+            .makeFingerJoints(
+                materialThickness=5,
+                targetFingerWidth=10,
+                kerfWidth=1,
+                baseAssembly=finger_jointed_box_assembly,
+            )
+        )
+
+
+    The assembly part is optional but if present the Assembly will
+    contain the parts as if they were laser cut from a material of the
+    given thickness.
+
+    Args:
+        self (T): workplane
+        materialThickness (float): thickness of finger joints
+        targetFingerWidth (float): approximate with of notch - actual finger width
+            will be calculated such that there are an integer number of fingers on Edge
+        kerfWidth (float, optional): Extra size to add (or subtract) to account
+            for the kerf of the laser cutter. Defaults to 0.0.
+        baseAssembly (Assembly, optional): Assembly to add parts to
+
+    Raises:
+        ValueError: Missing Solid object
+        ValueError: Missing finger joint Edges
+
+    Returns:
+        T: Faces ready to be exported to DXF files and laser cut
+    """
+    solid_reference = self.findSolid(searchStack=True, searchParents=True)
+    if not solid_reference:
+        raise ValueError(
+            "A solid object must be present to define the finger jointed faces"
+        )
+
+    finger_joint_edges = self.edges().vals()
+    if not finger_joint_edges:
+        raise ValueError(
+            "An edge(s) must be present to defined the finger jointed edges"
+        )
+
+    logging.debug("Starting new finger jointed shape")
+
+    jointed_faces = solid_reference.makeFingerJointFaces(
+        finger_joint_edges, materialThickness, targetFingerWidth, kerfWidth
+    )
+    # If the assembly is requested, create Solids from faces and store them
+    if baseAssembly:
+        part_center = solid_reference.Center()
+        for finger_jointed_face in jointed_faces:
+            part = finger_jointed_face.thicken(
+                materialThickness, part_center - finger_jointed_face.Center()
+            )
+            baseAssembly.add(
+                part, color=Color(random.random(), random.random(), random.random())
+            )
+        logging.debug(f"{baseAssembly.doObjectsIntersect()=}")
+
+    logging.debug("Completed finger jointed shape")
+
+    return self.newObject(jointed_faces)
+
+
+Workplane.makeFingerJoints = _makeFingerJoints_workplane
+
+
 """
 
-Face extensions: thicken(), projectToShape(), embossToShape()
+Face extensions: thicken(), projectToShape(), embossToShape(), makeHoles(), makeFingerJoints(),
+                 isInside()
 
 """
 
@@ -1309,7 +1507,7 @@ def _face_thicken(self, depth: float, direction: "Vector" = None) -> "Solid":
     except StdFail_NotDone as e:
         raise RuntimeError("Error applying thicken to given Face") from e
 
-    return result
+    return result.clean()
 
 
 Face.thicken = _face_thicken
@@ -1590,6 +1788,188 @@ def _face_makeHoles(self, interiorWires: list["Wire"]) -> "Face":
 Face.makeHoles = _face_makeHoles
 
 
+def _isInside_face(self, point: VectorLike, tolerance: float = 1.0e-6) -> bool:
+    """Point inside Face
+
+    Returns whether or not the point is inside a Face within the specified tolerance.
+    Points on the edge of the Face are considered inside.
+
+    Args:
+        point (VectorLike): tuple or Vector representing 3D point to be tested
+        tolerance (float, optional): tolerance for inside determination. Defaults to 1.0e-6.
+
+    Returns:
+        bool: indicating whether or not point is within Face
+    """
+    return Compound.makeCompound([self]).isInside(point, tolerance)
+
+
+Face.isInside = _isInside_face
+
+
+def _makeFingerJoints_face(
+    self: "Face",
+    fingerJointEdge: "Edge",
+    fingerDepth: float,
+    targetFingerWidth: float,
+    cornerFaceCounter: dict,
+    openInternalVertices: dict,
+    alignToBottom: bool = True,
+    externalCorner: bool = True,
+    faceIndex: int = 0,
+) -> "Face":
+    """makeFingerJoints
+
+    Given a Face and an Edge, create finger joints by cutting notches.
+
+    Args:
+        self (Face): Face to modify
+        fingerJointEdge (Edge): Edge of Face to modify
+        fingerDepth (float): thickness of the notch from edge
+        targetFingerWidth (float): approximate with of notch - actual finger width
+            will be calculated such that there are an integer number of fingers on Edge
+        cornerFaceCounter (dict): the set of faces associated with every corner
+        openInternalVertices (dict): is a vertex part an opening?
+        alignToBottom (bool, optional): start with a finger or notch. Defaults to True.
+        externalCorner (bool, optional): cut from external corners, add to internal corners.
+            Defaults to True.
+        faceIndex (int, optional): the index of the current face. Defaults to 0.
+
+    Returns:
+        Face: the Face with notches on one edge
+    """
+    edge_length = fingerJointEdge.Length()
+    finger_count = round(edge_length / targetFingerWidth)
+    finger_width = edge_length / (finger_count)
+    face_center = self.Center()
+
+    edge_origin = fingerJointEdge.positionAt(0)
+    edge_tangent = fingerJointEdge.tangentAt(0)
+    edge_plane = Plane(
+        origin=edge_origin,
+        xDir=edge_tangent,
+        normal=edge_tangent.cross((face_center - edge_origin).normalized()),
+    )
+    # Need to determine the vertex that corresponds to the positionAt(0) point
+    end_vertex_index = int(edge_origin == fingerJointEdge.Vertices()[0].toVector())
+    start_vertex_index = (end_vertex_index + 1) % 2
+    start_vertex = fingerJointEdge.Vertices()[start_vertex_index]
+    end_vertex = fingerJointEdge.Vertices()[end_vertex_index]
+    if start_vertex.toVector() != edge_origin:
+        raise RuntimeError("Error in determining start_vertex")
+
+    if alignToBottom and finger_count % 2 == 0:
+        finger_offset = -finger_width / 2
+        tab_count = finger_count // 2
+    elif alignToBottom and finger_count % 2 == 1:
+        finger_offset = 0
+        tab_count = (finger_count + 1) // 2
+    elif not alignToBottom and finger_count % 2 == 0:
+        finger_offset = +finger_width / 2
+        tab_count = finger_count // 2
+    elif not alignToBottom and finger_count % 2 == 1:
+        finger_offset = 0
+        tab_count = finger_count // 2
+
+    # Calculate the positions of the cutouts (for external corners) or extra tabs
+    # (for internal corners)
+    x_offset = (tab_count - 1) * finger_width - edge_length / 2 + finger_offset
+    finger_positions = [
+        Vector(i * 2 * finger_width - x_offset, 0, 0) for i in range(tab_count)
+    ]
+
+    # Align the Face to the given Edge
+    face_local = edge_plane.toLocalCoords(self)
+
+    # Note that Face.makePlane doesn't work here as a rectangle creator
+    # as it is inconsistent as to what is the x direction.
+    finger = cq.Face.makeFromWires(
+        cq.Wire.makeRect(
+            finger_width,
+            2 * fingerDepth,
+            center=cq.Vector(),
+            xDir=cq.Vector(1, 0, 0),
+            normal=face_local.normalAt(Vector()) * -1,
+        ),
+        [],
+    )
+    start_part_finger = cq.Face.makeFromWires(
+        cq.Wire.makeRect(
+            finger_width - fingerDepth,
+            2 * fingerDepth,
+            center=cq.Vector(fingerDepth / 2, 0, 0),
+            xDir=cq.Vector(1, 0, 0),
+            normal=face_local.normalAt(Vector()) * -1,
+        ),
+        [],
+    )
+    end_part_finger = start_part_finger.translate((-fingerDepth, 0, 0))
+
+    # Logging strings
+    tab_type = {finger: "whole", start_part_finger: "start", end_part_finger: "end"}
+    vertex_type = {True: "start", False: "end"}
+
+    def lenCornerFaceCounter(corner: Vertex) -> int:
+        return len(cornerFaceCounter[corner]) if corner in cornerFaceCounter else 0
+
+    for position in finger_positions:
+        # Is this a corner?, if so which one
+        if position.x == finger_width / 2:
+            corner = start_vertex
+            part_finger = start_part_finger
+        elif position.x == edge_length - finger_width / 2:
+            corner = end_vertex
+            part_finger = end_part_finger
+        else:
+            corner = None
+
+        cq.Face.operation = cq.Face.cut if externalCorner else cq.Face.fuse
+
+        if corner is not None:
+            # To avoid missing corners (or extra inside corners) check to see if
+            # the corner is already notched
+            if (
+                face_local.isInside(position)
+                and externalCorner
+                or not face_local.isInside(position)
+                and not externalCorner
+            ):
+                if corner in cornerFaceCounter:
+                    cornerFaceCounter[corner].add(faceIndex)
+                else:
+                    cornerFaceCounter[corner] = set([faceIndex])
+            if externalCorner:
+                tab = finger if lenCornerFaceCounter(corner) < 3 else part_finger
+            else:
+                # tab = part_finger if lenCornerFaceCounter(corner) < 3 else finger
+                if corner in openInternalVertices:
+                    tab = finger
+                else:
+                    tab = part_finger if lenCornerFaceCounter(corner) < 3 else finger
+
+            # Modify the face
+            face_local = face_local.operation(tab.translate(position))
+
+            logging.debug(
+                f"Corner {corner}, vertex={vertex_type[corner==start_vertex]}, "
+                f"{lenCornerFaceCounter(corner)=}, normal={self.normalAt(face_center)}, tab={tab_type[tab]}, "
+                f"{face_local.intersect(tab.translate(position)).Area()=:.0f}, {tab.Area()/2=:.0f}"
+            )
+        else:
+            face_local = face_local.operation(finger.translate(position))
+
+        # Need to clean and revert the generated Compound back to a Face
+        face_local = face_local.clean().Faces()[0]
+
+    # Relocate the face back to its original position
+    new_face = edge_plane.fromLocalCoords(face_local)
+
+    return new_face
+
+
+Face.makeFingerJoints = _makeFingerJoints_face
+
+
 """
 
 Wire extensions: makeRect(), makeNonPlanarFace(), projectToShape(), embossToShape()
@@ -1597,7 +1977,9 @@ Wire extensions: makeRect(), makeNonPlanarFace(), projectToShape(), embossToShap
 """
 
 
-def _makeRect(width: float, height: float, center: Vector, normal: Vector) -> "Wire":
+def _makeRect(
+    width: float, height: float, center: Vector, normal: Vector, xDir: Vector = None
+) -> "Wire":
     """Make Rectangle
 
     Make a Rectangle centered on center with the given normal
@@ -1607,6 +1989,7 @@ def _makeRect(width: float, height: float, center: Vector, normal: Vector) -> "W
         height (float): height (local Y)
         center (Vector): rectangle center point
         normal (Vector): rectangle normal
+        xDir (Vector, optional): x direction. Defaults to None.
 
     Returns:
         Wire: The centered rectangle
@@ -1618,7 +2001,10 @@ def _makeRect(width: float, height: float, center: Vector, normal: Vector) -> "W
         (-width / 2, height / 2),
         (width / 2, height / 2),
     ]
-    user_plane = Plane(origin=center, normal=normal)
+    if xDir is None:
+        user_plane = Plane(origin=center, normal=normal)
+    else:
+        user_plane = Plane(origin=center, xDir=xDir, normal=normal)
     corners_world = [user_plane.toWorldCoords(c) for c in corners_local]
     return Wire.makePolygon(corners_world)
 
@@ -2120,7 +2506,8 @@ Edge.embossToShape = _embossEdgeToShape
 
 """
 
-Shape extensions: transformed(), findIntersection(), projectText(), embossText()
+Shape extensions: transformed(), findIntersection(), projectText(), embossText(), makeFingerJointFaces(),
+                  maxFillet()
 
 """
 
@@ -2390,9 +2777,221 @@ def _embossText(
 
 Shape.embossText = _embossText
 
+
+def _makeFingerJointFaces_shape(
+    self: "Shape",
+    fingerJointEdges: list["Edge"],
+    materialThickness: float,
+    targetFingerWidth: float,
+    kerfWidth: float = 0.0,
+) -> list["Face"]:
+    """makeFingerJointFaces
+
+    Extract Faces from the given Shape (Solid or Compound) and create Faces with finger
+    joints cut into the given Edges.
+
+    Args:
+        self (Shape): the base shape defining the finger jointed object
+        fingerJointEdges (list[Edge]): the Edges to convert to finger joints
+        materialThickness (float): thickness of the notch from edge
+        targetFingerWidth (float): approximate with of notch - actual finger width
+            will be calculated such that there are an integer number of fingers on Edge
+        kerfWidth (float, optional): Extra size to add (or subtract) to account
+            for the kerf of the laser cutter. Defaults to 0.0.
+
+    Raises:
+        ValueError: provide Edge is not shared by two Faces
+
+    Returns:
+        list[Face]: faces with finger joint cut into selected edges
+    """
+    # Store the faces for modification
+    working_faces = self.Faces()
+    working_face_areas = [f.Area() for f in working_faces]
+
+    # Build relationship between vertices, edges and faces
+    edge_adjacency = {}  # Faces that share this edge (2)
+    edge_vertex_adjacency = {}  # Faces that share this vertex
+    for common_edge in fingerJointEdges:
+        adjacent_face_indices = [
+            i for i, face in enumerate(working_faces) if common_edge in face.Edges()
+        ]
+        if adjacent_face_indices:
+            if len(adjacent_face_indices) != 2:
+                raise ValueError("Edge is invalid")
+            edge_adjacency[common_edge] = adjacent_face_indices
+        for v in common_edge.Vertices():
+            if v in edge_vertex_adjacency:
+                edge_vertex_adjacency[v].update(adjacent_face_indices)
+            else:
+                edge_vertex_adjacency[v] = set(adjacent_face_indices)
+
+    # External edges need tabs cut from the face while internal edges need extended tabs.
+    # Faces that aren't perpendicular need the tab depth to be calculated based on the
+    # angle between the faces. To facilitate this, calculate the angle between faces
+    # and determine if this is an internal corner.
+    finger_depths = {}
+    external_corners = {}
+    for common_edge, adjacent_face_indices in edge_adjacency.items():
+        face_centers = [working_faces[i].Center() for i in adjacent_face_indices]
+        face_normals = [
+            working_faces[i].normalAt(working_faces[i].Center())
+            for i in adjacent_face_indices
+        ]
+        internal_edge_reference_plane = cq.Plane(
+            origin=face_centers[0], normal=face_normals[0]
+        )
+        localized_opposite_center = internal_edge_reference_plane.toLocalCoords(
+            face_centers[1]
+        )
+        external_corners[common_edge] = localized_opposite_center.z < 0
+        corner_angle = abs(
+            face_normals[0].getSignedAngle(face_normals[1], common_edge.tangentAt(0))
+        )
+        finger_depths[common_edge] = materialThickness * max(
+            math.sin(corner_angle),
+            (
+                math.sin(corner_angle)
+                + (math.cos(corner_angle) - 1) * math.tan(math.pi / 2 - corner_angle)
+            ),
+        )
+
+    # To avoid missing internal corners with open boxes, determine which vertices
+    # are adjacent to the open face(s)
+    vertices_with_internal_edge = {}
+    for e in fingerJointEdges:
+        for v in e.Vertices():
+            if v in vertices_with_internal_edge:
+                vertices_with_internal_edge[v] = (
+                    vertices_with_internal_edge[v] or not external_corners[e]
+                )
+            else:
+                vertices_with_internal_edge[v] = not external_corners[e]
+    open_internal_vertices = {}
+    for i, f in enumerate(working_faces):
+        for v in f.Vertices():
+            if vertices_with_internal_edge[v]:
+                if i not in edge_vertex_adjacency[v]:
+                    if v in open_internal_vertices:
+                        open_internal_vertices[v].add(i)
+                    else:
+                        open_internal_vertices[v] = set([i])
+
+    # Keep track of the numbers of fingers/notches in the corners
+    corner_face_counter = {}
+
+    # Make complimentary tabs in faces adjacent to common edges
+    for common_edge, adjacent_face_indices in edge_adjacency.items():
+        # For cosmetic reasons, try to be consistent in the notch pattern
+        # by using the face area as the selection factor
+        primary_face_index = adjacent_face_indices[0]
+        secondary_face_index = adjacent_face_indices[1]
+        if (
+            working_face_areas[primary_face_index]
+            > working_face_areas[secondary_face_index]
+        ):
+            primary_face_index, secondary_face_index = (
+                secondary_face_index,
+                primary_face_index,
+            )
+
+        for i in [primary_face_index, secondary_face_index]:
+            working_faces[i] = working_faces[i].makeFingerJoints(
+                common_edge,
+                finger_depths[common_edge],
+                targetFingerWidth,
+                corner_face_counter,
+                open_internal_vertices,
+                alignToBottom=i == primary_face_index,
+                externalCorner=external_corners[common_edge],
+                faceIndex=i,
+            )
+
+    # Determine which faces have tabs
+    tabbed_face_indices = set(
+        i for face_list in edge_adjacency.values() for i in face_list
+    )
+    tabbed_faces = [working_faces[i] for i in tabbed_face_indices]
+
+    # If kerf compensation is requested, increase the outer and decrease inner sizes
+    if kerfWidth != 0.0:
+        tabbed_faces = [
+            Face.makeFromWires(
+                f.outerWire().offset2D(kerfWidth / 2)[0],
+                [i.offset2D(-kerfWidth / 2)[0] for i in f.innerWires()],
+            )
+            for f in tabbed_faces
+        ]
+
+    return tabbed_faces
+
+
+Shape.makeFingerJointFaces = _makeFingerJointFaces_shape
+
+
+def _maxFillet(
+    self: "Shape",
+    edgeList: Iterable["Edge"],
+    tolerance=0.1,
+    maxIterations: int = 10,
+) -> float:
+    """Find Maximum Fillet Size
+
+    Find the largest fillet radius for the given Shape and Edges with a
+    recursive binary search.
+
+    Args:
+        edgeList (Iterable[Edge]): a list of Edge objects, which must belong to this solid
+        tolerance (float, optional): maximum error from actual value. Defaults to 0.1.
+        maxIterations (int, optional): maximum number of recursive iterations. Defaults to 10.
+
+    Raises:
+        RuntimeError: failed to find the max value
+        ValueError: the provided Shape is invalid
+
+    Returns:
+        float: maximum fillet radius
+
+    As an example:
+        max_fillet_radius = my_shape.maxFillet(shape_edges)
+    or:
+        max_fillet_radius = my_shape.maxFillet(shape_edges, tolerance=0.5, maxIterations=8)
+
+    """
+
+    def __maxFillet(window_min: float, window_max: float, current_iteration: int):
+        window_mid = (window_min + window_max) / 2
+
+        if current_iteration == maxIterations:
+            raise RuntimeError(
+                f"Failed to find the max value within {tolerance} in {maxIterations}"
+            )
+
+        # Do these numbers work? - if not try with the smaller window
+        try:
+            if not self.fillet(window_mid, edgeList).isValid():
+                raise StdFail_NotDone
+        except StdFail_NotDone:
+            return __maxFillet(window_min, window_mid, current_iteration + 1)
+
+        # These numbers work, are they close enough? - if not try larger window
+        if window_mid - window_min <= tolerance:
+            return window_mid
+        else:
+            return __maxFillet(window_mid, window_max, current_iteration + 1)
+
+    if not self.isValid():
+        raise ValueError("Invalid Shape")
+    max_radius = __maxFillet(0.0, 2 * self.BoundingBox().DiagonalLength, 0)
+
+    return max_radius
+
+
+Shape.maxFillet = _maxFillet
+
 """
 
-Location extensions: __str__()
+Location extensions: __str__(), position(), rotation()
 
 """
 

@@ -10,20 +10,22 @@ For example, one can create the chain for a bicycle with a rear deraileur as fol
 .. code-block:: python
 
 	import cadquery as cq
-	import cq_warehouse.chain as Chain
+	from cq_warehouse.chain import Chain
+
+	MM = 1
 
 	derailleur_chain = Chain(
-	    spkt_teeth=[32, 10, 10, 16],
-	    positive_chain_wrap=[True, True, False, True],
-	    spkt_locations=[
-	        (0, 158.9 * MM, 50 * MM),
-	        (+190 * MM, 0, 50 * MM),
-	        (+190 * MM, 78.9 * MM, 50 * MM),
-	        (+205 * MM, 158.9 * MM, 50 * MM)
-	    ]
+		spkt_teeth=[32, 10, 10, 16],
+		positive_chain_wrap=[True, True, False, True],
+		spkt_locations=[
+			(0, 158.9 * MM, 50 * MM),
+			(+190 * MM, 0, 50 * MM),
+			(+190 * MM, 78.9 * MM, 50 * MM),
+			(+205 * MM, 158.9 * MM, 50 * MM),
+		],
 	)
 	if "show_object" in locals():
-	    show_object(derailleur_chain.cq_object, name="derailleur_chain")
+		show_object(derailleur_chain.cq_object, name="derailleur_chain")
 
 The chain is created on the XY plane (methods to move the chain are described below)
 with the sprocket centers being described by:
