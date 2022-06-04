@@ -76,6 +76,7 @@ as shown in the above example.
 The full API is as follows:
 
 .. py:module:: extensions_doc
+    :noindex:
 
 .. automethod:: Workplane.makeFingerJoints
 

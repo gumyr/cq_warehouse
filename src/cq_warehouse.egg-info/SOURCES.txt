@@ -21,6 +21,7 @@ src/cq_warehouse/drill_sizes.csv
 src/cq_warehouse/extensions.py
 src/cq_warehouse/extensions_doc.py
 src/cq_warehouse/fastener.py
+src/cq_warehouse/fastener_backup.py
 src/cq_warehouse/geom_extended.py
 src/cq_warehouse/heatset_nut_parameters.csv
 src/cq_warehouse/hex_head_parameters.csv

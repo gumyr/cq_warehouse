@@ -111,8 +111,8 @@ class FingerJointBoxTests(unittest.TestCase):
 
     def test_acute_angles(self):
         """Test that the finger depth is calculated correctly"""
-        polygon_box_assembly = Assembly()
-        polygon_box_faces = (
+        acute_angle_box_assembly = Assembly()
+        acute_angle_box_faces = (
             Workplane("XY")
             .polygon(5, 100)
             .extrude(60)
@@ -121,19 +121,19 @@ class FingerJointBoxTests(unittest.TestCase):
                 materialThickness=5,
                 targetFingerWidth=20,
                 kerfWidth=0,
-                baseAssembly=polygon_box_assembly,
+                baseAssembly=acute_angle_box_assembly,
             )
             .faces()
             .vals()
         )
-        self.assertEqual(len(polygon_box_faces), 6)
-        self.assertTrue(polygon_box_assembly.areObjectsValid())
-        self.assertFalse(polygon_box_assembly.doObjectsIntersect(1e-3))
+        self.assertEqual(len(acute_angle_box_faces), 6)
+        self.assertTrue(acute_angle_box_assembly.areObjectsValid())
+        self.assertFalse(acute_angle_box_assembly.doObjectsIntersect(1e-3))
 
     def test_obtuse_angles(self):
         """Test that the finger depth is calculated correctly"""
-        polygon_box_assembly = Assembly()
-        polygon_box_faces = (
+        obtuse_angle_box_assembly = Assembly()
+        obtuse_box_faces = (
             Workplane("XY")
             .polygon(3, 100)
             .extrude(60)
@@ -142,14 +142,14 @@ class FingerJointBoxTests(unittest.TestCase):
                 materialThickness=5,
                 targetFingerWidth=20,
                 kerfWidth=0,
-                baseAssembly=polygon_box_assembly,
+                baseAssembly=obtuse_angle_box_assembly,
             )
             .faces()
             .vals()
         )
-        self.assertEqual(len(polygon_box_faces), 4)
-        self.assertTrue(polygon_box_assembly.areObjectsValid())
-        self.assertFalse(polygon_box_assembly.doObjectsIntersect())
+        self.assertEqual(len(obtuse_box_faces), 4)
+        self.assertTrue(obtuse_angle_box_assembly.areObjectsValid())
+        self.assertFalse(obtuse_angle_box_assembly.doObjectsIntersect())
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-from typing import Union, Tuple, Optional, Literal
+from typing import Union, Tuple, Optional, Literal, Iterable
 from fastener import Screw, Nut, Washer
 from bearing import Bearing
 class gp_Ax1:
@@ -370,12 +370,13 @@ class Workplane(object):
         self: T,
         hole_diameters: dict,
         fastener: Union["Nut", "Screw"],
-        depth: float,
         washers: list["Washer"],
         countersinkProfile: "Workplane",
+        depth: Optional[float] = None,
         fit: Optional[Literal["Close", "Normal", "Loose"]] = None,
         material: Optional[Literal["Soft", "Hard"]] = None,
         counterSunk: Optional[bool] = True,
+        captiveNut: Optional[bool] = False,
         baseAssembly: Optional["Assembly"] = None,
         hand: Optional[Literal["right", "left"]] = None,
         simple: Optional[bool] = False,
@@ -389,12 +390,13 @@ class Workplane(object):
         Args:
             hole_diameters: either clearance or tap hole diameter specifications
             fastener: A nut or screw instance
-            depth: hole depth
             washers: A list of washer instances, can be empty
             countersinkProfile: the 2D side profile of the fastener (not including a screw's shaft)
+            depth: hole depth. Defaults to through part.
             fit: one of "Close", "Normal", "Loose" which determines clearance hole diameter. Defaults to None.
             material: on of "Soft", "Hard" which determines tap hole size. Defaults to None.
             counterSunk: Is the fastener countersunk into the part?. Defaults to True.
+            captiveNut: Countersink with a rectangular, filleted, hole. Defaults to False.
             baseAssembly: Assembly to add faster to. Defaults to None.
             hand: tap hole twist direction either "right" or "left". Defaults to None.
             simple: tap hole thread complexity selector. Defaults to False.
@@ -413,6 +415,7 @@ class Workplane(object):
         fit: Optional[Literal["Close", "Normal", "Loose"]] = "Normal",
         depth: Optional[float] = None,
         counterSunk: Optional[bool] = True,
+        captiveNut: Optional[bool] = False,
         baseAssembly: Optional["Assembly"] = None,
         clean: Optional[bool] = True,
     ) -> T:
@@ -785,7 +788,7 @@ class Face(object):
         fingerDepth: float,
         targetFingerWidth: float,
         cornerFaceCounter: dict,
-        open_internal_vertices: dict,
+        openInternalVertices: dict,
         alignToBottom: bool = True,
         externalCorner: bool = True,
         faceIndex: int = 0,
@@ -800,9 +803,12 @@ class Face(object):
             fingerDepth (float): thickness of the notch from edge
             targetFingerWidth (float): approximate with of notch - actual finger width
                 will be calculated such that there are an integer number of fingers on Edge
+            cornerFaceCounter (dict): the set of faces associated with every corner
+            openInternalVertices (dict): is a vertex part an opening?
             alignToBottom (bool, optional): start with a finger or notch. Defaults to True.
             externalCorner (bool, optional): cut from external corners, add to internal corners.
                 Defaults to True.
+            faceIndex (int, optional): the index of the current face. Defaults to 0.
     
         Returns:
             Face: the Face with notches on one edge
@@ -1086,6 +1092,35 @@ class Shape(object):
     
         Returns:
             list[Face]: faces with finger joint cut into selected edges
+        """
+    def maxFillet(
+        self: "Shape",
+        edgeList: Iterable["Edge"],
+        tolerance=0.1,
+        maxIterations: int = 10,
+    ) -> float:
+        """Find Maximum Fillet Size
+    
+        Find the largest fillet radius for the given Shape and Edges with a
+        recursive binary search.
+    
+        Args:
+            edgeList (Iterable[Edge]): a list of Edge objects, which must belong to this solid
+            tolerance (float, optional): maximum error from actual value. Defaults to 0.1.
+            maxIterations (int, optional): maximum number of recursive iterations. Defaults to 10.
+    
+        Raises:
+            RuntimeError: failed to find the max value
+            ValueError: the provided Shape is invalid
+    
+        Returns:
+            float: maximum fillet radius
+    
+        As an example:
+            max_fillet_radius = my_shape.maxFillet(shape_edges)
+        or:
+            max_fillet_radius = my_shape.maxFillet(shape_edges, tolerance=0.5, maxIterations=8)
+    
         """
 class Location(object):
     def __str__(self):
