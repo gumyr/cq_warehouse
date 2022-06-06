@@ -97,8 +97,8 @@ from OCP.gp import gp_Vec, gp_Pnt, gp_Ax1, gp_Dir, gp_Trsf, gp, gp_GTrsf
 logging.basicConfig(
     filename="cq_warehouse.log",
     encoding="utf-8",
-    # level=logging.DEBUG,
-    level=logging.CRITICAL,
+    level=logging.DEBUG,
+    # level=logging.CRITICAL,
     format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)s - %(funcName)20s() ] - %(message)s",
 )
 
@@ -2261,7 +2261,8 @@ def _embossWireToShape(
     """
     import warnings
 
-    planar_edges = self.Edges()
+    # planar_edges = self.Edges()
+    planar_edges = self.sortedEdges()
     for i, planar_edge in enumerate(planar_edges[:-1]):
         if (
             planar_edge.positionAt(1) - planar_edges[i + 1].positionAt(0)
@@ -2352,6 +2353,42 @@ def _embossWireToShape(
 
 
 Wire.embossToShape = _embossWireToShape
+
+
+def _sortedEdges_wire(self, tolerance: float = 1e-5):
+    """Edges sorted by position
+
+    Extract the edges from the wire and sort them such that the end of one
+    edge is within tolerance of the start of the next edge
+
+    Args:
+        tolerance (float, optional): Max separation between sequential edges.
+            Defaults to 1e-5.
+
+    Raises:
+        ValueError: Wire is disjointed
+
+    Returns:
+        list(Edge): Edges sorted by position
+    """
+    unsorted_edges = self.Edges()
+    sorted_edges = [unsorted_edges.pop(0)]
+    while unsorted_edges:
+        found = False
+        for i in range(len(unsorted_edges)):
+            if (
+                sorted_edges[-1].positionAt(1) - unsorted_edges[i].positionAt(0)
+            ).Length < tolerance:
+                sorted_edges.append(unsorted_edges.pop(i))
+                found = True
+                break
+        if not found:
+            raise ValueError("Edge segments are separated by tolerance or more")
+
+    return sorted_edges
+
+
+Wire.sortedEdges = _sortedEdges_wire
 
 """
 
