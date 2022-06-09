@@ -41,8 +41,9 @@ Currently, cq_warehouse.extensions augments these four CadQuery source files:
 
 * assembly.py,
 * cq.py,
-* geom.py, and
-* shapes.py.
+* geom.py,
+* shapes.py, and
+* sketch.py.
 
 Usage:
 
@@ -111,6 +112,13 @@ Shape class extensions
 **********************
 
 .. autoclass:: Shape
+	:members:
+
+***********************
+Sketch class extensions
+***********************
+
+.. autoclass:: Sketch
 	:members:
 
 ***********************

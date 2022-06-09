@@ -17,8 +17,9 @@ desc:
     and generates extended versions of these files:
     - assembly.py,
     - cq.py,
-    - geom.py, and
-    - shapes.py.
+    - geom.py,
+    - shapes.py, and
+    - sketch.py.
     Finally, a diff is generated between the originals and extended files for use
     with the patch command.
 
@@ -303,6 +304,7 @@ def main(argv):
             "class Solid:\n    pass\n",
             "class Compound:\n    pass\n",
             "class Location:\n    pass\n",
+            "Modes = Literal['a', 's', 'i', 'c']\n",
         ]
     )
     for class_name, method_dictionaries in extensions_code_dictionary.items():
