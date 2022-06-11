@@ -2194,7 +2194,6 @@ def _add_sketch(
     angle: float = 0,
     mode: "Modes" = "a",
     tag: Optional[str] = None,
-    forConstruction: bool = False,
 ) -> T:
     """add
 
@@ -2209,16 +2208,15 @@ def _add_sketch(
         angle (float, optional): rotation angle. Defaults to 0.0.
         mode (Modes, optional): combination mode, one of ["a","s","i","c"]. Defaults to "a".
         tag (Optional[str], optional): feature label. Defaults to None.
-        forConstruction (bool, optional): to be used only for construction. Defaults to False.
 
     Returns:
         Updated sketch
 
     """
     if isinstance(obj, Edge):
-        self.edge(obj.rotate(Vector(), Vector(0, 0, 1), angle), tag, forConstruction)
+        self.edge(obj.rotate(Vector(), Vector(0, 0, 1), angle), tag, mode == "c")
     elif isinstance(obj, Wire):
-        obj.forConstruction = forConstruction
+        obj.forConstruction = mode == "c"
         self._wires.append(obj.rotate(Vector(), Vector(0, 0, 1), angle))
         if tag:
             self._tag([obj], tag)
@@ -2233,6 +2231,44 @@ def _add_sketch(
 
 
 Sketch.add = _add_sketch
+
+
+def _boundingBox_sketch(
+    self: T,
+    mode: "Modes" = "a",
+    tag: Optional[str] = None,
+) -> T:
+    """Bounding Box
+
+    Create bounding boxes around selected features.
+
+    Args:
+        mode (Modes, optional): combination mode, one of ["a","s","i","c"]. Defaults to "a".
+        tag (Optional[str], optional): feature label. Defaults to None.
+
+    Returns:
+        Updated sketch
+    """
+    for obj in self._selection:
+        if isinstance(obj, Vertex):
+            continue
+        bb = obj.BoundingBox()
+        vertices = [
+            (bb.xmin, bb.ymin),
+            (bb.xmin, bb.ymax),
+            (bb.xmax, bb.ymax),
+            (bb.xmax, bb.ymin),
+            (bb.xmin, bb.ymin),
+        ]
+        print(f"{vertices=}")
+        new_face = Face.makeFromWires(Wire.makePolygon([Vector(v) for v in vertices]))
+        self.push([(0, 0)])
+        self.add(new_face, mode=mode, tag=tag)
+
+    return self
+
+
+Sketch.boundingBox = _boundingBox_sketch
 
 
 def _pushCenter_sketch(
