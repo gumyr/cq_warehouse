@@ -2072,7 +2072,7 @@ Compound.make2DText = MethodType(_make2DText_compound, Compound)
 
 """
 
-Sketch extensions: makeText(), val(), vals(), add(), pushCenter()
+Sketch extensions: text(), val(), vals(), add(), pushCenter()
 
 """
 
@@ -2194,6 +2194,7 @@ def _add_sketch(
     angle: float = 0,
     mode: "Modes" = "a",
     tag: Optional[str] = None,
+    forConstruction: bool = False,
 ) -> T:
     """add
 
@@ -2208,20 +2209,20 @@ def _add_sketch(
         angle (float, optional): rotation angle. Defaults to 0.0.
         mode (Modes, optional): combination mode, one of ["a","s","i","c"]. Defaults to "a".
         tag (Optional[str], optional): feature label. Defaults to None.
+        forConstruction (bool, optional): to be used only for construction. Defaults to False.
 
     Returns:
         Updated sketch
 
     """
     if isinstance(obj, Edge):
-        self._edges.append(obj.rotate(Vector(), Vector(0, 0, 1), angle))
-        if tag:
-            self._tag(obj, tag)
-    if isinstance(obj, Wire):
+        self.edge(obj.rotate(Vector(), Vector(0, 0, 1), angle), tag, forConstruction)
+    elif isinstance(obj, Wire):
+        obj.forConstruction = forConstruction
         self._wires.append(obj.rotate(Vector(), Vector(0, 0, 1), angle))
         if tag:
-            self._tag(obj, tag)
-    if isinstance(obj, Face):
+            self._tag([obj], tag)
+    elif isinstance(obj, Face):
         self.each(
             lambda l: obj.rotate(Vector(), Vector(0, 0, 1), angle).located(l),
             mode,
@@ -2232,8 +2233,6 @@ def _add_sketch(
 
 
 Sketch.add = _add_sketch
-
-Workplane
 
 
 def _pushCenter_sketch(
@@ -2261,14 +2260,27 @@ def _pushCenter_sketch(
         centerOption (Literal["CenterOfMass", "CenterOfBoundBox"], optional): center type.
             Defaults to "CenterOfMass".
 
+    Raises:
+        ValueError: Invalid centerOption
+
     Returns:
         Updated sketch
 
     """
+    selected_objects = self._selection
     if centerOption == "CenterOfMass":
-        self.push([Shape.centerOfMass(o) for o in self._selection])
+        self._selection = [Location(Shape.centerOfMass(o)) for o in selected_objects]
+
+        # self.locs.extend([Location(Shape.centerOfMass(o)) for o in self._selection])
+    elif centerOption == "CenterOfBoundBox":
+        self._selection = [Location(o.CenterOfBoundBox()) for o in selected_objects]
+        # self.locs.extend([Location(o.CenterOfBoundBox()) for o in self._selection])
     else:
-        self.push([o.CenterOfBoundBox() for o in self._selection])
+        raise (
+            ValueError(
+                "centerOption must be one of 'CenterOfMass' or 'CenterOfBoundBox'"
+            )
+        )
 
     return self
 
@@ -3347,7 +3359,7 @@ def _location_str(self):
         Location as String
     """
     loc_tuple = self.toTuple()
-    return f"({str(loc_tuple[0])}, {str(loc_tuple[1])})"
+    return f"Location: ({str(loc_tuple[0])}, {str(loc_tuple[1])})"
 
 
 Location.__str__ = _location_str
