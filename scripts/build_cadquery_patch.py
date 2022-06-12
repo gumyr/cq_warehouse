@@ -17,6 +17,7 @@ desc:
     and generates extended versions of these files:
     - assembly.py,
     - cq.py,
+    - sketch.py,
     - geom.py, and
     - shapes.py.
     Finally, a diff is generated between the originals and extended files for use
@@ -67,6 +68,7 @@ import cadquery
 class_files = {
     "occ_impl/shapes.py": ["Shape", "Vertex", "Edge", "Wire", "Face", "Module"],
     "assembly.py": ["Assembly"],
+    "sketch.py": ["Sketch"],
     "cq.py": ["Workplane"],
     "occ_impl/geom.py": ["Plane", "Vector", "Location"],
 }
@@ -446,6 +448,12 @@ def main(argv):
             ],
             stdout=patch_file,
         )
+    # Extract the second line to determine the patch depth
+    with open(patch_file_name, "r") as patch_file:
+        patch_file.readline()
+        first_line = patch_file.readline()
+    patch_depth = first_line.split()[1].count("/")
+
     # Copy the patch to the cadquery original source directory
     shutil.copyfile(
         patch_file_name,
@@ -457,9 +465,9 @@ def main(argv):
     )
     print("To apply the patch:")
     print(f"    cd {cadquery_path}")
-    print(f"    patch -s -p4 < {patch_file_name}")
+    print(f"    patch -s -l -p{patch_depth} < {patch_file_name}")
     print("To reverse the patch:")
-    print(f"    patch -R -p4 < {patch_file_name}")
+    print(f"    patch -R -l -p{patch_depth} < {patch_file_name}")
 
 
 if __name__ == "__main__":
