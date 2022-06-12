@@ -44,6 +44,7 @@ src/cq_warehouse/single_row_capped_deep_groove_ball_bearing_parameters.csv
 src/cq_warehouse/single_row_cylindrical_roller_bearing_parameters.csv
 src/cq_warehouse/single_row_deep_groove_ball_bearing_parameters.csv
 src/cq_warehouse/single_row_tapered_roller_bearing_parameters.csv
+src/cq_warehouse/sketch_extended.py
 src/cq_warehouse/socket_head_cap_parameters.csv
 src/cq_warehouse/sprocket.py
 src/cq_warehouse/square_nut_parameters.csv

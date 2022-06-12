@@ -35,6 +35,7 @@ from cq_warehouse.fastener import (
     DomedCapNut,
     ChamferedWasher,
     HexNutWithFlange,
+    HeatSetNut,
 )
 from cq_warehouse.bearing import SingleRowDeepGrooveBallBearing
 
@@ -244,7 +245,7 @@ class WorkplaneTests(unittest.TestCase):
                 txt="The quick brown fox jumped over the lazy dog",
                 fontsize=5,
                 distance=1,
-                start=0.1,
+                positionOnPath=0.1,
                 # cut=False,
             )
         )
@@ -514,14 +515,15 @@ class EmbossTests(unittest.TestCase):
         )
         self.assertTrue(embossed_face.isValid())
 
-        square_face = cq.Sketch().rect(12, 12)._faces.Faces()[0]
-        with self.assertRaises(RuntimeError):
-            with self.assertWarns(UserWarning):
-                square_face.embossToShape(
-                    sphere,
-                    surfacePoint=(0, 0, 50),
-                    surfaceXDirection=(1, 1, 0),
-                )
+        # Fixed with sort edges
+        # square_face = cq.Sketch().rect(12, 12)._faces.Faces()[0]
+        # with self.assertRaises(RuntimeError):
+        #     with self.assertWarns(UserWarning):
+        #         square_face.embossToShape(
+        #             sphere,
+        #             surfacePoint=(0, 0, 50),
+        #             surfaceXDirection=(1, 1, 0),
+        #         )
 
     def test_emboss_wire(self):
         sphere = cq.Solid.makeSphere(50, angleDegrees1=-90)

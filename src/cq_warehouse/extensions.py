@@ -31,6 +31,7 @@ license:
     limitations under the License.
 
 """
+from cmath import isnan
 import sys
 import logging
 import math
@@ -39,6 +40,7 @@ from itertools import combinations
 from functools import reduce
 from token import OP
 from typing import Optional, Literal, Union, Tuple, Iterable
+from types import MethodType
 import cadquery as cq
 from cadquery.occ_impl.shapes import VectorLike
 from cadquery.cq import T
@@ -60,11 +62,11 @@ from cadquery import (
     DirectionMinMaxSelector,
     Color,
 )
+from cadquery.sketch import Modes
 from cq_warehouse.fastener import (
     Screw,
     Nut,
     Washer,
-    HeatSetNut,
     DomedCapNut,
     HexNut,
     UnchamferedHexagonNut,
@@ -92,13 +94,23 @@ from OCP.StdFail import StdFail_NotDone
 from OCP.Standard import Standard_NoSuchObject
 from OCP.BRepIntCurveSurface import BRepIntCurveSurface_Inter
 from OCP.gp import gp_Vec, gp_Pnt, gp_Ax1, gp_Dir, gp_Trsf, gp, gp_GTrsf
+from OCP.Font import (
+    Font_FontMgr,
+    Font_FA_Regular,
+    Font_FA_Italic,
+    Font_FA_Bold,
+    Font_SystemFont,
+)
+from OCP.TCollection import TCollection_AsciiString
+from OCP.StdPrs import StdPrs_BRepFont, StdPrs_BRepTextBuilder as Font_BRepTextBuilder
+from OCP.NCollection import NCollection_Utf8String
 
 # Logging configuration - all cq_warehouse logs are level DEBUG or WARNING
 logging.basicConfig(
     filename="cq_warehouse.log",
     encoding="utf-8",
-    # level=logging.DEBUG,
-    level=logging.CRITICAL,
+    level=logging.DEBUG,
+    # level=logging.CRITICAL,
     format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)s - %(funcName)20s() ] - %(message)s",
 )
 
@@ -631,14 +643,15 @@ def _textOnPath(
     txt: str,
     fontsize: float,
     distance: float,
-    start: float = 0.0,
     cut: bool = True,
     combine: bool = False,
     clean: bool = True,
     font: str = "Arial",
     fontPath: Optional[str] = None,
     kind: Literal["regular", "bold", "italic"] = "regular",
+    halign: Literal["center", "left", "right"] = "left",
     valign: Literal["center", "top", "bottom"] = "center",
+    positionOnPath: float = 0.0,
 ) -> T:
     """
     Returns 3D text with the baseline following the given path.
@@ -659,13 +672,15 @@ def _textOnPath(
         txt: text to be rendered
         fontsize: size of the font in model units
         distance: the distance to extrude or cut, normal to the workplane plane, negative means opposite the normal direction
-        start: the relative location on path to start the text, values must be between 0.0 and 1.0
         cut: True to cut the resulting solid from the parent solids if found
         combine: True to combine the resulting solid with parent solids if found
         clean: call :py:meth:`clean` afterwards to have a clean shape
         font: font name
         fontPath: path to font file
-        kind: font type
+        kind: font style
+        halign: horizontal alignment
+        valign: vertical alignment
+        positionOnPath: the relative location on path to position the text, values must be between 0.0 and 1.0
 
     Returns:
         a CQ object with the resulting solid selected
@@ -705,70 +720,28 @@ def _textOnPath(
             )
         )
     """
-
-    # from .selectors import DirectionMinMaxSelector
-
-    def position_face(orig_face: "Face") -> "Face":
-        """
-        Reposition a face to the provided path
-
-        Local coordinates are used to calculate the position of the face
-        relative to the path. Global coordinates to position the face.
-        """
-        bbox = self.plane.toLocalCoords(orig_face.BoundingBox())
-        face_bottom_center = Vector((bbox.xmin + bbox.xmax) / 2, 0, 0)
-        relative_position_on_wire = start + face_bottom_center.x / path_length
-        wire_tangent = path.tangentAt(relative_position_on_wire)
-        wire_angle = (
-            180
-            * self.plane.xDir.getSignedAngle(wire_tangent, self.plane.zDir)
-            / math.pi
-        )
-
-        wire_position = path.positionAt(relative_position_on_wire)
-        global_face_bottom_center = self.plane.toWorldCoords(face_bottom_center)
-        return orig_face.translate(wire_position - global_face_bottom_center).rotate(
-            wire_position,
-            wire_position + self.plane.zDir,
-            wire_angle,
-        )
-
     # The top edge or wire on the stack defines the path
     if not self.ctx.pendingWires and not self.ctx.pendingEdges:
         raise Exception("A pending edge or wire must be present to define the path")
     for stack_object in self.vals():
         if type(stack_object) == Edge:
-            path = self.ctx.pendingEdges.pop(0)
+            path = Wire.assembleEdges(self.ctx.pendingEdges)
             break
         if type(stack_object) == Wire:
             path = self.ctx.pendingWires.pop(0)
             break
 
-    # Create text on the current workplane
-    raw_text = Compound.makeText(
-        txt,
-        fontsize,
-        distance,
-        font=font,
-        fontPath=fontPath,
-        kind=kind,
-        halign="left",
-        valign=valign,
-        position=self.plane,
+    # The path was defined on an arbitrary plane, convert back to XY
+    local_path = self.plane.toLocalCoords(path)
+    result = Compound.make2DText(
+        txt, fontsize, font, fontPath, kind, halign, valign, positionOnPath, local_path
     )
-    # Extract just the faces on the workplane
-    text_faces = (
-        Workplane(raw_text)
-        .faces(DirectionMinMaxSelector(self.plane.zDir, False))
-        .vals()
-    )
-    path_length = path.Length()
-
-    # Reposition all of the text faces and re-create 3D text
-    faces_on_path = [position_face(f) for f in text_faces]
-    result = Compound.makeCompound(
-        [Solid.extrudeLinear(f, self.plane.zDir) for f in faces_on_path]
-    )
+    if distance != 0:
+        result = Compound.makeCompound(
+            [Solid.extrudeLinear(f, Vector(0, 0, distance)) for f in result.Faces()]
+        )
+    # Reposition on this workplane
+    result = result.transformShape(self.plane.rG)
 
     if cut:
         combine = "cut"
@@ -1760,6 +1733,9 @@ def _face_makeHoles(self, interiorWires: list["Wire"]) -> "Face":
 
     .. image:: slotted_cylinder.png
 
+    Args:
+        interiorWires: a list of hole outline wires
+
     Raises:
         RuntimeError: adding interior hole in non-planar face with provided interiorWires
         RuntimeError: resulting face is not valid
@@ -1969,6 +1945,383 @@ def _makeFingerJoints_face(
 
 Face.makeFingerJoints = _makeFingerJoints_face
 
+"""
+
+Compound extensions: make2DText
+
+"""
+
+
+def _make2DText_compound(
+    cls,
+    txt: str,
+    fontsize: float,
+    font: str = "Arial",
+    fontPath: Optional[str] = None,
+    fontStyle: Literal["regular", "bold", "italic"] = "regular",
+    halign: Literal["center", "left", "right"] = "left",
+    valign: Literal["center", "top", "bottom"] = "center",
+    positionOnPath: float = 0.0,
+    textPath: Union["Edge", "Wire"] = None,
+) -> "Compound":
+    """
+    2D Text that optionally follows a path.
+
+    The text that is created can be combined as with other sketch features by specifying
+    a mode or rotated by the given angle.  In addition, edges have been previously created
+    with arc or segment, the text will follow the path defined by these edges. The start
+    parameter can be used to shift the text along the path to achieve precise positioning.
+
+    Args:
+        txt: text to be rendered
+        fontsize: size of the font in model units
+        font: font name
+        fontPath: path to font file
+        fontStyle: one of ["regular", "bold", "italic"]. Defaults to "regular".
+        halign: horizontal alignment, one of ["center", "left", "right"].
+            Defaults to "left".
+        valign: vertical alignment, one of ["center", "top", "bottom"].
+            Defaults to "center".
+        positionOnPath: the relative location on path to position the text, between 0.0 and 1.0.
+            Defaults to 0.0.
+        textPath: a path for the text to follows. Defaults to None - linear text.
+
+    Returns:
+        a Compound object containing multiple Faces representing the text
+
+    Examples::
+
+        fox = cq.Compound.make2DText(
+            txt="The quick brown fox jumped over the lazy dog",
+            fontsize=10,
+            positionOnPath=0.1,
+            textPath=jump_edge,
+        )
+
+    """
+
+    def position_face(orig_face: "Face") -> "Face":
+        """
+        Reposition a face to the provided path
+
+        Local coordinates are used to calculate the position of the face
+        relative to the path. Global coordinates to position the face.
+        """
+        bbox = orig_face.BoundingBox()
+        face_bottom_center = Vector((bbox.xmin + bbox.xmax) / 2, 0, 0)
+        relative_position_on_wire = positionOnPath + face_bottom_center.x / path_length
+        wire_tangent = textPath.tangentAt(relative_position_on_wire)
+        wire_angle = -180 * Vector(1, 0, 0).getSignedAngle(wire_tangent) / math.pi
+        wire_position = textPath.positionAt(relative_position_on_wire)
+
+        return orig_face.translate(wire_position - face_bottom_center).rotate(
+            wire_position,
+            wire_position + Vector(0, 0, 1),
+            wire_angle,
+        )
+
+    font_kind = {
+        "regular": Font_FA_Regular,
+        "bold": Font_FA_Bold,
+        "italic": Font_FA_Italic,
+    }[fontStyle]
+
+    mgr = Font_FontMgr.GetInstance_s()
+
+    if fontPath and mgr.CheckFont(TCollection_AsciiString(fontPath).ToCString()):
+        font_t = Font_SystemFont(TCollection_AsciiString(fontPath))
+        font_t.SetFontPath(font_kind, TCollection_AsciiString(fontPath))
+        mgr.RegisterFont(font_t, True)
+
+    else:
+        font_t = mgr.FindFont(TCollection_AsciiString(font), font_kind)
+
+    builder = Font_BRepTextBuilder()
+    font_i = StdPrs_BRepFont(
+        NCollection_Utf8String(font_t.FontName().ToCString()),
+        font_kind,
+        float(fontsize),
+    )
+    text_flat = Compound(builder.Perform(font_i, NCollection_Utf8String(txt)))
+
+    bb = text_flat.BoundingBox()
+
+    t = Vector()
+
+    if halign == "center":
+        t.x = -bb.xlen / 2
+    elif halign == "right":
+        t.x = -bb.xlen
+
+    if valign == "center":
+        t.y = -bb.ylen / 2
+    elif valign == "top":
+        t.y = -bb.ylen
+
+    text_flat = text_flat.translate(t)
+
+    if textPath is not None:
+        path_length = textPath.Length()
+        text_flat = Compound.makeCompound([position_face(f) for f in text_flat.Faces()])
+
+    return text_flat
+
+
+# Monkey patch a class method
+Compound.make2DText = MethodType(_make2DText_compound, Compound)
+
+"""
+
+Sketch extensions: text(), val(), vals(), add(), pushCenter()
+
+"""
+
+
+def _text_sketch(
+    self: T,
+    txt: str,
+    fontsize: float,
+    font: str = "Arial",
+    fontPath: Optional[str] = None,
+    fontStyle: Literal["regular", "bold", "italic"] = "regular",
+    halign: Literal["center", "left", "right"] = "left",
+    valign: Literal["center", "top", "bottom"] = "center",
+    positionOnPath: float = 0.0,
+    angle: float = 0,
+    mode: "Modes" = "a",
+    tag: Optional[str] = None,
+) -> T:
+    """
+    Text that optionally follows a path.
+
+    The text that is created can be combined as with other sketch features by specifying
+    a mode or rotated by the given angle.  In addition, the text will follow the path defined
+    by edges that have been previously created with arc or segment. The positionOnPath
+    parameter can be used to shift the text along the path to achieve precise positioning.
+
+    Examples::
+
+        simple_text = cq.Sketch().text("simple", 10, angle=10)
+
+        loop_sketch = (
+            cq.Sketch()
+                .arc((-50, 0), 50, 90, 270)
+                .arc((50, 0), 50, 270, 270)
+                .text("loop_" * 20, 10)
+        )
+
+    Args:
+        txt: text to be rendered
+        fontsize: size of the font in model units
+        font: font name
+        fontPath: system path to font file
+        fontStyle: one of ["regular", "bold", "italic"]. Defaults to "regular".
+        halign: horizontal alignment, one of ["center", "left", "right"].
+            Defaults to "left".
+        valign: vertical alignment, one of ["center", "top", "bottom"].
+            Defaults to "center".
+        positionOnPath: the relative location on path to locate the text, between 0.0 and 1.0.
+            Defaults to 0.0.
+        angle: rotation angle. Defaults to 0.0.
+        mode: combination mode, one of ["a","s","i","c"]. Defaults to "a".
+        tag: feature label. Defaults to None.
+
+    Returns:
+        a Sketch object
+
+
+    """
+    if self._edges:
+        text_path = Wire.assembleEdges(self._edges)
+    else:
+        text_path = None
+
+    res = Compound.make2DText(
+        txt,
+        fontsize,
+        font,
+        fontPath,
+        fontStyle,
+        halign,
+        valign,
+        positionOnPath,
+        text_path,
+    ).rotate(Vector(), Vector(0, 0, 1), angle)
+
+    return self.each(lambda l: res.located(l), mode, tag)
+
+
+Sketch.text = _text_sketch
+
+
+def _vals_sketch(self) -> list[Union["Vertex", "Wire", "Edge", "Face"]]:
+    """Return a list of selected values
+
+    Examples::
+
+        face_objects = cq.Sketch().text("test", 10).faces().vals()
+
+    Raises:
+        ValueError: Nothing selected
+
+    Returns:
+        list[Union[Vertex, Wire, Edge, Face]]: List of selected occ_impl objects
+
+    """
+    if not self._selection:
+        raise ValueError("Nothing selected")
+    return self._selection
+
+
+Sketch.vals = _vals_sketch
+
+
+def _val_sketch(self) -> Union["Vertex", "Wire", "Edge", "Face"]:
+    """Return the first selected value
+
+    Examples::
+
+        edge_object = cq.Sketch().arc((-50, 0), 50, 90, 270).edges().val()
+
+    Raises:
+        ValueError: Nothing selected
+
+    Returns:
+        Union[Vertex, Wire, Edge, Face]: The first selected occ_impl object
+
+    """
+    if not self._selection:
+        raise ValueError("Nothing selected")
+    return self._selection[0]
+
+
+Sketch.val = _val_sketch
+
+
+def _add_sketch(
+    self: T,
+    obj: Union["Wire", "Edge", "Face"],
+    angle: float = 0,
+    mode: "Modes" = "a",
+    tag: Optional[str] = None,
+) -> T:
+    """add
+
+    Add a Wire, Edge or Face to this sketch
+
+    Examples::
+
+        added_edge = cq.Sketch().arc((50, 0), 50, 270, 270).add(external_edge).assemble()
+
+    Args:
+        obj (Union[Wire, Edge, Face]): the object to add
+        angle (float, optional): rotation angle. Defaults to 0.0.
+        mode (Modes, optional): combination mode, one of ["a","s","i","c"]. Defaults to "a".
+        tag (Optional[str], optional): feature label. Defaults to None.
+
+    Returns:
+        Updated sketch
+
+    """
+    if isinstance(obj, Edge):
+        self.edge(obj.rotate(Vector(), Vector(0, 0, 1), angle), tag, mode == "c")
+    elif isinstance(obj, Wire):
+        obj.forConstruction = mode == "c"
+        self._wires.append(obj.rotate(Vector(), Vector(0, 0, 1), angle))
+        if tag:
+            self._tag([obj], tag)
+    elif isinstance(obj, Face):
+        self.each(
+            lambda l: obj.rotate(Vector(), Vector(0, 0, 1), angle).located(l),
+            mode,
+            tag,
+        )
+
+    return self
+
+
+Sketch.add = _add_sketch
+
+
+def _boundingBox_sketch(
+    self: T,
+    mode: "Modes" = "a",
+    tag: Optional[str] = None,
+) -> T:
+    """Bounding Box
+
+    Create bounding box(s) around selected features. These bounding boxes can
+    be used to directly construct shapes or to locate other shapes.
+
+    Examples::
+
+        mickey = (
+            cq.Sketch()
+            .circle(10)
+            .faces()
+            .boundingBox(tag="bb", mode="c")
+            .faces(tag="bb")
+            .vertices(">Y")
+            .circle(7)
+            .clean()
+        )
+
+        bounding_box_center = (
+            cq.Sketch()
+            .segment((0, 0), (10, 0))
+            .segment((0, 5))
+            .close()
+            .assemble(tag="t")
+            .faces(tag="t")
+            .circle(0.5, mode="s")
+            .faces(tag="t")
+            .boundingBox(tag="bb", mode="c")
+            .faces(tag="bb")
+            .rect(1, 1, mode="s")
+        )
+
+        circles = (
+            cq.Sketch()
+            .rarray(40, 40, 2, 2)
+            .circle(10)
+            .reset()
+            .faces()
+            .boundingBox(tag="bb", mode="c")
+            .vertices(tag="bb")
+            .circle(7)
+            .clean()
+        )
+
+    Args:
+        mode (Modes, optional): combination mode, one of ["a","s","i","c"]. Defaults to "a".
+        tag (Optional[str], optional): feature label. Defaults to None.
+
+    Returns:
+        Updated sketch
+    """
+    bb_faces = []
+    for obj in self._selection:
+        if isinstance(obj, Vertex):
+            continue
+        bb = obj.BoundingBox()
+        vertices = [
+            (bb.xmin, bb.ymin),
+            (bb.xmin, bb.ymax),
+            (bb.xmax, bb.ymax),
+            (bb.xmax, bb.ymin),
+            (bb.xmin, bb.ymin),
+        ]
+        bb_faces.append(
+            Face.makeFromWires(Wire.makePolygon([Vector(v) for v in vertices]))
+        )
+    bb_faces_iter = iter(bb_faces)
+    self.push([(0, 0)] * len(bb_faces))
+    self.each(lambda loc: next(bb_faces_iter).located(loc), mode, tag)
+
+    return self
+
+
+Sketch.boundingBox = _boundingBox_sketch
 
 """
 
@@ -2261,7 +2614,8 @@ def _embossWireToShape(
     """
     import warnings
 
-    planar_edges = self.Edges()
+    # planar_edges = self.Edges()
+    planar_edges = self.sortedEdges()
     for i, planar_edge in enumerate(planar_edges[:-1]):
         if (
             planar_edge.positionAt(1) - planar_edges[i + 1].positionAt(0)
@@ -2352,6 +2706,42 @@ def _embossWireToShape(
 
 
 Wire.embossToShape = _embossWireToShape
+
+
+def _sortedEdges_wire(self, tolerance: float = 1e-5):
+    """Edges sorted by position
+
+    Extract the edges from the wire and sort them such that the end of one
+    edge is within tolerance of the start of the next edge
+
+    Args:
+        tolerance (float, optional): Max separation between sequential edges.
+            Defaults to 1e-5.
+
+    Raises:
+        ValueError: Wire is disjointed
+
+    Returns:
+        list(Edge): Edges sorted by position
+    """
+    unsorted_edges = self.Edges()
+    sorted_edges = [unsorted_edges.pop(0)]
+    while unsorted_edges:
+        found = False
+        for i in range(len(unsorted_edges)):
+            if (
+                sorted_edges[-1].positionAt(1) - unsorted_edges[i].positionAt(0)
+            ).Length < tolerance:
+                sorted_edges.append(unsorted_edges.pop(i))
+                found = True
+                break
+        if not found:
+            raise ValueError("Edge segments are separated by tolerance or more")
+
+    return sorted_edges
+
+
+Wire.sortedEdges = _sortedEdges_wire
 
 """
 
@@ -3005,7 +3395,7 @@ def _location_str(self):
         Location as String
     """
     loc_tuple = self.toTuple()
-    return f"({str(loc_tuple[0])}, {str(loc_tuple[1])})"
+    return f"Location: ({str(loc_tuple[0])}, {str(loc_tuple[1])})"
 
 
 Location.__str__ = _location_str

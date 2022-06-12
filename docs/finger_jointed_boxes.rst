@@ -79,6 +79,7 @@ The full API is as follows:
     :noindex:
 
 .. automethod:: Workplane.makeFingerJoints
+    :noindex:
 
 The ``kerfWidth`` parameter can be used to compensate for the size of the laser cut
 thus allowing a path for the laser to the created directly from the face. Check with

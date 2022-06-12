@@ -15,6 +15,7 @@ class Compound:
     pass
 class Location:
     pass
+Modes = Literal['a', 's', 'i', 'c']
 class Assembly(object):
     def translate(self, vec: "VectorLike") -> "Assembly":
         """
@@ -251,14 +252,15 @@ class Workplane(object):
         txt: str,
         fontsize: float,
         distance: float,
-        start: float = 0.0,
         cut: bool = True,
         combine: bool = False,
         clean: bool = True,
         font: str = "Arial",
         fontPath: Optional[str] = None,
         kind: Literal["regular", "bold", "italic"] = "regular",
+        halign: Literal["center", "left", "right"] = "left",
         valign: Literal["center", "top", "bottom"] = "center",
+        positionOnPath: float = 0.0,
     ) -> T:
         """
         Returns 3D text with the baseline following the given path.
@@ -279,13 +281,15 @@ class Workplane(object):
             txt: text to be rendered
             fontsize: size of the font in model units
             distance: the distance to extrude or cut, normal to the workplane plane, negative means opposite the normal direction
-            start: the relative location on path to start the text, values must be between 0.0 and 1.0
             cut: True to cut the resulting solid from the parent solids if found
             combine: True to combine the resulting solid with parent solids if found
             clean: call :py:meth:`clean` afterwards to have a clean shape
             font: font name
             fontPath: path to font file
-            kind: font type
+            kind: font style
+            halign: horizontal alignment
+            valign: vertical alignment
+            positionOnPath: the relative location on path to position the text, values must be between 0.0 and 1.0
     
         Returns:
             a CQ object with the resulting solid selected
@@ -762,6 +766,9 @@ class Face(object):
     
         .. image:: slotted_cylinder.png
     
+        Args:
+            interiorWires: a list of hole outline wires
+    
         Raises:
             RuntimeError: adding interior hole in non-planar face with provided interiorWires
             RuntimeError: resulting face is not valid
@@ -812,6 +819,170 @@ class Face(object):
     
         Returns:
             Face: the Face with notches on one edge
+        """
+class Sketch(object):
+    def text(
+        self: T,
+        txt: str,
+        fontsize: float,
+        font: str = "Arial",
+        fontPath: Optional[str] = None,
+        fontStyle: Literal["regular", "bold", "italic"] = "regular",
+        halign: Literal["center", "left", "right"] = "left",
+        valign: Literal["center", "top", "bottom"] = "center",
+        positionOnPath: float = 0.0,
+        angle: float = 0,
+        mode: "Modes" = "a",
+        tag: Optional[str] = None,
+    ) -> T:
+        """
+        Text that optionally follows a path.
+    
+        The text that is created can be combined as with other sketch features by specifying
+        a mode or rotated by the given angle.  In addition, the text will follow the path defined
+        by edges that have been previously created with arc or segment. The positionOnPath
+        parameter can be used to shift the text along the path to achieve precise positioning.
+    
+        Examples::
+    
+            simple_text = cq.Sketch().text("simple", 10, angle=10)
+    
+            loop_sketch = (
+                cq.Sketch()
+                    .arc((-50, 0), 50, 90, 270)
+                    .arc((50, 0), 50, 270, 270)
+                    .text("loop_" * 20, 10)
+            )
+    
+        Args:
+            txt: text to be rendered
+            fontsize: size of the font in model units
+            font: font name
+            fontPath: system path to font file
+            fontStyle: one of ["regular", "bold", "italic"]. Defaults to "regular".
+            halign: horizontal alignment, one of ["center", "left", "right"].
+                Defaults to "left".
+            valign: vertical alignment, one of ["center", "top", "bottom"].
+                Defaults to "center".
+            positionOnPath: the relative location on path to locate the text, between 0.0 and 1.0.
+                Defaults to 0.0.
+            angle: rotation angle. Defaults to 0.0.
+            mode: combination mode, one of ["a","s","i","c"]. Defaults to "a".
+            tag: feature label. Defaults to None.
+    
+        Returns:
+            a Sketch object
+    
+    
+        """
+    def vals(self) -> list[Union["Vertex", "Wire", "Edge", "Face"]]:
+        """Return a list of selected values
+    
+        Examples::
+    
+            face_objects = cq.Sketch().text("test", 10).faces().vals()
+    
+        Raises:
+            ValueError: Nothing selected
+    
+        Returns:
+            list[Union[Vertex, Wire, Edge, Face]]: List of selected occ_impl objects
+    
+        """
+    def val(self) -> Union["Vertex", "Wire", "Edge", "Face"]:
+        """Return the first selected value
+    
+        Examples::
+    
+            edge_object = cq.Sketch().arc((-50, 0), 50, 90, 270).edges().val()
+    
+        Raises:
+            ValueError: Nothing selected
+    
+        Returns:
+            Union[Vertex, Wire, Edge, Face]: The first selected occ_impl object
+    
+        """
+    def add(
+        self: T,
+        obj: Union["Wire", "Edge", "Face"],
+        angle: float = 0,
+        mode: "Modes" = "a",
+        tag: Optional[str] = None,
+    ) -> T:
+        """add
+    
+        Add a Wire, Edge or Face to this sketch
+    
+        Examples::
+    
+            added_edge = cq.Sketch().arc((50, 0), 50, 270, 270).add(external_edge).assemble()
+    
+        Args:
+            obj (Union[Wire, Edge, Face]): the object to add
+            angle (float, optional): rotation angle. Defaults to 0.0.
+            mode (Modes, optional): combination mode, one of ["a","s","i","c"]. Defaults to "a".
+            tag (Optional[str], optional): feature label. Defaults to None.
+    
+        Returns:
+            Updated sketch
+    
+        """
+    def boundingBox(
+        self: T,
+        mode: "Modes" = "a",
+        tag: Optional[str] = None,
+    ) -> T:
+        """Bounding Box
+    
+        Create bounding box(s) around selected features. These bounding boxes can
+        be used to directly construct shapes or to locate other shapes.
+    
+        Examples::
+    
+            mickey = (
+                cq.Sketch()
+                .circle(10)
+                .faces()
+                .boundingBox(tag="bb", mode="c")
+                .faces(tag="bb")
+                .vertices(">Y")
+                .circle(7)
+                .clean()
+            )
+    
+            bounding_box_center = (
+                cq.Sketch()
+                .segment((0, 0), (10, 0))
+                .segment((0, 5))
+                .close()
+                .assemble(tag="t")
+                .faces(tag="t")
+                .circle(0.5, mode="s")
+                .faces(tag="t")
+                .boundingBox(tag="bb", mode="c")
+                .faces(tag="bb")
+                .rect(1, 1, mode="s")
+            )
+    
+            circles = (
+                cq.Sketch()
+                .rarray(40, 40, 2, 2)
+                .circle(10)
+                .reset()
+                .faces()
+                .boundingBox(tag="bb", mode="c")
+                .vertices(tag="bb")
+                .circle(7)
+                .clean()
+            )
+    
+        Args:
+            mode (Modes, optional): combination mode, one of ["a","s","i","c"]. Defaults to "a".
+            tag (Optional[str], optional): feature label. Defaults to None.
+    
+        Returns:
+            Updated sketch
         """
 class Wire(object):
     def makeRect(
@@ -914,6 +1085,22 @@ class Wire(object):
     
         Returns:
             Embossed wire
+        """
+    def sortedEdges(self, tolerance: float = 1e-5):
+        """Edges sorted by position
+    
+        Extract the edges from the wire and sort them such that the end of one
+        edge is within tolerance of the start of the next edge
+    
+        Args:
+            tolerance (float, optional): Max separation between sequential edges.
+                Defaults to 1e-5.
+    
+        Raises:
+            ValueError: Wire is disjointed
+    
+        Returns:
+            list(Edge): Edges sorted by position
         """
 class Edge(object):
     def projectToShape(

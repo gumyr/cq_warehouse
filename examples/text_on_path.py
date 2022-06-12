@@ -2,11 +2,11 @@
 
 Extensions Examples
 
-name: text_on_path.py
+name: txt_on_path.py
 by:   Gumyr
 date: January 10th 2022
 
-desc: Create 3D text on a path on many planes.
+desc: Create 3D txt on a path on many planes.
 
 license:
 
@@ -53,7 +53,7 @@ for base_plane in [
             txt=base_plane + " The quick brown fox jumped over the lazy dog",
             fontsize=5,
             distance=1,
-            start=0.05,
+            positionOnPath=0.05,
         )
     )
     if "show_object" in locals():
