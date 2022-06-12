@@ -22,5 +22,5 @@ python3 -m pip install git+https://github.com/gumyr/cq_warehouse.git#egg=cq_ware
 ```
 To install the working `dev` branch:
 ```
-python3 -m pip install git+https://github.com/gumyr/cq_warehouse.git#egg=cq_warehouse@dev
+python3 -m pip install git+https://github.com/gumyr/cq_warehouse.git@dev#egg=cq_warehouse
 ```
