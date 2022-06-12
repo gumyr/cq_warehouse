@@ -20,3 +20,7 @@ To install **cq_warehouse** from github:
 ```
 python3 -m pip install git+https://github.com/gumyr/cq_warehouse.git#egg=cq_warehouse
 ```
+To install the working `dev` branch:
+```
+python3 -m pip install git+https://github.com/gumyr/cq_warehouse.git#egg=cq_warehouse@dev
+```
