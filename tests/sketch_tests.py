@@ -95,61 +95,44 @@ class AddTests(unittest.TestCase):
 
         sketch_wires = cq.Sketch().add(wire, tag="wire")
         self.assertEqual(len(sketch_wires._wires), 1)
+        # Wire selection doesn't seem to be supported
         # self.assertEqual(len(sketch_wires.wires(tag="wire").vals()), 1)
 
 
-class PushCenterTests(unittest.TestCase):
-    """Test use of the center of an existing object to locate something else"""
+class BoundingBoxTests(unittest.TestCase):
+    """Test creating bounding boxes around selected features"""
 
-    def test_pushCenter(self):
+    def test_single_face(self):
+        square = cq.Sketch().rect(10, 10)
+        square_face = square.faces().val()
+        square_bb_face = square.faces().boundingBox(tag="bb").faces(tag="bb").val()
+        self.assertAlmostEqual(square_face.cut(square_bb_face).Area(), 0, 5)
 
-        hull_sketch = (
-            cq.Sketch()
-            .arc((0, 0), 1.0, 0.0, 360.0)
-            .arc((1, 1.5), 0.5, 0.0, 360.0)
-            .segment((0.0, 2), (-1, 3.0))
-            .hull()
+    def test_single_edge(self):
+        arc = cq.Sketch().arc((0, 10), 10, 270, 90)
+        arc_bb_target_face = (
+            cq.Sketch().push([(5, 5)]).rect(10, 10).reset().faces().val()
         )
-        before_area = hull_sketch.faces().val().Area()
-        after_area = (
-            hull_sketch.faces()
-            .pushCenter()
-            .rect(0.1, 0.1, mode="s")
+        arc_bb_face = arc.edges().boundingBox().reset().faces().val()
+        self.assertAlmostEqual(arc_bb_target_face.cut(arc_bb_face).Area(), 0, 5)
+
+    def test_multiple_faces(self):
+        circle_faces = (
+            cq.Sketch()
+            .rarray(40, 40, 2, 2)
+            .circle(10)
             .reset()
             .faces()
-            .val()
-            .Area()
-        )
-        self.assertAlmostEqual(before_area - 0.01, after_area, 5)
-
-    def test_centerOptions(self):
-        """Use a triangle to compare center locations"""
-        center_of_mass = (
-            cq.Sketch()
-            .segment((0, 0), (10, 0))
-            .segment((0, 5))
-            .close()
-            .assemble()
+            .boundingBox(tag="x", mode="c")
+            .vertices(tag="x")
+            .circle(7)
+            .clean()
             .reset()
             .faces()
-            .pushCenter("CenterOfMass")
-            ._selection[-1]
+            .vals()
         )
-        center_of_bb = (
-            cq.Sketch()
-            .segment((0, 0), (10, 0))
-            .segment((0, 5))
-            .close()
-            .assemble()
-            .faces()
-            .pushCenter("CenterOfBoundBox")
-            ._selection[-1]
-        )
-        self.assertGreater(center_of_bb.toTuple()[0][1], center_of_mass.toTuple()[0][1])
-
-    def test_error(self):
-        with self.assertRaises(ValueError):
-            cq.Sketch().rect(10, 10).pushCenter("Error")
+        self.assertEqual(len(circle_faces), 4)
+        self.assertEqual(len(circle_faces[0].Edges()), 8)
 
 
 if __name__ == "__main__":

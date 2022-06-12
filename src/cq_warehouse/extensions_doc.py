@@ -848,10 +848,10 @@ class Sketch(object):
             simple_text = cq.Sketch().text("simple", 10, angle=10)
     
             loop_sketch = (
-            cq.Sketch()
-                .arc((-50, 0), 50, 90, 270)
-                .arc((50, 0), 50, 270, 270)
-                .text("loop_" * 20, 10)
+                cq.Sketch()
+                    .arc((-50, 0), 50, 90, 270)
+                    .arc((50, 0), 50, 270, 270)
+                    .text("loop_" * 20, 10)
             )
     
         Args:
@@ -882,6 +882,9 @@ class Sketch(object):
     
             face_objects = cq.Sketch().text("test", 10).faces().vals()
     
+        Raises:
+            ValueError: Nothing selected
+    
         Returns:
             list[Union[Vertex, Wire, Edge, Face]]: List of selected occ_impl objects
     
@@ -892,6 +895,9 @@ class Sketch(object):
         Examples::
     
             edge_object = cq.Sketch().arc((-50, 0), 50, 90, 270).edges().val()
+    
+        Raises:
+            ValueError: Nothing selected
     
         Returns:
             Union[Vertex, Wire, Edge, Face]: The first selected occ_impl object
@@ -922,34 +928,61 @@ class Sketch(object):
             Updated sketch
     
         """
-    def pushCenter(
+    def boundingBox(
         self: T,
-        centerOption: Literal["CenterOfMass", "CenterOfBoundBox"] = "CenterOfMass",
+        mode: "Modes" = "a",
+        tag: Optional[str] = None,
     ) -> T:
-        """pushCenter
+        """Bounding Box
     
-        Push the center of the selected object(s) onto the stack.
+        Create bounding box(s) around selected features. These bounding boxes can
+        be used to directly construct shapes or to locate other shapes.
     
         Examples::
     
-            center_hole = (
+            mickey = (
                 cq.Sketch()
-                .arc((0, 0), 1.0, 0.0, 360.0)
-                .arc((1, 1.5), 0.5, 0.0, 360.0)
-                .segment((0.0, 2), (-1, 3.0))
-                .hull()
+                .circle(10)
                 .faces()
-                .pushCenter()
-                .circle(0.1, mode="s")
+                .boundingBox(tag="bb", mode="c")
+                .faces(tag="bb")
+                .vertices(">Y")
+                .circle(7)
+                .clean()
+            )
+    
+            bounding_box_center = (
+                cq.Sketch()
+                .segment((0, 0), (10, 0))
+                .segment((0, 5))
+                .close()
+                .assemble(tag="t")
+                .faces(tag="t")
+                .circle(0.5, mode="s")
+                .faces(tag="t")
+                .boundingBox(tag="bb", mode="c")
+                .faces(tag="bb")
+                .rect(1, 1, mode="s")
+            )
+    
+            circles = (
+                cq.Sketch()
+                .rarray(40, 40, 2, 2)
+                .circle(10)
+                .reset()
+                .faces()
+                .boundingBox(tag="bb", mode="c")
+                .vertices(tag="bb")
+                .circle(7)
+                .clean()
             )
     
         Args:
-            centerOption (Literal["CenterOfMass", "CenterOfBoundBox"], optional): center type.
-                Defaults to "CenterOfMass".
+            mode (Modes, optional): combination mode, one of ["a","s","i","c"]. Defaults to "a".
+            tag (Optional[str], optional): feature label. Defaults to None.
     
         Returns:
             Updated sketch
-    
         """
 class Wire(object):
     def makeRect(

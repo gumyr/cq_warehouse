@@ -2104,10 +2104,10 @@ def _text_sketch(
         simple_text = cq.Sketch().text("simple", 10, angle=10)
 
         loop_sketch = (
-        cq.Sketch()
-            .arc((-50, 0), 50, 90, 270)
-            .arc((50, 0), 50, 270, 270)
-            .text("loop_" * 20, 10)
+            cq.Sketch()
+                .arc((-50, 0), 50, 90, 270)
+                .arc((50, 0), 50, 270, 270)
+                .text("loop_" * 20, 10)
         )
 
     Args:
@@ -2161,10 +2161,15 @@ def _vals_sketch(self) -> list[Union["Vertex", "Wire", "Edge", "Face"]]:
 
         face_objects = cq.Sketch().text("test", 10).faces().vals()
 
+    Raises:
+        ValueError: Nothing selected
+
     Returns:
         list[Union[Vertex, Wire, Edge, Face]]: List of selected occ_impl objects
 
     """
+    if not self._selection:
+        raise ValueError("Nothing selected")
     return self._selection
 
 
@@ -2178,10 +2183,15 @@ def _val_sketch(self) -> Union["Vertex", "Wire", "Edge", "Face"]:
 
         edge_object = cq.Sketch().arc((-50, 0), 50, 90, 270).edges().val()
 
+    Raises:
+        ValueError: Nothing selected
+
     Returns:
         Union[Vertex, Wire, Edge, Face]: The first selected occ_impl object
 
     """
+    if not self._selection:
+        raise ValueError("Nothing selected")
     return self._selection[0]
 
 
@@ -2240,7 +2250,47 @@ def _boundingBox_sketch(
 ) -> T:
     """Bounding Box
 
-    Create bounding boxes around selected features.
+    Create bounding box(s) around selected features. These bounding boxes can
+    be used to directly construct shapes or to locate other shapes.
+
+    Examples::
+
+        mickey = (
+            cq.Sketch()
+            .circle(10)
+            .faces()
+            .boundingBox(tag="bb", mode="c")
+            .faces(tag="bb")
+            .vertices(">Y")
+            .circle(7)
+            .clean()
+        )
+
+        bounding_box_center = (
+            cq.Sketch()
+            .segment((0, 0), (10, 0))
+            .segment((0, 5))
+            .close()
+            .assemble(tag="t")
+            .faces(tag="t")
+            .circle(0.5, mode="s")
+            .faces(tag="t")
+            .boundingBox(tag="bb", mode="c")
+            .faces(tag="bb")
+            .rect(1, 1, mode="s")
+        )
+
+        circles = (
+            cq.Sketch()
+            .rarray(40, 40, 2, 2)
+            .circle(10)
+            .reset()
+            .faces()
+            .boundingBox(tag="bb", mode="c")
+            .vertices(tag="bb")
+            .circle(7)
+            .clean()
+        )
 
     Args:
         mode (Modes, optional): combination mode, one of ["a","s","i","c"]. Defaults to "a".
@@ -2249,6 +2299,7 @@ def _boundingBox_sketch(
     Returns:
         Updated sketch
     """
+    bb_faces = []
     for obj in self._selection:
         if isinstance(obj, Vertex):
             continue
@@ -2260,68 +2311,17 @@ def _boundingBox_sketch(
             (bb.xmax, bb.ymin),
             (bb.xmin, bb.ymin),
         ]
-        print(f"{vertices=}")
-        new_face = Face.makeFromWires(Wire.makePolygon([Vector(v) for v in vertices]))
-        self.push([(0, 0)])
-        self.add(new_face, mode=mode, tag=tag)
+        bb_faces.append(
+            Face.makeFromWires(Wire.makePolygon([Vector(v) for v in vertices]))
+        )
+    bb_faces_iter = iter(bb_faces)
+    self.push([(0, 0)] * len(bb_faces))
+    self.each(lambda loc: next(bb_faces_iter).located(loc), mode, tag)
 
     return self
 
 
 Sketch.boundingBox = _boundingBox_sketch
-
-
-def _pushCenter_sketch(
-    self: T,
-    centerOption: Literal["CenterOfMass", "CenterOfBoundBox"] = "CenterOfMass",
-) -> T:
-    """pushCenter
-
-    Push the center of the selected object(s) onto the stack.
-
-    Examples::
-
-        center_hole = (
-            cq.Sketch()
-            .arc((0, 0), 1.0, 0.0, 360.0)
-            .arc((1, 1.5), 0.5, 0.0, 360.0)
-            .segment((0.0, 2), (-1, 3.0))
-            .hull()
-            .faces()
-            .pushCenter()
-            .circle(0.1, mode="s")
-        )
-
-    Args:
-        centerOption (Literal["CenterOfMass", "CenterOfBoundBox"], optional): center type.
-            Defaults to "CenterOfMass".
-
-    Raises:
-        ValueError: Invalid centerOption
-
-    Returns:
-        Updated sketch
-
-    """
-    selected_objects = self._selection
-    if centerOption == "CenterOfMass":
-        self._selection = [Location(Shape.centerOfMass(o)) for o in selected_objects]
-
-        # self.locs.extend([Location(Shape.centerOfMass(o)) for o in self._selection])
-    elif centerOption == "CenterOfBoundBox":
-        self._selection = [Location(o.CenterOfBoundBox()) for o in selected_objects]
-        # self.locs.extend([Location(o.CenterOfBoundBox()) for o in self._selection])
-    else:
-        raise (
-            ValueError(
-                "centerOption must be one of 'CenterOfMass' or 'CenterOfBoundBox'"
-            )
-        )
-
-    return self
-
-
-Sketch.pushCenter = _pushCenter_sketch
 
 """
 
