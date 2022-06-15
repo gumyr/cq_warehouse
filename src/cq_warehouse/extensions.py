@@ -62,7 +62,7 @@ from cadquery import (
     DirectionMinMaxSelector,
     Color,
 )
-from cadquery.sketch import Modes
+from cadquery.sketch import Modes, Point
 from cq_warehouse.fastener import (
     Screw,
     Nut,
@@ -88,7 +88,6 @@ from OCP.GeomAbs import (
 )
 from OCP.BRepOffsetAPI import BRepOffsetAPI_MakeFilling
 from OCP.TopAbs import TopAbs_Orientation
-from OCP.gp import gp_Pnt, gp_Vec
 from OCP.Bnd import Bnd_Box
 from OCP.StdFail import StdFail_NotDone
 from OCP.Standard import Standard_NoSuchObject
@@ -2241,6 +2240,120 @@ def _add_sketch(
 
 
 Sketch.add = _add_sketch
+
+
+def _mirrorX_sketch(self):
+    """Mirror across X axis
+
+    Mirror the selected items across the X axis
+
+    Raises:
+        ValueError: Nothing selected
+
+    Returns:
+        Updated Sketch
+    """
+    if not self._selection:
+        raise ValueError("Nothing selected")
+
+    mirrored_selections = Plane.named("XY").mirrorInPlane(self._selection, axis="X")
+    for mirrored_obj in mirrored_selections:
+        self.add(mirrored_obj)
+    return self
+
+
+Sketch.mirrorX = _mirrorX_sketch
+
+
+def _mirrorY_sketch(self):
+    """Mirror across Y axis
+
+    Mirror the selected items across the Y axis
+
+    Raises:
+        ValueError: Nothing selected
+
+    Returns:
+        Updated Sketch
+    """
+    if not self._selection:
+        raise ValueError("Nothing selected")
+
+    mirrored_selections = Plane.named("XY").mirrorInPlane(self._selection, axis="Y")
+    for mirrored_obj in mirrored_selections:
+        self.add(mirrored_obj)
+    return self
+
+
+Sketch.mirrorY = _mirrorY_sketch
+
+
+def _spline_sketch(
+    self: T,
+    pts: Iterable[Union[Point, str]],
+    tangents: Iterable[Union[Point, str]] = None,
+    tangentScalars: Iterable[float] = None,
+    periodic: bool = False,
+    tag: str = None,
+    forConstruction: bool = False,
+) -> T:
+    """spline
+
+    Construct a spline edge.
+
+    Args:
+        pts (Iterable[Union[Point, str]]): list of points along spline
+        tangents (Iterable[Union[Point, str]], optional): spline tangents. Defaults to None.
+        tangentScalars (Iterable[float], optional): tangent multipliers to refine the shape.
+            Defaults to None.
+        periodic (bool, optional): creation of periodic curves. Defaults to False.
+        tag (str, optional): feature label. Defaults to None.
+        forConstruction (bool, optional): edge used to build other geometry. Defaults to False.
+
+    Returns:
+        Updated Sketch
+    """
+
+    spline_pts = []
+    for p in pts:
+        if isinstance(p, str):
+            for pp in self._tags[p.split("@")[0]]:
+                spline_pts.append(pp.positionAt(float(p.split("@")[1])))
+        else:
+            spline_pts.append(p)
+
+    if tangents:
+        spline_tangents = []
+        for t in tangents:
+            if isinstance(t, str):
+                for tt in self._tags[t.split("@")[0]]:
+                    spline_tangents.append(tt.tangentAt(float(t.split("@")[1])))
+            else:
+                spline_tangents.append(t)
+    else:
+        spline_tangents = None
+
+    if tangents and not tangentScalars:
+        scalars = [1.0] * len(tangents)
+    else:
+        scalars = tangentScalars
+
+    spline = Edge.makeSpline(
+        [p if isinstance(p, Vector) else Vector(*p) for p in spline_pts],
+        tangents=[
+            t * s if isinstance(t, Vector) else Vector(*t) * s
+            for t, s in zip(spline_tangents, scalars)
+        ]
+        if spline_tangents
+        else None,
+        periodic=periodic,
+        scale=tangentScalars is None,
+    )
+
+    return self.edge(spline, tag, forConstruction)
+
+
+Sketch.spline = _spline_sketch
 
 
 def _boundingBox_sketch(
