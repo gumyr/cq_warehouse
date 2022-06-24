@@ -341,11 +341,11 @@ def update_source_code(
         # Add a mock logging class
         source_code.extend(
             [
-                "class logging:\n",
-                "    def debug(self):\n",
-                "        pass\n",
-                "    def warn(self):\n",
-                "        pass\n",
+                "class logging:" + os.linesep,
+                "    def debug(self):" + os.linesep,
+                "        pass" + os.linesep,
+                "    def warn(self):" + os.linesep,
+                "        pass" + os.linesep,
             ]
         )
 
@@ -374,7 +374,7 @@ def main(argv):
 
     pip_command_dictionary = dict(
         entry.split(": ", 1)
-        for entry in pip_command.stdout.decode("utf-8").split("\n")
+        for entry in pip_command.stdout.decode("utf-8").split(os.linesep)
         if ":" in entry
     )
 
