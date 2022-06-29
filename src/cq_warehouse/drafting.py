@@ -257,6 +257,21 @@ class Draft:
         return sub_path
 
     @staticmethod
+    def _project_wire(path: Wire, line: Vector) -> Wire:
+        """Project a Wire to a line."""
+        path_as_wire = Wire.assembleEdges(
+            Workplane()
+            .polyline(
+                [
+                    path.startPoint().projectToLine(line),
+                    path.endPoint().projectToLine(line)
+                ]
+            )
+            .vals()
+        )
+        return path_as_wire
+
+    @staticmethod
     def _path_to_wire(path: PathDescriptor) -> Wire:
         """Convert a PathDescriptor into a Wire"""
         if isinstance(path, Wire):
@@ -519,6 +534,7 @@ class Draft:
         arrows: Tuple[bool, bool] = (True, True),
         tolerance: Optional[Union[float, Tuple[float, float]]] = None,
         label_angle: bool = False,
+        project_line: Vector = None
     ) -> Assembly:
         """Extension Line
 
@@ -544,6 +560,7 @@ class Draft:
             label_angle (bool, optional): a flag indicating that instead of an extracted length
                 value, the size of the circular arc extracted from the path should be displayed
                 in degrees. Defaults to False.
+            project_line (Vector, optional): Vector line which to project dimension against.
 
         Returns:
             Assembly: the extension line
@@ -551,6 +568,10 @@ class Draft:
 
         # Create a wire modelling the path of the dimension lines from a variety of input types
         object_path = Draft._path_to_wire(object_edge)
+        object_start = object_path.startPoint()
+        object_end = object_path.endPoint()
+        if project_line:
+            object_path = Draft._project_wire(object_path, project_line)
         object_length = object_path.Length()
 
         # Determine if the provided object edge is a circular arc and if so extract its radius
@@ -588,19 +609,25 @@ class Draft:
         else:
             extension_tangent = object_path.tangentAt(0).cross(self._label_normal)
             dimension_plane = Plane(
-                # origin=object_path.positionAt(0),
                 object_path.positionAt(0),
                 xDir=extension_tangent,
                 normal=self._label_normal,
             )
-            ext_line = [
-                (
-                    Workplane(dimension_plane)
-                    .moveTo(copysign(1, offset) * 1.5 * MM, l)
-                    .lineTo(offset + copysign(1, offset) * 3 * MM, l)
-                )
-                for l in [0, object_length]
-            ]
+            start_point = dimension_plane.toLocalCoords(object_start)
+            end_point = dimension_plane.toLocalCoords(object_end)
+            start_point_2d = (start_point.toTuple()[0], start_point.toTuple()[1])
+            end_point_2d = (end_point.toTuple()[0], end_point.toTuple()[1])
+            ext_line1 = (
+                Workplane(dimension_plane)
+                .moveTo(start[0] + copysign(1, offset) * 1.5 * MM, start[1])
+                .lineTo(offset + copysign(1,offset) * 3 * MM, start[1])
+            )
+            ext_line2 = (
+                Workplane(dimension_plane)
+                .moveTo(end[0] + copysign(1, offset) * 1.5 * MM, end[1])
+                .lineTo(offset + copysign(1,offset) * 3 * MM, end[1])
+            )
+            ext_line = [ext_line1, ext_line2]
             extension_path = object_path.translate(
                 extension_tangent.normalized() * offset
             )
