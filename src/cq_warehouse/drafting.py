@@ -619,13 +619,13 @@ class Draft:
             end_point_2d = (end_point.toTuple()[0], end_point.toTuple()[1])
             ext_line1 = (
                 Workplane(dimension_plane)
-                .moveTo(start[0] + copysign(1, offset) * 1.5 * MM, start[1])
-                .lineTo(offset + copysign(1,offset) * 3 * MM, start[1])
+                .moveTo(start_point_2d[0] + copysign(1, offset) * 1.5 * MM, start_point_2d[1])
+                .lineTo(offset + copysign(1,offset) * 3 * MM, start_point_2d[1])
             )
             ext_line2 = (
                 Workplane(dimension_plane)
-                .moveTo(end[0] + copysign(1, offset) * 1.5 * MM, end[1])
-                .lineTo(offset + copysign(1,offset) * 3 * MM, end[1])
+                .moveTo(end_point_2d[0] + copysign(1, offset) * 1.5 * MM, end_point_2d[1])
+                .lineTo(offset + copysign(1,offset) * 3 * MM, end_point_2d[1])
             )
             ext_line = [ext_line1, ext_line2]
             extension_path = object_path.translate(
