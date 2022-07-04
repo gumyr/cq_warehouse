@@ -31,19 +31,21 @@ license:
     limitations under the License.
 
 """
-from cmath import isnan
 import sys
 import logging
 import math
 import random
 from itertools import combinations
+from enum import Enum, auto
 from functools import reduce
 from token import OP
+from turtle import position
 from typing import Optional, Literal, Union, Tuple, Iterable
 from types import MethodType
 import cadquery as cq
 from cadquery.occ_impl.shapes import VectorLike
 from cadquery.cq import T
+from cadquery.hull import find_hull
 from cadquery import (
     Assembly,
     BoundBox,
@@ -108,8 +110,8 @@ from OCP.NCollection import NCollection_Utf8String
 logging.basicConfig(
     filename="cq_warehouse.log",
     encoding="utf-8",
-    level=logging.DEBUG,
-    # level=logging.CRITICAL,
+    # level=logging.DEBUG,
+    level=logging.CRITICAL,
     format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)s - %(funcName)20s() ] - %(message)s",
 )
 
@@ -344,6 +346,36 @@ def _areObjectsValid(self) -> bool:
 
 Assembly.areObjectsValid = _areObjectsValid
 
+
+def _crossSection_Assembly(self, plane: "Plane") -> "Assembly":
+    """Cross Section
+
+    Generate a 2D slice of an assembly as a colorize Assembly
+
+    Args:
+        plane (Plane): the plane with which to slice the Assembly
+
+    Returns:
+        Assembly: The cross section assembly with original colors
+    """
+    cross_section = cq.Assembly()
+    for name, part in self.traverse():
+        for shape in part.shapes:
+            cross_section.add(
+                cq.Compound.makeCompound(
+                    cq.Workplane(plane)
+                    .add(shape.moved(part.loc))
+                    .section()
+                    .faces()
+                    .vals()
+                ),
+                color=part.color,
+                name=name,
+            )
+    return cross_section
+
+
+Assembly.crossSection = _crossSection_Assembly
 """
 
 Plane extensions: toLocalCoords(), toWorldCoords()
@@ -2071,9 +2103,123 @@ Compound.make2DText = MethodType(_make2DText_compound, Compound)
 
 """
 
-Sketch extensions: text(), val(), vals(), add(), pushCenter()
+Sketch extensions: text(), val(), vals(), add(), mirror_x(), mirror_y(), spline(),
+                   polyline(), center_arc(), tangent_arc(), three_point_arc(), bounding_box(),
+                   push_points()
 
 """
+
+Snap = Union[Point, str]
+
+
+class Mode(Enum):
+    """Combination Mode"""
+
+    ADDITION = auto()
+    SUBTRACTION = auto()
+    INTERSECTION = auto()
+    CONSTRUCTION = auto()
+
+    def legacy(mode: "Mode") -> str:
+        return {
+            Mode.ADDITION: "a",
+            Mode.SUBTRACTION: "s",
+            Mode.INTERSECTION: "i",
+            Mode.CONSTRUCTION: "c",
+        }[mode]
+
+
+def _snap_to_vector_sketch(
+    self,
+    pts: Iterable[Snap],
+    find_tangents: bool = False,
+) -> list[Vector]:
+    """Snap to Vector
+
+    Convert Snaps to Vector
+
+    Args:
+        pts (Union[Point,str]): list of Snaps
+        find_tangents (bool): return tangents instead of positions. Defaults to False.
+
+    Returns:
+        list(Vector): a list of Vectors possibly extracted from tagged objects
+    """
+    positions = {"start": 0.0, "middle": 0.5, "end": 1.0}
+    snap_pts = []
+
+    for p in pts:
+        if isinstance(p, str):
+            snap_parts = p.split("@")
+            try:
+                position = float(snap_parts[1])
+            except ValueError:
+                try:
+                    position = positions[snap_parts[1]]
+                except KeyError:
+                    raise ValueError(
+                        "snap position must be a float or one of 'start', 'middle', 'end'"
+                    )
+            for edge_or_wire in self._tags[snap_parts[0]]:
+                if find_tangents:
+                    snap_pts.append(edge_or_wire.tangentAt(position))
+                else:
+                    snap_pts.append(edge_or_wire.positionAt(position))
+
+        elif isinstance(p, tuple):
+            snap_pts.append(Vector(p))
+        else:
+            snap_pts.append(p)
+
+    return snap_pts
+
+
+Sketch.snap_to_vector = _snap_to_vector_sketch
+
+
+class Font_Style(Enum):
+    """Text Font Styles"""
+
+    REGULAR = auto()
+    BOLD = auto()
+    ITALIC = auto()
+
+    def legacy(font_style: "Font_Style") -> str:
+        return {
+            Font_Style.REGULAR: "regular",
+            Font_Style.BOLD: "bold",
+            Font_Style.ITALIC: "italic",
+        }[font_style]
+
+
+class Halign(Enum):
+    """Horizontal Alignment"""
+
+    CENTER = auto()
+    LEFT = auto()
+    RIGHT = auto()
+
+    def legacy(halign: "Halign") -> str:
+        return {
+            Halign.LEFT: "left",
+            Halign.RIGHT: "right",
+            Halign.CENTER: "center",
+        }[halign]
+
+
+class Valign(Enum):
+    """Vertical Alignment"""
+
+    CENTER = auto()
+    TOP = auto()
+    BOTTOM = auto()
+
+    def legacy(valign: "Valign") -> str:
+        return {
+            Valign.TOP: "top",
+            Valign.BOTTOM: "bottom",
+            Valign.CENTER: "center",
+        }[valign]
 
 
 def _text_sketch(
@@ -2081,15 +2227,40 @@ def _text_sketch(
     txt: str,
     fontsize: float,
     font: str = "Arial",
-    fontPath: Optional[str] = None,
-    fontStyle: Literal["regular", "bold", "italic"] = "regular",
-    halign: Literal["center", "left", "right"] = "left",
-    valign: Literal["center", "top", "bottom"] = "center",
-    positionOnPath: float = 0.0,
+    font_path: Optional[str] = None,
+    # font_style: Literal["regular", "bold", "italic"] = "regular",
+    # halign: Literal["center", "left", "right"] = "left",
+    # valign: Literal["center", "top", "bottom"] = "center",
+    font_style: Font_Style = Font_Style.REGULAR,
+    halign: Halign = Halign.LEFT,
+    valign: Valign = Valign.CENTER,
+    position_on_path: float = 0.0,
     angle: float = 0,
-    mode: "Modes" = "a",
+    # mode: "Modes" = "a",
+    mode: Mode = Mode.ADDITION,
     tag: Optional[str] = None,
 ) -> T:
+    """_summary_
+
+    _extended_summary_
+
+    Args:
+        self (T): _description_
+        txt (str): _description_
+        fontsize (float): _description_
+        font (str, optional): _description_. Defaults to "Arial".
+        font_path (Optional[str], optional): _description_. Defaults to None.
+        font_style (Font_Style, optional): _description_. Defaults to Font_Style.REGULAR.
+        halign (Halign, optional): _description_. Defaults to Halign.LEFT.
+        valign (Valign, optional): _description_. Defaults to Valign.CENTER.
+        position_on_path (float, optional): _description_. Defaults to 0.0.
+        angle (float, optional): _description_. Defaults to 0.
+        mode (Mode, optional): _description_. Defaults to Mode.ADDITION.
+        tag (Optional[str], optional): _description_. Defaults to None.
+
+    Returns:
+        T: _description_
+    """ """"""
     """
     Text that optionally follows a path.
 
@@ -2113,16 +2284,20 @@ def _text_sketch(
         txt: text to be rendered
         fontsize: size of the font in model units
         font: font name
-        fontPath: system path to font file
-        fontStyle: one of ["regular", "bold", "italic"]. Defaults to "regular".
-        halign: horizontal alignment, one of ["center", "left", "right"].
-            Defaults to "left".
-        valign: vertical alignment, one of ["center", "top", "bottom"].
-            Defaults to "center".
-        positionOnPath: the relative location on path to locate the text, between 0.0 and 1.0.
+        font_path: system path to font file
+        # font_style: one of ["regular", "bold", "italic"]. Defaults to "regular".
+        # halign: horizontal alignment, one of ["center", "left", "right"].
+        #     Defaults to "left".
+        # valign: vertical alignment, one of ["center", "top", "bottom"].
+        #     Defaults to "center".
+        font_style (Font_Style, optional): text style. Defaults to Font_Style.REGULAR.
+        halign (Halign, optional): horizontal alignment. Defaults to Halign.LEFT.
+        valign (Valign, optional): vertical alignment. Defaults to Valign.CENTER.
+        position_on_path: the relative location on path to locate the text, between 0.0 and 1.0.
             Defaults to 0.0.
         angle: rotation angle. Defaults to 0.0.
-        mode: combination mode, one of ["a","s","i","c"]. Defaults to "a".
+        mode (Mode, optional): combination mode. Defaults to Mode.ADDITION.
+        # mode: combination mode, one of ["a","s","i","c"]. Defaults to "a".
         tag: feature label. Defaults to None.
 
     Returns:
@@ -2139,15 +2314,18 @@ def _text_sketch(
         txt,
         fontsize,
         font,
-        fontPath,
-        fontStyle,
-        halign,
-        valign,
-        positionOnPath,
+        font_path,
+        # font_style,
+        # halign,
+        # valign,
+        Font_Style.legacy(font_style),
+        Halign.legacy(halign),
+        Valign.legacy(valign),
+        position_on_path,
         text_path,
     ).rotate(Vector(), Vector(0, 0, 1), angle)
 
-    return self.each(lambda l: res.located(l), mode, tag)
+    return self.each(lambda l: res.located(l), Mode.legacy(mode), tag)
 
 
 Sketch.text = _text_sketch
@@ -2201,7 +2379,8 @@ def _add_sketch(
     self: T,
     obj: Union["Wire", "Edge", "Face"],
     angle: float = 0,
-    mode: "Modes" = "a",
+    # mode: "Modes" = "a",
+    mode: Mode = Mode.ADDITION,
     tag: Optional[str] = None,
 ) -> T:
     """add
@@ -2215,7 +2394,8 @@ def _add_sketch(
     Args:
         obj (Union[Wire, Edge, Face]): the object to add
         angle (float, optional): rotation angle. Defaults to 0.0.
-        mode (Modes, optional): combination mode, one of ["a","s","i","c"]. Defaults to "a".
+        mode (Mode, optional): combination mode. Defaults to Mode.ADDITION.
+        # mode (Modes, optional): combination mode, one of ["a","s","i","c"]. Defaults to "a".
         tag (Optional[str], optional): feature label. Defaults to None.
 
     Returns:
@@ -2223,16 +2403,21 @@ def _add_sketch(
 
     """
     if isinstance(obj, Edge):
-        self.edge(obj.rotate(Vector(), Vector(0, 0, 1), angle), tag, mode == "c")
+        # self.edge(obj.rotate(Vector(), Vector(0, 0, 1), angle), tag, mode == "c")
+        self.edge(
+            obj.rotate(Vector(), Vector(0, 0, 1), angle), tag, mode == Mode.CONSTRUCTION
+        )
     elif isinstance(obj, Wire):
-        obj.forConstruction = mode == "c"
+        # obj.forConstruction = mode == "c"
+        obj.forConstruction = mode == Mode.CONSTRUCTION
         self._wires.append(obj.rotate(Vector(), Vector(0, 0, 1), angle))
         if tag:
             self._tag([obj], tag)
     elif isinstance(obj, Face):
         self.each(
             lambda l: obj.rotate(Vector(), Vector(0, 0, 1), angle).located(l),
-            mode,
+            # mode,
+            Mode.legacy(mode),
             tag,
         )
 
@@ -2242,7 +2427,7 @@ def _add_sketch(
 Sketch.add = _add_sketch
 
 
-def _mirrorX_sketch(self):
+def _mirror_x_sketch(self):
     """Mirror across X axis
 
     Mirror the selected items across the X axis
@@ -2262,10 +2447,10 @@ def _mirrorX_sketch(self):
     return self
 
 
-Sketch.mirrorX = _mirrorX_sketch
+Sketch.mirror_x = _mirror_x_sketch
 
 
-def _mirrorY_sketch(self):
+def _mirror_y_sketch(self):
     """Mirror across Y axis
 
     Mirror the selected items across the Y axis
@@ -2285,58 +2470,55 @@ def _mirrorY_sketch(self):
     return self
 
 
-Sketch.mirrorY = _mirrorY_sketch
+Sketch.mirror_y = _mirror_y_sketch
 
 
 def _spline_sketch(
     self: T,
-    pts: Iterable[Union[Point, str]],
-    tangents: Iterable[Union[Point, str]] = None,
-    tangentScalars: Iterable[float] = None,
+    *pts: Snap,
+    tangents: Iterable[Snap] = None,
+    tangent_scalars: Iterable[float] = None,
     periodic: bool = False,
+    mode: Mode = Mode.ADDITION,
     tag: str = None,
-    forConstruction: bool = False,
+    # for_construction: bool = False,
 ) -> T:
     """spline
 
-    Construct a spline edge.
+    Construct a spline
+
+    Examples::
+
+        boomerang = (
+            cq.Sketch()
+            .center_arc(center=(0, 0), radius=10, start_angle=0, arc_size=90, tag="c")
+            .spline("c@1", (10, 10), "c@0", tangents=("c@1", "c@0"))
+        )
 
     Args:
-        pts (Iterable[Union[Point, str]]): list of points along spline
-        tangents (Iterable[Union[Point, str]], optional): spline tangents. Defaults to None.
-        tangentScalars (Iterable[float], optional): tangent multipliers to refine the shape.
+        pts (Union[Point,str]): sequence of points or snaps defining the spline
+        tangents (Iterable[Union[Point, str]], optional): spline tangents or snaps. Defaults to None.
+        tangent_scalars (Iterable[float], optional): tangent multipliers to refine the shape.
             Defaults to None.
         periodic (bool, optional): creation of periodic curves. Defaults to False.
+        mode (Mode, optional): combination mode. Defaults to Mode.ADDITION.
         tag (str, optional): feature label. Defaults to None.
-        forConstruction (bool, optional): edge used to build other geometry. Defaults to False.
+        # for_construction (bool, optional): edge used to build other geometry. Defaults to False.
 
     Returns:
         Updated Sketch
     """
 
-    spline_pts = []
-    for p in pts:
-        if isinstance(p, str):
-            for pp in self._tags[p.split("@")[0]]:
-                spline_pts.append(pp.positionAt(float(p.split("@")[1])))
-        else:
-            spline_pts.append(p)
-
+    spline_pts = self.snap_to_vector(pts)
     if tangents:
-        spline_tangents = []
-        for t in tangents:
-            if isinstance(t, str):
-                for tt in self._tags[t.split("@")[0]]:
-                    spline_tangents.append(tt.tangentAt(float(t.split("@")[1])))
-            else:
-                spline_tangents.append(t)
+        spline_tangents = self.snap_to_vector(tangents, find_tangents=True)
     else:
         spline_tangents = None
 
-    if tangents and not tangentScalars:
+    if tangents and not tangent_scalars:
         scalars = [1.0] * len(tangents)
     else:
-        scalars = tangentScalars
+        scalars = tangent_scalars
 
     spline = Edge.makeSpline(
         [p if isinstance(p, Vector) else Vector(*p) for p in spline_pts],
@@ -2347,18 +2529,297 @@ def _spline_sketch(
         if spline_tangents
         else None,
         periodic=periodic,
-        scale=tangentScalars is None,
+        scale=tangent_scalars is None,
     )
 
-    return self.edge(spline, tag, forConstruction)
+    # return self.edge(spline, tag, for_construction)
+    return self.edge(spline, tag, mode == Mode.CONSTRUCTION)
 
 
 Sketch.spline = _spline_sketch
 
 
-def _boundingBox_sketch(
+def _polyline_sketch(
+    self,
+    *pts: Union[Point, str],
+    mode: Mode = Mode.ADDITION,
+    tag: str = None,
+    # for_construction: bool = False,
+):
+    """Polyline
+
+    A polyline defined by two or more points or snaps
+
+    Examples::
+
+        pline = cq.Sketch().polyline((0, 0), (1, 1), (2, 0), (3, 1), (4, 0))
+
+        triangle = (
+            cq.Sketch()
+            .polyline((0, 0), (2, 0), tag="base")
+            .polyline("base@0", (1, 1), tag="left")
+            .polyline("left@1", "base@1")
+        )
+
+    Args:
+        pts (Union[Point,str]): sequence of points or snaps
+        mode (Mode, optional): combination mode. Defaults to Mode.ADDITION.
+        tag (str, optional): feature label. Defaults to None.
+        # for_construction (bool, optional): edge used to build other geometry. Defaults to False.
+
+    Raises:
+        ValueError: polyline requires two or more pts
+
+    Returns:
+        Updated sketch
+    """
+    if len(pts) < 2:
+        raise ValueError("polyline requires two or more pts")
+
+    lines_pts = self.snap_to_vector(pts)
+
+    new_edges = [
+        Edge.makeLine(lines_pts[i], lines_pts[i + 1]) for i in range(len(lines_pts) - 1)
+    ]
+    new_line = Wire.assembleEdges(new_edges) if len(new_edges) > 1 else new_edges[0]
+
+    # new_line.forConstruction = for_construction
+    new_line.forConstruction = mode == Mode.CONSTRUCTION
+
+    if isinstance(new_line, Wire):
+        self._wires.append(new_line)
+    else:
+        self._edges.append(new_line)
+
+    if tag:
+        self._tag([new_line], tag)
+
+    return self
+
+
+Sketch.polyline = _polyline_sketch
+
+
+def _center_arc_sketch(
+    self,
+    center: Snap,
+    radius: float,
+    start_angle: float,
+    arc_size: float,
+    mode: Mode = Mode.ADDITION,
+    tag: str = None,
+    # for_construction: bool = False,
+):
+    """Center Arc
+
+    A partial or complete circle with defined center
+
+    Examples::
+
+        chord = (
+            cq.Sketch()
+            .center_arc(center=(0, 0), radius=10, start_angle=0, arc_size=60, tag="c")
+            .polyline("c@1", "c@0")
+            .assemble()
+        )
+
+    Args:
+        center (Union[Point, str]): point or snap defining the arc center
+        radius (float): arc radius
+        start_angle (float): in degrees, where zero corresponds to the +vs X axis
+        arc_size (float): size of arc counter clockwise from start
+        mode (Mode, optional): combination mode. Defaults to Mode.ADDITION.
+        tag (str, optional): feature label. Defaults to None.
+        # for_construction (bool, optional): edge used to build other geometry. Defaults to False.
+
+    Raises:
+        ValueError: _description_
+
+    Returns:
+        Updated sketch
+    """
+    centers = self.snap_to_vector([center])
+    if len(centers) != 1:
+        raise ValueError("snapped center resulted in multiple locations")
+
+    if abs(arc_size) >= 360:
+        arc = Edge.makeCircle(
+            r,
+            centers[0],
+            angle1=start_angle,
+            angle2=start_angle,
+            orientation=arc_size > 0,
+        )
+    else:
+        p0 = centers[0]
+        p1 = p0 + radius * Vector(
+            math.cos(math.radians(start_angle)), math.sin(math.radians(start_angle))
+        )
+        p2 = p0 + radius * Vector(
+            math.cos(math.radians(start_angle + arc_size / 2)),
+            math.sin(math.radians(start_angle + arc_size / 2)),
+        )
+        p3 = p0 + radius * Vector(
+            math.cos(math.radians(start_angle + arc_size)),
+            math.sin(math.radians(start_angle + arc_size)),
+        )
+        arc = Edge.makeThreePointArc(p1, p2, p3)
+
+    # return self.edge(arc, tag, for_construction)
+    return self.edge(arc, tag, mode == Mode.CONSTRUCTION)
+
+
+Sketch.center_arc = _center_arc_sketch
+
+
+def _three_point_arc_sketch(
     self: T,
-    mode: "Modes" = "a",
+    *pts: Snap,
+    mode: Mode = Mode.ADDITION,
+    tag: Optional[str] = None,
+    # for_construction: bool = False,
+) -> T:
+    """Three Point Arc
+
+    Construct an arc through a sequence of points or snaps
+
+    Examples::
+
+        three_point_arc = (
+            cq.Sketch()
+            .polyline((0, 10), (0, 0), (10, 0), tag="p")
+            .three_point_arc("p@0", "p@0.5", "p@1")
+        )
+
+    Args:
+        pts (Union[Point,str]): sequence of points or snaps
+        mode (Mode, optional): combination mode. Defaults to Mode.ADDITION.
+        tag (str, optional): feature label. Defaults to None.
+        # for_construction (bool, optional): edge used to build other geometry. Defaults to False.
+
+    Raises:
+        ValueError: three_point_arc requires three points
+
+    Returns:
+        Updated sketch
+
+    """
+    arc_pts = self.snap_to_vector(pts)
+    if len(arc_pts) != 3:
+        raise ValueError("three_point_arc requires three points")
+
+    arc = Edge.makeThreePointArc(arc_pts[0], arc_pts[1], arc_pts[2])
+
+    # return self.edge(arc, tag, for_construction)
+    return self.edge(arc, tag, mode == Mode.CONSTRUCTION)
+
+
+Sketch.three_point_arc = _three_point_arc_sketch
+
+
+def _tangent_arc_sketch(
+    self,
+    *pts: Snap,
+    tangent: Point = None,
+    tangent_from_first: bool = True,
+    mode: Mode = Mode.ADDITION,
+    tag: Optional[str] = None,
+    # for_construction: bool = False,
+):
+    """Tangent Arc
+
+    Create an arc defined by the provided points and a tangent
+
+    Examples::
+
+        tangent_arc = (
+            cq.Sketch()
+            .center_arc(center=(0, 0), radius=10, start_angle=0, arc_size=90, tag="c")
+            .tangent_arc("c@0.5", (10, 10), tag="t")
+        )
+
+    Args:
+        pts (Union[Point,str]): start and end point or snap of arc
+        tangent (Point, optional): tangent value if snaps aren't used. Defaults to None.
+        tangent_from_first (bool, optional) point to align tangent to. Note that
+            using a value of False will build the arc in the reverse direction. Defaults to True.
+        mode (Mode, optional): combination mode. Defaults to Mode.ADDITION.
+        tag (str, optional): feature label. Defaults to None.
+        # for_construction (bool, optional): edge used to build other geometry. Defaults to False.
+
+    Raises:
+        ValueError: tangentArc requires two points
+        ValueError: no tangent provided
+
+    Returns:
+        Updated sketch
+    """
+    arc_pts = self.snap_to_vector(pts)
+    arc_tangents = self.snap_to_vector(pts, find_tangents=True)
+
+    if not tangent is None:
+        arc_tangents = [Vector(tangent)]
+
+    if len(arc_pts) != 2:
+        raise ValueError("tangent_arc requires two points")
+    if not arc_tangents:
+        raise ValueError(
+            "tangent_arc requires a edge that determines the tangent or an explicit tangent"
+        )
+
+    point_indices = (0, -1) if tangent_from_first else (-1, 0)
+    arc = Edge.makeTangentArc(
+        arc_pts[point_indices[0]], arc_tangents[0], arc_pts[point_indices[1]]
+    )
+
+    # return self.edge(arc, tag, for_construction)
+    return self.edge(arc, tag, mode == Mode.CONSTRUCTION)
+
+
+Sketch.tangent_arc = _tangent_arc_sketch
+
+
+def _push_points_sketch(
+    self: T,
+    *pts: Union[Snap, Location],
+    tag: Optional[str] = None,
+) -> T:
+    """Select the provided points
+
+    Add the provided points, locations or snaps to current selections
+
+    Examples::
+
+        circles_on_arc = (
+            cq.Sketch()
+            .center_arc(center=(0, 0), radius=10, start_angle=0, arc_size=90, tag="c")
+            .push_points("c@0.1", "c@0.5", "c@0.9")
+            .circle(1)
+        )
+
+    Args:
+        pts (Union[Point,str,Location]): points to add
+        tag (str, optional): feature label. Defaults to None.
+
+    Returns:
+        Updated sketch
+    """
+    push_pts = self.snap_to_vector(pts)
+    self._selection = [l if isinstance(l, Location) else Location(l) for l in push_pts]
+
+    if tag:
+        self._tag(self._selection[:], tag)
+
+    return self
+
+
+Sketch.push_points = _push_points_sketch
+
+
+def _bounding_box_sketch(
+    self: T,
+    # mode: "Modes" = "a",
+    mode: Mode = Mode.ADDITION,
     tag: Optional[str] = None,
 ) -> T:
     """Bounding Box
@@ -2372,7 +2833,8 @@ def _boundingBox_sketch(
             cq.Sketch()
             .circle(10)
             .faces()
-            .boundingBox(tag="bb", mode="c")
+            # .bounding_box(tag="bb", mode="c")
+            .bounding_box(tag="bb", mode=Mode.CONSTRUCTION)
             .faces(tag="bb")
             .vertices(">Y")
             .circle(7)
@@ -2388,7 +2850,8 @@ def _boundingBox_sketch(
             .faces(tag="t")
             .circle(0.5, mode="s")
             .faces(tag="t")
-            .boundingBox(tag="bb", mode="c")
+            # .bounding_box(tag="bb", mode="c")
+            .bounding_box(tag="bb", mode=Mode.CONSTRUCTION)
             .faces(tag="bb")
             .rect(1, 1, mode="s")
         )
@@ -2399,14 +2862,15 @@ def _boundingBox_sketch(
             .circle(10)
             .reset()
             .faces()
-            .boundingBox(tag="bb", mode="c")
+            # .bounding_box(tag="bb", mode="c")
+            .bounding_box(tag="bb", mode=Mode.CONSTRUCTION)
             .vertices(tag="bb")
             .circle(7)
             .clean()
         )
 
     Args:
-        mode (Modes, optional): combination mode, one of ["a","s","i","c"]. Defaults to "a".
+        mode (Mode, optional): combination mode. Defaults to Mode.ADDITION.
         tag (Optional[str], optional): feature label. Defaults to None.
 
     Returns:
@@ -2429,12 +2893,41 @@ def _boundingBox_sketch(
         )
     bb_faces_iter = iter(bb_faces)
     self.push([(0, 0)] * len(bb_faces))
-    self.each(lambda loc: next(bb_faces_iter).located(loc), mode, tag)
+    # self.each(lambda loc: next(bb_faces_iter).located(loc), mode, tag)
+    self.each(lambda loc: next(bb_faces_iter).located(loc), Mode.legacy(mode), tag)
 
     return self
 
 
-Sketch.boundingBox = _boundingBox_sketch
+Sketch.bounding_box = _bounding_box_sketch
+
+
+# def _hull_sketch(self: T, mode: Modes = "a", tag: Optional[str] = None) -> T:
+def _hull_sketch(self: T, mode: Mode = Mode.ADDITION, tag: Optional[str] = None) -> T:
+    """
+    Generate a convex hull from current selection or all objects.
+    """
+
+    hull_edges = []
+    for el in self._selection:
+        if isinstance(el, Edge):
+            hull_edges.append(el)
+        elif isinstance(el, (Face, Wire)):
+            hull_edges.extend(el.Edges())
+    if hull_edges:
+        rv = find_hull(hull_edges)
+    else:
+        raise ValueError("No objects available for hull construction")
+
+    # self.face(rv, mode=mode, tag=tag, ignore_selection=bool(self._selection))
+    self.face(
+        rv, mode=Mode.legacy(mode), tag=tag, ignore_selection=bool(self._selection)
+    )
+
+    return self
+
+
+Sketch.hull = _hull_sketch
 
 """
 
@@ -3204,6 +3697,7 @@ def _embossText(
     kind: Literal["regular", "bold", "italic"] = "regular",
     valign: Literal["center", "top", "bottom"] = "center",
     start: float = 0,
+    tolerance: float = 0.1,
 ) -> "Compound":
     """Embossed 3D text following the given path on Shape
 
@@ -3232,21 +3726,24 @@ def _embossText(
     shape_center = self.Center()
 
     # Create text faces
-    text_faces = (
-        Workplane("XY")
-        .text(
-            txt,
-            fontsize,
-            1,
-            font=font,
-            fontPath=fontPath,
-            kind=kind,
-            halign="left",
-            valign=valign,
-        )
-        .faces("<Z")
-        .vals()
-    )
+    # text_faces = (
+    #     Workplane("XY")
+    #     .text(
+    #         txt,
+    #         fontsize,
+    #         1,
+    #         font=font,
+    #         fontPath=fontPath,
+    #         kind=kind,
+    #         halign="left",
+    #         valign=valign,
+    #     )
+    #     .faces("<Z")
+    #     .vals()
+    # )
+    text_faces = Compound.make2DText(
+        txt, fontsize, font, fontPath, kind, "left", valign, start
+    ).Faces()
 
     logging.debug(f"embossing text sting '{txt}' as {len(text_faces)} face(s)")
 
@@ -3261,7 +3758,7 @@ def _embossText(
         logging.debug(f"embossing face at {relative_position_on_wire=:0.2f}")
         embossed_faces.append(
             text_face.translate((-face_center_x, 0, 0)).embossToShape(
-                self, path_position, path_tangent
+                self, path_position, path_tangent, tolerance=tolerance
             )
         )
 
