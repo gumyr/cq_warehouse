@@ -56,6 +56,7 @@ license:
 import sys
 import getopt
 import os
+import pathlib
 import re
 from typing import Literal, Union
 import subprocess
@@ -66,13 +67,35 @@ import cadquery
 # Which CadQuery files define the Class
 # Note: Module defines where python functions go
 class_files = {
-    "occ_impl/shapes.py": ["Shape", "Vertex", "Edge", "Wire", "Face", "Module"],
+    os.path.join("occ_impl", "shapes.py"): ["Shape", "Vertex", "Edge", "Wire", "Face", "Module"],
     "assembly.py": ["Assembly"],
     "sketch.py": ["Sketch"],
     "cq.py": ["Workplane"],
-    "occ_impl/geom.py": ["Plane", "Vector", "Location"],
+    os.path.join("occ_impl", "geom.py"): ["Plane", "Vector", "Location"],
 }
 
+def slash_drive(path: str) -> str:
+    """Convert a Windows drive letter path to a posix drive letter path
+
+    Args:
+        path (str): path to convert
+
+    Returns:
+        str: slash-based path
+    """
+    if os.name != "nt":
+        return path
+    given_path = pathlib.PurePath(path)
+    given_drive = given_path.drive[0]
+    result = "/" + given_path.as_posix().replace(given_drive + ":", given_drive)
+    return result
+
+def binary_if_windows() -> str:
+    """Return --binary if Windows"""
+    if os.name == "nt":
+        return "--binary"
+    else:
+        return ""     
 
 def increase_indent(amount: int, python_code: list[str]) -> list[str]:
     """Increase indentation
@@ -360,6 +383,16 @@ def main(argv):
     # Find the location of cadquery
     cadquery_path = os.path.dirname(cadquery.__file__)
 
+    if os.name == "nt":
+        # Windows
+        print(
+            """
+***
+    This script only works on Windows from within a bash shell.
+    Git bash, should work fine.
+    It just needs to have 'diff' and 'patch' commands.
+***         """)
+
     # Does the cadquery path exist and point to cadquery
     if not os.path.isfile(os.path.join(cadquery_path, "cq.py")):
         print(f"{cadquery_path} is invalid - cq.py should be in this directory")
@@ -387,7 +420,7 @@ def main(argv):
 
     # Read the cq_warehouse extensions.py file
     extensions_path = os.path.join(
-        pip_command_dictionary["Location"], "cq_warehouse/extensions.py"
+        pip_command_dictionary["Location"], "cq_warehouse", "extensions.py"
     )
     with open(extensions_path) as f:
         extensions_python_code = f.readlines()
@@ -436,6 +469,11 @@ def main(argv):
 
     # Create the patch file
     patch_file_name = "cadquery_extensions" + extensions_version + ".patch"
+
+    if os.name == "nt":
+        original_directory_path = slash_drive(pathlib.WindowsPath(original_directory_path).as_posix())
+        extended_directory_path = slash_drive(pathlib.WindowsPath(extended_directory_path).as_posix())
+
     with open(patch_file_name, "w") as patch_file:
         subprocess.run(
             [
@@ -460,14 +498,17 @@ def main(argv):
         os.path.join(cadquery_path, patch_file_name),
     )
 
+    if os.name == "nt":
+        cadquery_path = slash_drive(pathlib.WindowsPath(cadquery_path).as_posix())
+  
     print(
         f"Created the {patch_file_name} file and copied it to cadquery source directory"
     )
-    print("To apply the patch:")
+    print("To apply the patch, from a bash shell:")
     print(f"    cd {cadquery_path}")
-    print(f"    patch -s -l -p{patch_depth} < {patch_file_name}")
+    print(f"    patch --forward --ignore-whitespace {binary_if_windows()} -p{patch_depth} < {patch_file_name}")
     print("To reverse the patch:")
-    print(f"    patch -R -l -p{patch_depth} < {patch_file_name}")
+    print(f"    patch --reverse --ignore-whitespace {binary_if_windows()} -p{patch_depth} < {patch_file_name}")
 
 
 if __name__ == "__main__":
