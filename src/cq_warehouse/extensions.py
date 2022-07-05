@@ -2581,18 +2581,22 @@ def _polyline_sketch(
     new_edges = [
         Edge.makeLine(lines_pts[i], lines_pts[i + 1]) for i in range(len(lines_pts) - 1)
     ]
-    new_line = Wire.assembleEdges(new_edges) if len(new_edges) > 1 else new_edges[0]
+    # new_line = Wire.assembleEdges(new_edges) if len(new_edges) > 1 else new_edges[0]
 
+    for e in new_edges:
+        e.forConstruction = mode == Mode.CONSTRUCTION
     # new_line.forConstruction = for_construction
-    new_line.forConstruction = mode == Mode.CONSTRUCTION
+    # new_line.forConstruction = mode == Mode.CONSTRUCTION
 
-    if isinstance(new_line, Wire):
-        self._wires.append(new_line)
-    else:
-        self._edges.append(new_line)
+    # if isinstance(new_line, Wire):
+    #     self._wires.append(new_line)
+    # else:
+    #     self._edges.append(new_line)
+    self._edges.extend(new_edges)
 
     if tag:
-        self._tag([new_line], tag)
+        # self._tag([new_line], tag)
+        self._tag(new_edges, tag)
 
     return self
 
@@ -4009,6 +4013,7 @@ def _location_str(self):
 
 
 Location.__str__ = _location_str
+Location.__repr__ = _location_str
 
 
 def _location_position(self):
