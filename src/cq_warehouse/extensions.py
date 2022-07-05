@@ -2131,7 +2131,7 @@ class Mode(Enum):
 
 def _snap_to_vector_sketch(
     self,
-    pts: Iterable[Snap],
+    pts: Iterable[Union[Point, str]],
     find_tangents: bool = False,
 ) -> list[Vector]:
     """Snap to Vector
@@ -2176,6 +2176,7 @@ def _snap_to_vector_sketch(
 
 Sketch.snap_to_vector = _snap_to_vector_sketch
 
+
 class Mode(Enum):
     """Combination Mode"""
 
@@ -2184,6 +2185,7 @@ class Mode(Enum):
     INTERSECTION = auto()
     CONSTRUCTION = auto()
     PRIVATE = auto()
+
 
 class Font_Style(Enum):
     """Text Font Styles"""
@@ -2236,12 +2238,12 @@ def _text_sketch(
     fontsize: float,
     font: str = "Arial",
     font_path: Optional[str] = None,
-    # font_style: Literal["regular", "bold", "italic"] = "regular",
-    # halign: Literal["center", "left", "right"] = "left",
-    # valign: Literal["center", "top", "bottom"] = "center",
-    font_style: Font_Style = Font_Style.REGULAR,
-    halign: Halign = Halign.LEFT,
-    valign: Valign = Valign.CENTER,
+    font_style: Literal["regular", "bold", "italic"] = "regular",
+    halign: Literal["center", "left", "right"] = "left",
+    valign: Literal["center", "top", "bottom"] = "center",
+    # font_style: Font_Style = Font_Style.REGULAR,
+    # halign: Halign = Halign.LEFT,
+    # valign: Valign = Valign.CENTER,
     position_on_path: float = 0.0,
     angle: float = 0,
     mode: "Modes" = "a",
@@ -2484,8 +2486,8 @@ Sketch.mirror_y = _mirror_y_sketch
 
 def _spline_sketch(
     self: T,
-    *pts: Snap,
-    tangents: Iterable[Snap] = None,
+    *pts: Union[Point, str],
+    tangents: Iterable[Union[Point, str]] = None,
     tangent_scalars: Iterable[float] = None,
     periodic: bool = False,
     # mode: Mode = Mode.ADDITION,
@@ -2616,7 +2618,7 @@ Sketch.polyline = _polyline_sketch
 
 def _center_arc_sketch(
     self,
-    center: Snap,
+    center: Union[Point, str],
     radius: float,
     start_angle: float,
     arc_size: float,
@@ -2688,7 +2690,7 @@ Sketch.center_arc = _center_arc_sketch
 
 def _three_point_arc_sketch(
     self: T,
-    *pts: Snap,
+    *pts: Union[Point, str],
     # mode: Mode = Mode.ADDITION,
     tag: Optional[str] = None,
     for_construction: bool = False,
@@ -2733,7 +2735,7 @@ Sketch.three_point_arc = _three_point_arc_sketch
 
 def _tangent_arc_sketch(
     self,
-    *pts: Snap,
+    *pts: Union[Point, str],
     tangent: Point = None,
     tangent_from_first: bool = True,
     # mode: Mode = Mode.ADDITION,
@@ -2795,7 +2797,7 @@ Sketch.tangent_arc = _tangent_arc_sketch
 
 def _push_points_sketch(
     self: T,
-    *pts: Union[Snap, Location],
+    *pts: Union[Union[Point, str], Location],
     tag: Optional[str] = None,
 ) -> T:
     """Select the provided points
@@ -2917,7 +2919,7 @@ Sketch.bounding_box = _bounding_box_sketch
 
 
 def _hull_sketch(self: T, mode: Modes = "a", tag: Optional[str] = None) -> T:
-# def _hull_sketch(self: T, mode: Mode = Mode.ADDITION, tag: Optional[str] = None) -> T:
+    # def _hull_sketch(self: T, mode: Mode = Mode.ADDITION, tag: Optional[str] = None) -> T:
     """
     Generate a convex hull from current selection or all objects.
     """
