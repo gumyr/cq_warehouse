@@ -2176,6 +2176,14 @@ def _snap_to_vector_sketch(
 
 Sketch.snap_to_vector = _snap_to_vector_sketch
 
+class Mode(Enum):
+    """Combination Mode"""
+
+    ADDITION = auto()
+    SUBTRACTION = auto()
+    INTERSECTION = auto()
+    CONSTRUCTION = auto()
+    PRIVATE = auto()
 
 class Font_Style(Enum):
     """Text Font Styles"""
@@ -2236,8 +2244,8 @@ def _text_sketch(
     valign: Valign = Valign.CENTER,
     position_on_path: float = 0.0,
     angle: float = 0,
-    # mode: "Modes" = "a",
-    mode: Mode = Mode.ADDITION,
+    mode: "Modes" = "a",
+    # mode: Mode = Mode.ADDITION,
     tag: Optional[str] = None,
 ) -> T:
     """_summary_
@@ -2325,7 +2333,8 @@ def _text_sketch(
         text_path,
     ).rotate(Vector(), Vector(0, 0, 1), angle)
 
-    return self.each(lambda l: res.located(l), Mode.legacy(mode), tag)
+    # return self.each(lambda l: res.located(l), Mode.legacy(mode), tag)
+    return self.each(lambda l: res.located(l), mode, tag)
 
 
 Sketch.text = _text_sketch
@@ -2379,8 +2388,8 @@ def _add_sketch(
     self: T,
     obj: Union["Wire", "Edge", "Face"],
     angle: float = 0,
-    # mode: "Modes" = "a",
-    mode: Mode = Mode.ADDITION,
+    mode: "Modes" = "a",
+    # mode: Mode = Mode.ADDITION,
     tag: Optional[str] = None,
 ) -> T:
     """add
@@ -2403,10 +2412,10 @@ def _add_sketch(
 
     """
     if isinstance(obj, Edge):
-        # self.edge(obj.rotate(Vector(), Vector(0, 0, 1), angle), tag, mode == "c")
-        self.edge(
-            obj.rotate(Vector(), Vector(0, 0, 1), angle), tag, mode == Mode.CONSTRUCTION
-        )
+        self.edge(obj.rotate(Vector(), Vector(0, 0, 1), angle), tag, mode == "c")
+        # self.edge(
+        #     obj.rotate(Vector(), Vector(0, 0, 1), angle), tag, mode == Mode.CONSTRUCTION
+        # )
     elif isinstance(obj, Wire):
         # obj.forConstruction = mode == "c"
         obj.forConstruction = mode == Mode.CONSTRUCTION
@@ -2479,9 +2488,9 @@ def _spline_sketch(
     tangents: Iterable[Snap] = None,
     tangent_scalars: Iterable[float] = None,
     periodic: bool = False,
-    mode: Mode = Mode.ADDITION,
+    # mode: Mode = Mode.ADDITION,
     tag: str = None,
-    # for_construction: bool = False,
+    for_construction: bool = False,
 ) -> T:
     """spline
 
@@ -2532,8 +2541,8 @@ def _spline_sketch(
         scale=tangent_scalars is None,
     )
 
-    # return self.edge(spline, tag, for_construction)
-    return self.edge(spline, tag, mode == Mode.CONSTRUCTION)
+    return self.edge(spline, tag, for_construction)
+    # return self.edge(spline, tag, mode == Mode.CONSTRUCTION)
 
 
 Sketch.spline = _spline_sketch
@@ -2542,9 +2551,9 @@ Sketch.spline = _spline_sketch
 def _polyline_sketch(
     self,
     *pts: Union[Point, str],
-    mode: Mode = Mode.ADDITION,
+    # mode: Mode = Mode.ADDITION,
     tag: str = None,
-    # for_construction: bool = False,
+    for_construction: bool = False,
 ):
     """Polyline
 
@@ -2584,7 +2593,8 @@ def _polyline_sketch(
     # new_line = Wire.assembleEdges(new_edges) if len(new_edges) > 1 else new_edges[0]
 
     for e in new_edges:
-        e.forConstruction = mode == Mode.CONSTRUCTION
+        e.forConstruction = for_construction
+        # e.forConstruction = mode == Mode.CONSTRUCTION
     # new_line.forConstruction = for_construction
     # new_line.forConstruction = mode == Mode.CONSTRUCTION
 
@@ -2610,9 +2620,9 @@ def _center_arc_sketch(
     radius: float,
     start_angle: float,
     arc_size: float,
-    mode: Mode = Mode.ADDITION,
+    # mode: Mode = Mode.ADDITION,
     tag: str = None,
-    # for_construction: bool = False,
+    for_construction: bool = False,
 ):
     """Center Arc
 
@@ -2669,8 +2679,8 @@ def _center_arc_sketch(
         )
         arc = Edge.makeThreePointArc(p1, p2, p3)
 
-    # return self.edge(arc, tag, for_construction)
-    return self.edge(arc, tag, mode == Mode.CONSTRUCTION)
+    return self.edge(arc, tag, for_construction)
+    # return self.edge(arc, tag, mode == Mode.CONSTRUCTION)
 
 
 Sketch.center_arc = _center_arc_sketch
@@ -2679,9 +2689,9 @@ Sketch.center_arc = _center_arc_sketch
 def _three_point_arc_sketch(
     self: T,
     *pts: Snap,
-    mode: Mode = Mode.ADDITION,
+    # mode: Mode = Mode.ADDITION,
     tag: Optional[str] = None,
-    # for_construction: bool = False,
+    for_construction: bool = False,
 ) -> T:
     """Three Point Arc
 
@@ -2714,8 +2724,8 @@ def _three_point_arc_sketch(
 
     arc = Edge.makeThreePointArc(arc_pts[0], arc_pts[1], arc_pts[2])
 
-    # return self.edge(arc, tag, for_construction)
-    return self.edge(arc, tag, mode == Mode.CONSTRUCTION)
+    return self.edge(arc, tag, for_construction)
+    # return self.edge(arc, tag, mode == Mode.CONSTRUCTION)
 
 
 Sketch.three_point_arc = _three_point_arc_sketch
@@ -2726,9 +2736,9 @@ def _tangent_arc_sketch(
     *pts: Snap,
     tangent: Point = None,
     tangent_from_first: bool = True,
-    mode: Mode = Mode.ADDITION,
+    # mode: Mode = Mode.ADDITION,
     tag: Optional[str] = None,
-    # for_construction: bool = False,
+    for_construction: bool = False,
 ):
     """Tangent Arc
 
@@ -2776,8 +2786,8 @@ def _tangent_arc_sketch(
         arc_pts[point_indices[0]], arc_tangents[0], arc_pts[point_indices[1]]
     )
 
-    # return self.edge(arc, tag, for_construction)
-    return self.edge(arc, tag, mode == Mode.CONSTRUCTION)
+    return self.edge(arc, tag, for_construction)
+    # return self.edge(arc, tag, mode == Mode.CONSTRUCTION)
 
 
 Sketch.tangent_arc = _tangent_arc_sketch
@@ -2822,8 +2832,8 @@ Sketch.push_points = _push_points_sketch
 
 def _bounding_box_sketch(
     self: T,
-    # mode: "Modes" = "a",
-    mode: Mode = Mode.ADDITION,
+    mode: "Modes" = "a",
+    # mode: Mode = Mode.ADDITION,
     tag: Optional[str] = None,
 ) -> T:
     """Bounding Box
@@ -2897,8 +2907,8 @@ def _bounding_box_sketch(
         )
     bb_faces_iter = iter(bb_faces)
     self.push([(0, 0)] * len(bb_faces))
-    # self.each(lambda loc: next(bb_faces_iter).located(loc), mode, tag)
-    self.each(lambda loc: next(bb_faces_iter).located(loc), Mode.legacy(mode), tag)
+    self.each(lambda loc: next(bb_faces_iter).located(loc), mode, tag)
+    # self.each(lambda loc: next(bb_faces_iter).located(loc), Mode.legacy(mode), tag)
 
     return self
 
@@ -2906,8 +2916,8 @@ def _bounding_box_sketch(
 Sketch.bounding_box = _bounding_box_sketch
 
 
-# def _hull_sketch(self: T, mode: Modes = "a", tag: Optional[str] = None) -> T:
-def _hull_sketch(self: T, mode: Mode = Mode.ADDITION, tag: Optional[str] = None) -> T:
+def _hull_sketch(self: T, mode: Modes = "a", tag: Optional[str] = None) -> T:
+# def _hull_sketch(self: T, mode: Mode = Mode.ADDITION, tag: Optional[str] = None) -> T:
     """
     Generate a convex hull from current selection or all objects.
     """
@@ -2923,10 +2933,10 @@ def _hull_sketch(self: T, mode: Mode = Mode.ADDITION, tag: Optional[str] = None)
     else:
         raise ValueError("No objects available for hull construction")
 
-    # self.face(rv, mode=mode, tag=tag, ignore_selection=bool(self._selection))
-    self.face(
-        rv, mode=Mode.legacy(mode), tag=tag, ignore_selection=bool(self._selection)
-    )
+    self.face(rv, mode=mode, tag=tag, ignore_selection=bool(self._selection))
+    # self.face(
+    #     rv, mode=Mode.legacy(mode), tag=tag, ignore_selection=bool(self._selection)
+    # )
 
     return self
 
