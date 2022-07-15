@@ -150,6 +150,10 @@ class TestFunctionality(unittest.TestCase):
         self.assertEqual(arc_measure_type_1.children[0].name, "extension_line0")
         self.assertEqual(arc_measure_type_1.children[1].name, "extension_line1")
         self.assertEqual(arc_measure_type_1.children[2].name, "dimension_line")
+        self.assertEqual(
+            arc_measure_type_1.children[1].obj.val().startPoint(),
+            cq.Vector(100,-10,0)
+        )
 
     def test_extension_line(self):
         metric_drawing = Draft(decimal_precision=0)
@@ -161,6 +165,10 @@ class TestFunctionality(unittest.TestCase):
         self.assertEqual(arc_measure_type_1.children[0].name, "extension_line0")
         self.assertEqual(arc_measure_type_1.children[1].name, "extension_line1")
         self.assertEqual(arc_measure_type_1.children[2].name, "dimension_line")
+        self.assertEqual(
+            arc_measure_type_1.children[1].obj.val().startPoint(),
+            cq.Vector(100,0,0)
+        )
 
     def test_extension_line_with_projection(self):
         metric_drawing = Draft(decimal_precision=0)
@@ -175,6 +183,10 @@ class TestFunctionality(unittest.TestCase):
         self.assertEqual(arc_measure_type_1.children[0].name, "extension_line0")
         self.assertEqual(arc_measure_type_1.children[1].name, "extension_line1")
         self.assertEqual(arc_measure_type_1.children[2].name, "dimension_line")
+        self.assertEqual(
+            arc_measure_type_1.children[1].obj.val().startPoint(),
+            cq.Vector(100,100,0)
+        )
 
     def test_extension_line_arc(self):
         metric_drawing = Draft(decimal_precision=0)
