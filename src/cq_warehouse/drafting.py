@@ -71,6 +71,7 @@ class Draft:
         display_units (bool): control the display of units with numbers. Defaults to True.
         decimal_precision (int): number of decimal places when displaying numbers. Defaults to 2.
         fractional_precision (int): maximum fraction denominator - must be a factor of 2. Defaults to 64.
+        extension_gap (float): gap between the point and start of extension line in extension_line.
 
     Example:
 
@@ -110,6 +111,7 @@ class Draft:
         display_units: bool = True,
         decimal_precision: int = 2,
         fractional_precision: int = 64,
+        extension_gap: float = 0,
     ):
         self.font_size = font_size
         self.color = color
@@ -121,6 +123,7 @@ class Draft:
         self.display_units = display_units
         self.decimal_precision = decimal_precision
         self.fractional_precision = fractional_precision
+        self.extension_gap = extension_gap
 
         if not log2(fractional_precision).is_integer():
             raise ValueError(
@@ -257,8 +260,10 @@ class Draft:
         return sub_path
 
     @staticmethod
-    def _project_wire(path: Wire, line: Vector) -> Wire:
+    def _project_wire(path: Wire, line: VectorLike) -> Wire:
         """Project a Wire to a line."""
+        if isinstance(line, Tuple):
+            line = Vector(line)
         path_as_wire = Wire.assembleEdges(
             Workplane()
             .polyline(
@@ -534,7 +539,7 @@ class Draft:
         arrows: Tuple[bool, bool] = (True, True),
         tolerance: Optional[Union[float, Tuple[float, float]]] = None,
         label_angle: bool = False,
-        project_line: Vector = None
+        project_line: Optional[VectorLike] = None,
     ) -> Assembly:
         """Extension Line
 
@@ -613,19 +618,18 @@ class Draft:
                 xDir=extension_tangent,
                 normal=self._label_normal,
             )
-            start_point = dimension_plane.toLocalCoords(object_start)
-            end_point = dimension_plane.toLocalCoords(object_end)
-            start_point_2d = (start_point.toTuple()[0], start_point.toTuple()[1])
-            end_point_2d = (end_point.toTuple()[0], end_point.toTuple()[1])
+            start_point = dimension_plane.toLocalCoords(object_start).toTuple()[:2]
+            end_point = dimension_plane.toLocalCoords(object_end).toTuple()[:2]
+            extension_gap = copysign(1, offset) * self.extension_gap * MM
             ext_line1 = (
                 Workplane(dimension_plane)
-                .moveTo(start_point_2d[0] + copysign(1, offset) * 1.5 * MM, start_point_2d[1])
-                .lineTo(offset + copysign(1,offset) * 3 * MM, start_point_2d[1])
+                .moveTo(start_point[0] + extension_gap, start_point[1])
+                .lineTo(offset + extension_gap, start_point[1])
             )
             ext_line2 = (
                 Workplane(dimension_plane)
-                .moveTo(end_point_2d[0] + copysign(1, offset) * 1.5 * MM, end_point_2d[1])
-                .lineTo(offset + copysign(1,offset) * 3 * MM, end_point_2d[1])
+                .moveTo(end_point[0] + extension_gap, end_point[1])
+                .lineTo(offset + extension_gap, end_point[1])
             )
             ext_line = [ext_line1, ext_line2]
             extension_path = object_path.translate(

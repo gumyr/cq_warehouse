@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 
 Drafting Unit Tests
@@ -122,10 +123,52 @@ class TestFunctionality(unittest.TestCase):
         with self.assertRaises(ValueError):
             Draft._segment_line(path=line_edge, tip_pos=0.0, tail_pos=2.0)
 
+    def test_project_wire(self):
+        wire = Draft._path_to_wire(((0,0,0), (10,10,0)))
+        projected_wire = Draft._project_wire(wire, (0,1,0))
+        self.assertEqual(projected_wire.startPoint(), cq.Vector(0,0,0))
+        self.assertEqual(projected_wire.endPoint(), cq.Vector(0,10,0))
+        self.assertNotEqual(wire, projected_wire)
+
+    def test_path_to_wire(self):
+        wire = Draft._path_to_wire(((0,0,0), (10,10,0)))
+        self.assertIsInstance(wire, cq.Wire)
+        self.assertEqual(cq.Vector(0,0,0), wire.startPoint())
+        self.assertEqual(cq.Vector(10,10,0), wire.endPoint())
+
+    def test_extension_line_with_dimension_gap(self):
+        metric_drawing = Draft(
+            decimal_precision=0,
+            extension_gap=10
+        )
+        self.assertEqual(metric_drawing.extension_gap, 10)
+        arc_measure_type_1 = metric_drawing.extension_line(
+            label="Type 1", object_edge=[(0, 0, 0), (100, 0, 0)], offset=10
+        )
+        self.assertEqual(arc_measure_type_1.name, "Type 1_extension_line")
+        self.assertEqual(len(arc_measure_type_1.children), 3)
+        self.assertEqual(arc_measure_type_1.children[0].name, "extension_line0")
+        self.assertEqual(arc_measure_type_1.children[1].name, "extension_line1")
+        self.assertEqual(arc_measure_type_1.children[2].name, "dimension_line")
+
     def test_extension_line(self):
         metric_drawing = Draft(decimal_precision=0)
         arc_measure_type_1 = metric_drawing.extension_line(
             label="Type 1", object_edge=[(0, 0, 0), (100, 0, 0)], offset=10
+        )
+        self.assertEqual(arc_measure_type_1.name, "Type 1_extension_line")
+        self.assertEqual(len(arc_measure_type_1.children), 3)
+        self.assertEqual(arc_measure_type_1.children[0].name, "extension_line0")
+        self.assertEqual(arc_measure_type_1.children[1].name, "extension_line1")
+        self.assertEqual(arc_measure_type_1.children[2].name, "dimension_line")
+
+    def test_extension_line_with_projection(self):
+        metric_drawing = Draft(decimal_precision=0)
+        arc_measure_type_1 = metric_drawing.extension_line(
+            label="Type 1", 
+            object_edge=[(0, 0, 0), (100, 100, 0)], 
+            offset=10,
+            project_line=(0,1,0)
         )
         self.assertEqual(arc_measure_type_1.name, "Type 1_extension_line")
         self.assertEqual(len(arc_measure_type_1.children), 3)
