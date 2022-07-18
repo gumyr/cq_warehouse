@@ -5,6 +5,8 @@ class gp_Ax1:
     pass
 class T:
     pass
+class Vector:
+    pass
 class VectorLike:
     pass
 class BoundBox:
@@ -16,6 +18,8 @@ class Compound:
 class Location:
     pass
 Modes = Literal['a', 's', 'i', 'c']
+Real = Union[int, float]
+Point = Union[Vector, Tuple[Real, Real]]
 class Assembly(object):
     def translate(self, vec: "VectorLike") -> "Assembly":
         """
@@ -230,7 +234,7 @@ class Vertex(object):
         Example:
             part.faces(">Z").vertices("<Y and <X").val() - Vector(10, 0, 0)
         """
-    def __str__(self) -> str:
+    def __repr__(self) -> str:
         """To String
     
         Convert Vertex to String for display
@@ -821,18 +825,38 @@ class Face(object):
             Face: the Face with notches on one edge
         """
 class Sketch(object):
+    def snap_to_vector(
+        self,
+        pts: Iterable[Union[Point, str]],
+        find_tangents: bool = False,
+    ) -> list[Vector]:
+        """Snap to Vector
+    
+        Convert Snaps to Vector
+    
+        Args:
+            pts (Union[Point,str]): list of Snaps
+            find_tangents (bool): return tangents instead of positions. Defaults to False.
+    
+        Returns:
+            list(Vector): a list of Vectors possibly extracted from tagged objects
+        """
     def text(
         self: T,
         txt: str,
         fontsize: float,
         font: str = "Arial",
-        fontPath: Optional[str] = None,
-        fontStyle: Literal["regular", "bold", "italic"] = "regular",
+        font_path: Optional[str] = None,
+        font_style: Literal["regular", "bold", "italic"] = "regular",
         halign: Literal["center", "left", "right"] = "left",
         valign: Literal["center", "top", "bottom"] = "center",
-        positionOnPath: float = 0.0,
+        # font_style: Font_Style = Font_Style.REGULAR,
+        # halign: Halign = Halign.LEFT,
+        # valign: Valign = Valign.CENTER,
+        position_on_path: float = 0.0,
         angle: float = 0,
         mode: "Modes" = "a",
+        # mode: Mode = Mode.ADDITION,
         tag: Optional[str] = None,
     ) -> T:
         """
@@ -858,13 +882,13 @@ class Sketch(object):
             txt: text to be rendered
             fontsize: size of the font in model units
             font: font name
-            fontPath: system path to font file
-            fontStyle: one of ["regular", "bold", "italic"]. Defaults to "regular".
+            font_path: system path to font file
+            font_style: one of ["regular", "bold", "italic"]. Defaults to "regular".
             halign: horizontal alignment, one of ["center", "left", "right"].
                 Defaults to "left".
             valign: vertical alignment, one of ["center", "top", "bottom"].
                 Defaults to "center".
-            positionOnPath: the relative location on path to locate the text, between 0.0 and 1.0.
+            position_on_path: the relative location on path to locate the text, between 0.0 and 1.0.
                 Defaults to 0.0.
             angle: rotation angle. Defaults to 0.0.
             mode: combination mode, one of ["a","s","i","c"]. Defaults to "a".
@@ -872,7 +896,6 @@ class Sketch(object):
     
         Returns:
             a Sketch object
-    
     
         """
     def vals(self) -> list[Union["Vertex", "Wire", "Edge", "Face"]]:
@@ -908,6 +931,7 @@ class Sketch(object):
         obj: Union["Wire", "Edge", "Face"],
         angle: float = 0,
         mode: "Modes" = "a",
+        # mode: Mode = Mode.ADDITION,
         tag: Optional[str] = None,
     ) -> T:
         """add
@@ -928,9 +952,225 @@ class Sketch(object):
             Updated sketch
     
         """
-    def boundingBox(
+    def mirror_x(self):
+        """Mirror across X axis
+    
+        Mirror the selected items across the X axis
+    
+        Raises:
+            ValueError: Nothing selected
+    
+        Returns:
+            Updated Sketch
+        """
+    def mirror_y(self):
+        """Mirror across Y axis
+    
+        Mirror the selected items across the Y axis
+    
+        Raises:
+            ValueError: Nothing selected
+    
+        Returns:
+            Updated Sketch
+        """
+    def spline(
+        self: T,
+        *pts: Union[Point, str],
+        tangents: Iterable[Union[Point, str]] = None,
+        tangent_scalars: Iterable[float] = None,
+        periodic: bool = False,
+        # mode: Mode = Mode.ADDITION,
+        tag: str = None,
+        for_construction: bool = False,
+    ) -> T:
+        """spline
+    
+        Construct a spline
+    
+        Examples::
+    
+            boomerang = (
+                cq.Sketch()
+                .center_arc(center=(0, 0), radius=10, start_angle=0, arc_size=90, tag="c")
+                .spline("c@1", (10, 10), "c@0", tangents=("c@1", "c@0"))
+            )
+    
+        Args:
+            pts (Union[Point,str]): sequence of points or snaps defining the spline
+            tangents (Iterable[Union[Point, str]], optional): spline tangents or snaps. Defaults to None.
+            tangent_scalars (Iterable[float], optional): tangent multipliers to refine the shape.
+                Defaults to None.
+            periodic (bool, optional): creation of periodic curves. Defaults to False.
+            tag (str, optional): feature label. Defaults to None.
+            for_construction (bool, optional): edge used to build other geometry. Defaults to False.
+    
+        Returns:
+            Updated Sketch
+        """
+    def polyline(
+        self,
+        *pts: Union[Point, str],
+        # mode: Mode = Mode.ADDITION,
+        tag: str = None,
+        for_construction: bool = False,
+    ):
+        """Polyline
+    
+        A polyline defined by two or more points or snaps
+    
+        Examples::
+    
+            pline = cq.Sketch().polyline((0, 0), (1, 1), (2, 0), (3, 1), (4, 0))
+    
+            triangle = (
+                cq.Sketch()
+                .polyline((0, 0), (2, 0), tag="base")
+                .polyline("base@0", (1, 1), tag="left")
+                .polyline("left@1", "base@1")
+            )
+    
+        Args:
+            pts (Union[Point,str]): sequence of points or snaps
+            tag (str, optional): feature label. Defaults to None.
+            for_construction (bool, optional): edge used to build other geometry. Defaults to False.
+    
+        Raises:
+            ValueError: polyline requires two or more pts
+    
+        Returns:
+            Updated sketch
+        """
+    def center_arc(
+        self,
+        center: Union[Point, str],
+        radius: float,
+        start_angle: float,
+        arc_size: float,
+        # mode: Mode = Mode.ADDITION,
+        tag: str = None,
+        for_construction: bool = False,
+    ):
+        """Center Arc
+    
+        A partial or complete circle with defined center
+    
+        Examples::
+    
+            chord = (
+                cq.Sketch()
+                .center_arc(center=(0, 0), radius=10, start_angle=0, arc_size=60, tag="c")
+                .polyline("c@1", "c@0")
+                .assemble()
+            )
+    
+        Args:
+            center (Union[Point, str]): point or snap defining the arc center
+            radius (float): arc radius
+            start_angle (float): in degrees, where zero corresponds to the +vs X axis
+            arc_size (float): size of arc counter clockwise from start
+            tag (str, optional): feature label. Defaults to None.
+            for_construction (bool, optional): edge used to build other geometry. Defaults to False.
+    
+        Returns:
+            Updated sketch
+        """
+    def three_point_arc(
+        self: T,
+        *pts: Union[Point, str],
+        # mode: Mode = Mode.ADDITION,
+        tag: str = None,
+        for_construction: bool = False,
+    ) -> T:
+        """Three Point Arc
+    
+        Construct an arc through a sequence of points or snaps
+    
+        Examples::
+    
+            three_point_arc = (
+                cq.Sketch()
+                .polyline((0, 10), (0, 0), (10, 0), tag="p")
+                .three_point_arc("p@0", "p@0.5", "p@1")
+            )
+    
+        Args:
+            pts (Union[Point,str]): sequence of points or snaps
+            tag (str, optional): feature label. Defaults to None.
+            for_construction (bool, optional): edge used to build other geometry. Defaults to False.
+    
+        Raises:
+            ValueError: three_point_arc requires three points
+    
+        Returns:
+            Updated sketch
+    
+        """
+    def tangent_arc(
+        self,
+        *pts: Union[Point, str],
+        tangent: Point = None,
+        tangent_from_first: bool = True,
+        # mode: Mode = Mode.ADDITION,
+        tag: Optional[str] = None,
+        for_construction: bool = False,
+    ):
+        """Tangent Arc
+    
+        Create an arc defined by the provided points and a tangent
+    
+        Examples::
+    
+            tangent_arc = (
+                cq.Sketch()
+                .center_arc(center=(0, 0), radius=10, start_angle=0, arc_size=90, tag="c")
+                .tangent_arc("c@0.5", (10, 10), tag="t")
+            )
+    
+        Args:
+            pts (Union[Point,str]): start and end point or snap of arc
+            tangent (Point, optional): tangent value if snaps aren't used. Defaults to None.
+            tangent_from_first (bool, optional) point to align tangent to. Note that
+                using a value of False will build the arc in the reverse direction. Defaults to True.
+            tag (str, optional): feature label. Defaults to None.
+            for_construction (bool, optional): edge used to build other geometry. Defaults to False.
+    
+        Raises:
+            ValueError: tangentArc requires two points
+            ValueError: no tangent provided
+    
+        Returns:
+            Updated sketch
+        """
+    def push_points(
+        self: T,
+        *pts: Union[Union[Point, str], Location],
+        tag: Optional[str] = None,
+    ) -> T:
+        """Select the provided points
+    
+        Add the provided points, locations or snaps to current selections
+    
+        Examples::
+    
+            circles_on_arc = (
+                cq.Sketch()
+                .center_arc(center=(0, 0), radius=10, start_angle=0, arc_size=90, tag="c")
+                .push_points("c@0.1", "c@0.5", "c@0.9")
+                .circle(1)
+            )
+    
+        Args:
+            pts (Union[Point,str,Location]): points to add
+            tag (str, optional): feature label. Defaults to None.
+    
+        Returns:
+            Updated sketch
+        """
+    def bounding_box(
         self: T,
         mode: "Modes" = "a",
+        # mode: Mode = Mode.ADDITION,
         tag: Optional[str] = None,
     ) -> T:
         """Bounding Box
@@ -944,7 +1184,7 @@ class Sketch(object):
                 cq.Sketch()
                 .circle(10)
                 .faces()
-                .boundingBox(tag="bb", mode="c")
+                .bounding_box(tag="bb", mode="c")
                 .faces(tag="bb")
                 .vertices(">Y")
                 .circle(7)
@@ -960,7 +1200,7 @@ class Sketch(object):
                 .faces(tag="t")
                 .circle(0.5, mode="s")
                 .faces(tag="t")
-                .boundingBox(tag="bb", mode="c")
+                .bounding_box(tag="bb", mode="c")
                 .faces(tag="bb")
                 .rect(1, 1, mode="s")
             )
@@ -971,14 +1211,13 @@ class Sketch(object):
                 .circle(10)
                 .reset()
                 .faces()
-                .boundingBox(tag="bb", mode="c")
+                .bounding_box(tag="bb", mode="c")
                 .vertices(tag="bb")
                 .circle(7)
                 .clean()
             )
     
         Args:
-            mode (Modes, optional): combination mode, one of ["a","s","i","c"]. Defaults to "a".
             tag (Optional[str], optional): feature label. Defaults to None.
     
         Returns:
@@ -1103,6 +1342,29 @@ class Wire(object):
             list(Edge): Edges sorted by position
         """
 class Edge(object):
+    def distributeLocations(
+        self: Union["Wire", "Edge"],
+        count: int,
+        start: float = 0.0,
+        stop: float = 1.0,
+        positions_only: bool = False,
+    ) -> list[Location]:
+        """Distribute Locations
+    
+        Distribute locations along edge or wire.
+    
+        Args:
+            count (int): Number of locations to generate
+            start (float, optional): position along Edge|Wire to start. Defaults to 0.0.
+            stop (float, optional): position along Edge|Wire to end. Defaults to 1.0.
+            positions_only (bool, optional): only generate position not orientation. Defaults to False.
+    
+        Raises:
+            ValueError: count must be two or greater
+    
+        Returns:
+            list[Location]: locations distributed along Edge|Wire
+        """
     def projectToShape(
         self,
         targetObject: "Shape",
@@ -1230,6 +1492,7 @@ class Shape(object):
         kind: Literal["regular", "bold", "italic"] = "regular",
         valign: Literal["center", "top", "bottom"] = "center",
         start: float = 0,
+        tolerance: float = 0.1,
     ) -> "Compound":
         """Embossed 3D text following the given path on Shape
     
@@ -1310,7 +1573,7 @@ class Shape(object):
     
         """
 class Location(object):
-    def __str__(self):
+    def __repr__(self):
         """To String
     
         Convert Location to String for display

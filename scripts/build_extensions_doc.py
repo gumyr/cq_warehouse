@@ -299,12 +299,15 @@ def main(argv):
             "from bearing import Bearing\n"
             "class gp_Ax1:\n    pass\n",
             "class T:\n    pass\n",
+            "class Vector:\n    pass\n",
             "class VectorLike:\n    pass\n",
             "class BoundBox:\n    pass\n",
             "class Solid:\n    pass\n",
             "class Compound:\n    pass\n",
             "class Location:\n    pass\n",
             "Modes = Literal['a', 's', 'i', 'c']\n",
+            "Real = Union[int, float]\n",
+            "Point = Union[Vector, Tuple[Real, Real]]\n",
         ]
     )
     for class_name, method_dictionaries in extensions_code_dictionary.items():

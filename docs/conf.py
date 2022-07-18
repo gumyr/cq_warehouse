@@ -14,7 +14,7 @@ import os
 import sys
 
 cq_warehouse_path = os.path.dirname(os.path.abspath(os.getcwd()))
-source_files_path = os.path.join(cq_warehouse_path, "src/cq_warehouse")
+source_files_path = os.path.join(cq_warehouse_path, "src", "cq_warehouse")
 sys.path.insert(0, source_files_path)
 sys.path.append(os.path.abspath("sphinxext"))
 sys.path.insert(0, os.path.abspath("."))
