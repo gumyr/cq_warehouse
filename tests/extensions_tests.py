@@ -103,6 +103,24 @@ class AssemblyTests(unittest.TestCase):
         )
         self.assertTrue(test_assembly.doObjectsIntersect())
 
+    # def test_section(self):
+    #     test_assembly = cq.Assembly(None, name="test")
+    #     test_assembly.add(cq.Solid.makeSphere(1), color=cq.Color("red"), name="red")
+    #     test_assembly.add(
+    #         cq.Assembly(
+    #             cq.Solid.makeSphere(1),
+    #             loc=cq.Location(cq.Vector(0, 0, 10)),
+    #             color=cq.Color("blue"),
+    #             name="blue",
+    #         )
+    #     )
+    #     xsection = test_assembly.section(cq.Plane.named("XZ"))
+
+    #     for (n1, p1), (n2, p2) in zip(test_assembly.traverse(), xsection.traverse()):
+    #         self.assertEqual(n1, n2)
+    #         self.assertTupleAlmostEquals(p1.loc.toTuple()[0], p2.loc.toTuple()[0], 5)
+    #         self.assertTupleAlmostEquals(p1.loc.toTuple()[1], p2.loc.toTuple()[1], 5)
+
 
 class FaceTests(unittest.TestCase):
     """Test new Face methods - not including projection or emboss"""
@@ -147,6 +165,18 @@ class WireTests(unittest.TestCase):
         rectangle_face = cq.Face.makeFromWires(rectangle, [])
         self.assertTrue(rectangle.isValid())
         self.assertAlmostEqual(rectangle_face.Area(), 1000, 4)
+
+    def test_distribute(self):
+        """Works for both Wire and Edge"""
+        line = cq.Edge.makeLine((0, 0, 0), (1, 1, 1))
+        locations = line.distributeLocations(3)
+        positions = line.distributeLocations(3, positions_only=True)
+
+        self.assertEqual(len(locations), 3)
+        self.assertEqual(len(positions), 3)
+        self.assertTupleAlmostEquals(positions[0].toTuple()[0], (0, 0, 0), 3)
+        self.assertTupleAlmostEquals(positions[1].toTuple()[0], (0.5, 0.5, 0.5), 3)
+        self.assertTupleAlmostEquals(positions[2].toTuple()[0], (1, 1, 1), 3)
 
 
 class ShapeTests(unittest.TestCase):

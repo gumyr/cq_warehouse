@@ -25,9 +25,12 @@ license:
     limitations under the License.
 
 """
+from math import pi
 import unittest
 import cadquery as cq
-from cq_warehouse.extensions import *
+import cq_warehouse.extensions
+
+# from cq_warehouse.extensions import *
 
 
 def _assertTupleAlmostEquals(self, expected, actual, places, msg=None):
@@ -76,6 +79,14 @@ class ValTests(unittest.TestCase):
         self.assertEqual(len(rectangle_faces), 4)
         self.assertTrue(isinstance(rectangle_faces[0], cq.Face))
 
+    def test_val_exception(self):
+        with self.assertRaises(ValueError):
+            cq.Sketch().val()
+
+    def test_vals_exception(self):
+        with self.assertRaises(ValueError):
+            cq.Sketch().vals()
+
 
 class AddTests(unittest.TestCase):
     """Test adding an object to a Sketch"""
@@ -105,7 +116,7 @@ class BoundingBoxTests(unittest.TestCase):
     def test_single_face(self):
         square = cq.Sketch().rect(10, 10)
         square_face = square.faces().val()
-        square_bb_face = square.faces().boundingBox(tag="bb").faces(tag="bb").val()
+        square_bb_face = square.faces().bounding_box(tag="bb").faces(tag="bb").val()
         self.assertAlmostEqual(square_face.cut(square_bb_face).Area(), 0, 5)
 
     def test_single_edge(self):
@@ -113,7 +124,7 @@ class BoundingBoxTests(unittest.TestCase):
         arc_bb_target_face = (
             cq.Sketch().push([(5, 5)]).rect(10, 10).reset().faces().val()
         )
-        arc_bb_face = arc.edges().boundingBox().reset().faces().val()
+        arc_bb_face = arc.edges().bounding_box().reset().faces().val()
         self.assertAlmostEqual(arc_bb_target_face.cut(arc_bb_face).Area(), 0, 5)
 
     def test_multiple_faces(self):
@@ -123,7 +134,7 @@ class BoundingBoxTests(unittest.TestCase):
             .circle(10)
             .reset()
             .faces()
-            .boundingBox(tag="x", mode="c")
+            .bounding_box(tag="x", mode="c")
             .vertices(tag="x")
             .circle(7)
             .clean()
@@ -133,6 +144,204 @@ class BoundingBoxTests(unittest.TestCase):
         )
         self.assertEqual(len(circle_faces), 4)
         self.assertEqual(len(circle_faces[0].Edges()), 8)
+
+
+class MirrorTests(unittest.TestCase):
+    """Testing mirror_x and mirror_y"""
+
+    def test_mirror_x(self):
+        mirror_edges = (
+            cq.Sketch()
+            .polyline((0, 0), (0, 1), (1, 1), (1, 0))
+            .edges()
+            .mirror_x()
+            .reset()
+            .assemble()
+            .faces()
+            .val()
+        )
+        self.assertAlmostEqual(mirror_edges.Area(), 2, 5)
+
+    def test_mirror_y(self):
+        mirror_edges = (
+            cq.Sketch()
+            .polyline((0, 0), (1, 0), (1, 1), (0, 1))
+            .edges()
+            .mirror_y()
+            .reset()
+            .assemble()
+            .faces()
+            .val()
+        )
+        self.assertAlmostEqual(mirror_edges.Area(), 2, 5)
+
+    def test_mirror_x_exceptions(self):
+        with self.assertRaises(ValueError):
+            cq.Sketch().mirror_x()
+
+    def test_mirror_y_exceptions(self):
+        with self.assertRaises(ValueError):
+            cq.Sketch().mirror_y()
+
+
+class SplineTests(unittest.TestCase):
+    """Testing spline"""
+
+    def test_spline(self):
+        boomerang = (
+            cq.Sketch()
+            .center_arc(center=(0, 0), radius=10, start_angle=0, arc_size=90, tag="c")
+            .spline("c@1", (10, 10), "c@0")
+            .assemble(tag="b")
+            .faces(tag="b")
+            .val()
+        )
+        self.assertAlmostEqual(boomerang.Area(), 38.1, 1)
+
+    def test_spline_with_tangents(self):
+        boomerang = (
+            cq.Sketch()
+            .center_arc(center=(0, 0), radius=10, start_angle=0, arc_size=90, tag="c")
+            .spline("c@1", (10, 10), "c@0", tangents=("c@1", "c@0"))
+            .assemble(tag="b")
+            .faces(tag="b")
+            .val()
+        )
+        self.assertAlmostEqual(boomerang.Area(), 54.8, 1)
+
+    def test_spline_with_tangents_and_scalars(self):
+        boomerang = (
+            cq.Sketch()
+            .center_arc(center=(0, 0), radius=10, start_angle=0, arc_size=90, tag="c")
+            .spline(
+                "c@1", (10, 10), "c@0", tangents=("c@1", "c@0"), tangent_scalars=(5, 5)
+            )
+            .assemble(tag="b")
+            .faces(tag="b")
+            .val()
+        )
+        self.assertAlmostEqual(boomerang.Area(), 94.8, 1)
+
+
+class PolylineTests(unittest.TestCase):
+    """Testing Polyline"""
+
+    def test_polyline(self):
+        square = (
+            cq.Sketch()
+            .polyline((0, 0), (1, 0), tag="l1")
+            .polyline("l1@1", (1, 1), tag="l2")
+            .polyline("l2@1", (0, 1), tag="l3")
+            .polyline("l3@1", "l1@0")
+            .assemble()
+            .faces()
+            .val()
+        )
+        self.assertAlmostEqual(square.Area(), 1, 5)
+
+    def test_polyline_exceptions(self):
+        with self.assertRaises(ValueError):
+            cq.Sketch().polyline((0, 0))
+
+
+class CenterArcTests(unittest.TestCase):
+    def test_greater_360(self):
+        circle = cq.Sketch().center_arc((0, 0), 1, 0, 720).assemble().faces().val()
+        self.assertAlmostEqual(circle.Area(), pi, 5)
+
+
+class ThreePointArcTests(unittest.TestCase):
+    def test_three_point(self):
+        three_point_arc = (
+            cq.Sketch().three_point_arc((0, 10), (0, 0), (10, 0)).edges().val()
+        )
+        self.assertTupleAlmostEquals(
+            three_point_arc.positionAt(0).toTuple(), (0, 10, 0), 3
+        )
+
+    def test_three_point_arc_exception(self):
+        with self.assertRaises(ValueError):
+            cq.Sketch().three_point_arc((0, 10), (0, 0))
+
+
+class TangentArcTests(unittest.TestCase):
+    def test_tangent_arc(self):
+        tangent_arc = (
+            cq.Sketch()
+            .center_arc(center=(0, 0), radius=10, start_angle=0, arc_size=90, tag="c")
+            .tangent_arc("c@0.5", (10, 10), tag="t")
+            .edges()
+            .vals()
+        )
+        self.assertTupleAlmostEquals(
+            tangent_arc[1].positionAt(1).toTuple(), (10, 10, 0), 3
+        )
+        tangent_arc = (
+            cq.Sketch().tangent_arc((0, 0), (10, 10), tangent=(0, 1)).edges().val()
+        )
+        self.assertTupleAlmostEquals(
+            tangent_arc.positionAt(1).toTuple(), (10, 10, 0), 3
+        )
+
+    def test_no_tangents_exception(self):
+        with self.assertRaises(ValueError):
+            cq.Sketch().tangent_arc((0, 0), (10, 10))
+
+    def test_too_few_points_exception(self):
+        with self.assertRaises(ValueError):
+            cq.Sketch().tangent_arc((10, 10), tangent=(1, 1))
+
+
+class PushPointsTests(unittest.TestCase):
+    def test_push_tuple(self):
+        points = cq.Sketch().push_points((0, 0), (1, 1), (2, 0))
+        self.assertEqual(len(points._selection), 3)
+
+    def test_push_snap(self):
+        points = (
+            cq.Sketch()
+            .three_point_arc((0, 0), (0, 10), (10, 10), tag="l1")
+            .push_points("l1@0", "l1@0.5", "l1@1", tag="points")
+        )
+        self.assertEqual(len(points._selection), 3)
+        self.assertEqual(len(points._tags["points"]), 3)
+
+
+class SnapTests(unittest.TestCase):
+    def test_simple_snaps(self):
+        snap = (
+            cq.Sketch()
+            .segment((0, 0), (10, 10), tag="l")
+            .reset()
+            .push_points("l@0", "l@1")
+        )
+        self.assertEqual(len(snap._selection), 2)
+
+    def test_mixed_snaps(self):
+        snap = (
+            cq.Sketch()
+            .segment((0, 0), (10, 10), tag="l")
+            .reset()
+            .push_points("l@0", (10, 10), cq.Vector(1, 1))
+        )
+        self.assertEqual(len(snap._selection), 3)
+
+    def test_start_middle_end_snap(self):
+        snap = (
+            cq.Sketch()
+            .segment((0, 0), (10, 10), tag="l")
+            .reset()
+            .push_points("l@start", "l@middle", "l@end")
+        )
+        self.assertEqual(len(snap._selection), 3)
+
+    def test_snap_exception(self):
+        with self.assertRaises(ValueError):
+            cq.Sketch().segment((0, 0), (10, 10), tag="l").reset().push_points("l@bad")
+
+
+# class HullTests(unittest.TestCase):
+#     def test_hull(self):
 
 
 if __name__ == "__main__":
