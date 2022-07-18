@@ -118,7 +118,7 @@ logging.basicConfig(
 """
 
 Assembly extensions: rotate(), translate(), fastenerQuantities(), fastenerLocations(), findLocation(),
-                    doObjectsIntersect(), areObjectsValid()
+                    doObjectsIntersect(), areObjectsValid(), section()
 
 """
 
@@ -347,35 +347,31 @@ def _areObjectsValid(self) -> bool:
 Assembly.areObjectsValid = _areObjectsValid
 
 
-def _crossSection_Assembly(self, plane: "Plane") -> "Assembly":
-    """Cross Section
+# def _crossSection_Assembly(self, plane: "Plane") -> "Assembly":
+#     """Cross Section
 
-    Generate a 2D slice of an assembly as a colorize Assembly
+#     Generate a 2D slice of an assembly as a colorize Assembly
 
-    Args:
-        plane (Plane): the plane with which to slice the Assembly
+#     Args:
+#         plane (Plane): the plane with which to slice the Assembly
 
-    Returns:
-        Assembly: The cross section assembly with original colors
-    """
-    cross_section = cq.Assembly()
-    for name, part in self.traverse():
-        for shape in part.shapes:
-            cross_section.add(
-                cq.Compound.makeCompound(
-                    cq.Workplane(plane)
-                    .add(shape.moved(part.loc))
-                    .section()
-                    .faces()
-                    .vals()
-                ),
-                color=part.color,
-                name=name,
-            )
-    return cross_section
+#     Returns:
+#         Assembly: The cross section assembly with original colors
+#     """
+#     plane_as_face = Face.makePlane(basePnt=plane.origin, dir=plane.zDir)
 
+#     cross_section = cq.Assembly(None, name=self.name)
+#     for name, part in self.traverse():
+#         for shape in part.shapes:
+#             cross_section.add(
+#                 shape.intersect(plane_as_face),
+#                 loc=part.loc,
+#                 color=part.color,
+#                 name=name,
+#             )
+#     return cross_section
 
-Assembly.crossSection = _crossSection_Assembly
+# Assembly.section = _crossSection_Assembly
 """
 
 Plane extensions: toLocalCoords(), toWorldCoords()
@@ -645,6 +641,7 @@ def _vertex_str__(self) -> str:
 
 
 Vertex.__str__ = _vertex_str__
+Vertex.__repr__ = _vertex_str__
 
 
 def _vertex_to_vector(self) -> "Vector":
@@ -2109,8 +2106,6 @@ Sketch extensions: text(), val(), vals(), add(), mirror_x(), mirror_y(), spline(
 
 """
 
-Snap = Union[Point, str]
-
 
 class Mode(Enum):
     """Combination Mode"""
@@ -2119,14 +2114,6 @@ class Mode(Enum):
     SUBTRACTION = auto()
     INTERSECTION = auto()
     CONSTRUCTION = auto()
-
-    def legacy(mode: "Mode") -> str:
-        return {
-            Mode.ADDITION: "a",
-            Mode.SUBTRACTION: "s",
-            Mode.INTERSECTION: "i",
-            Mode.CONSTRUCTION: "c",
-        }[mode]
 
 
 def _snap_to_vector_sketch(
@@ -2194,13 +2181,6 @@ class Font_Style(Enum):
     BOLD = auto()
     ITALIC = auto()
 
-    def legacy(font_style: "Font_Style") -> str:
-        return {
-            Font_Style.REGULAR: "regular",
-            Font_Style.BOLD: "bold",
-            Font_Style.ITALIC: "italic",
-        }[font_style]
-
 
 class Halign(Enum):
     """Horizontal Alignment"""
@@ -2209,13 +2189,6 @@ class Halign(Enum):
     LEFT = auto()
     RIGHT = auto()
 
-    def legacy(halign: "Halign") -> str:
-        return {
-            Halign.LEFT: "left",
-            Halign.RIGHT: "right",
-            Halign.CENTER: "center",
-        }[halign]
-
 
 class Valign(Enum):
     """Vertical Alignment"""
@@ -2223,13 +2196,6 @@ class Valign(Enum):
     CENTER = auto()
     TOP = auto()
     BOTTOM = auto()
-
-    def legacy(valign: "Valign") -> str:
-        return {
-            Valign.TOP: "top",
-            Valign.BOTTOM: "bottom",
-            Valign.CENTER: "center",
-        }[valign]
 
 
 def _text_sketch(
@@ -2250,27 +2216,6 @@ def _text_sketch(
     # mode: Mode = Mode.ADDITION,
     tag: Optional[str] = None,
 ) -> T:
-    """_summary_
-
-    _extended_summary_
-
-    Args:
-        self (T): _description_
-        txt (str): _description_
-        fontsize (float): _description_
-        font (str, optional): _description_. Defaults to "Arial".
-        font_path (Optional[str], optional): _description_. Defaults to None.
-        font_style (Font_Style, optional): _description_. Defaults to Font_Style.REGULAR.
-        halign (Halign, optional): _description_. Defaults to Halign.LEFT.
-        valign (Valign, optional): _description_. Defaults to Valign.CENTER.
-        position_on_path (float, optional): _description_. Defaults to 0.0.
-        angle (float, optional): _description_. Defaults to 0.
-        mode (Mode, optional): _description_. Defaults to Mode.ADDITION.
-        tag (Optional[str], optional): _description_. Defaults to None.
-
-    Returns:
-        T: _description_
-    """ """"""
     """
     Text that optionally follows a path.
 
@@ -2295,24 +2240,19 @@ def _text_sketch(
         fontsize: size of the font in model units
         font: font name
         font_path: system path to font file
-        # font_style: one of ["regular", "bold", "italic"]. Defaults to "regular".
-        # halign: horizontal alignment, one of ["center", "left", "right"].
-        #     Defaults to "left".
-        # valign: vertical alignment, one of ["center", "top", "bottom"].
-        #     Defaults to "center".
-        font_style (Font_Style, optional): text style. Defaults to Font_Style.REGULAR.
-        halign (Halign, optional): horizontal alignment. Defaults to Halign.LEFT.
-        valign (Valign, optional): vertical alignment. Defaults to Valign.CENTER.
+        font_style: one of ["regular", "bold", "italic"]. Defaults to "regular".
+        halign: horizontal alignment, one of ["center", "left", "right"].
+            Defaults to "left".
+        valign: vertical alignment, one of ["center", "top", "bottom"].
+            Defaults to "center".
         position_on_path: the relative location on path to locate the text, between 0.0 and 1.0.
             Defaults to 0.0.
         angle: rotation angle. Defaults to 0.0.
-        mode (Mode, optional): combination mode. Defaults to Mode.ADDITION.
-        # mode: combination mode, one of ["a","s","i","c"]. Defaults to "a".
+        mode: combination mode, one of ["a","s","i","c"]. Defaults to "a".
         tag: feature label. Defaults to None.
 
     Returns:
         a Sketch object
-
 
     """
     if self._edges:
@@ -2325,17 +2265,17 @@ def _text_sketch(
         fontsize,
         font,
         font_path,
-        # font_style,
-        # halign,
-        # valign,
-        Font_Style.legacy(font_style),
-        Halign.legacy(halign),
-        Valign.legacy(valign),
+        font_style,
+        halign,
+        valign,
+        # font_style.name.lower(),
+        # halign.name.lower(),
+        # valign.name.lower(),
         position_on_path,
         text_path,
     ).rotate(Vector(), Vector(0, 0, 1), angle)
 
-    # return self.each(lambda l: res.located(l), Mode.legacy(mode), tag)
+    # return self.each(lambda l: res.located(l), mode.name.lower()[0:1], tag)
     return self.each(lambda l: res.located(l), mode, tag)
 
 
@@ -2405,8 +2345,7 @@ def _add_sketch(
     Args:
         obj (Union[Wire, Edge, Face]): the object to add
         angle (float, optional): rotation angle. Defaults to 0.0.
-        mode (Mode, optional): combination mode. Defaults to Mode.ADDITION.
-        # mode (Modes, optional): combination mode, one of ["a","s","i","c"]. Defaults to "a".
+        mode (Modes, optional): combination mode, one of ["a","s","i","c"]. Defaults to "a".
         tag (Optional[str], optional): feature label. Defaults to None.
 
     Returns:
@@ -2427,8 +2366,8 @@ def _add_sketch(
     elif isinstance(obj, Face):
         self.each(
             lambda l: obj.rotate(Vector(), Vector(0, 0, 1), angle).located(l),
-            # mode,
-            Mode.legacy(mode),
+            mode,
+            # mode.name.lower()[0:1],
             tag,
         )
 
@@ -2512,9 +2451,8 @@ def _spline_sketch(
         tangent_scalars (Iterable[float], optional): tangent multipliers to refine the shape.
             Defaults to None.
         periodic (bool, optional): creation of periodic curves. Defaults to False.
-        mode (Mode, optional): combination mode. Defaults to Mode.ADDITION.
         tag (str, optional): feature label. Defaults to None.
-        # for_construction (bool, optional): edge used to build other geometry. Defaults to False.
+        for_construction (bool, optional): edge used to build other geometry. Defaults to False.
 
     Returns:
         Updated Sketch
@@ -2574,9 +2512,8 @@ def _polyline_sketch(
 
     Args:
         pts (Union[Point,str]): sequence of points or snaps
-        mode (Mode, optional): combination mode. Defaults to Mode.ADDITION.
         tag (str, optional): feature label. Defaults to None.
-        # for_construction (bool, optional): edge used to build other geometry. Defaults to False.
+        for_construction (bool, optional): edge used to build other geometry. Defaults to False.
 
     Raises:
         ValueError: polyline requires two or more pts
@@ -2592,18 +2529,9 @@ def _polyline_sketch(
     new_edges = [
         Edge.makeLine(lines_pts[i], lines_pts[i + 1]) for i in range(len(lines_pts) - 1)
     ]
-    # new_line = Wire.assembleEdges(new_edges) if len(new_edges) > 1 else new_edges[0]
 
     for e in new_edges:
         e.forConstruction = for_construction
-        # e.forConstruction = mode == Mode.CONSTRUCTION
-    # new_line.forConstruction = for_construction
-    # new_line.forConstruction = mode == Mode.CONSTRUCTION
-
-    # if isinstance(new_line, Wire):
-    #     self._wires.append(new_line)
-    # else:
-    #     self._edges.append(new_line)
     self._edges.extend(new_edges)
 
     if tag:
@@ -2644,23 +2572,17 @@ def _center_arc_sketch(
         radius (float): arc radius
         start_angle (float): in degrees, where zero corresponds to the +vs X axis
         arc_size (float): size of arc counter clockwise from start
-        mode (Mode, optional): combination mode. Defaults to Mode.ADDITION.
         tag (str, optional): feature label. Defaults to None.
-        # for_construction (bool, optional): edge used to build other geometry. Defaults to False.
-
-    Raises:
-        ValueError: _description_
+        for_construction (bool, optional): edge used to build other geometry. Defaults to False.
 
     Returns:
         Updated sketch
     """
     centers = self.snap_to_vector([center])
-    if len(centers) != 1:
-        raise ValueError("snapped center resulted in multiple locations")
 
     if abs(arc_size) >= 360:
         arc = Edge.makeCircle(
-            r,
+            radius,
             centers[0],
             angle1=start_angle,
             angle2=start_angle,
@@ -2692,7 +2614,7 @@ def _three_point_arc_sketch(
     self: T,
     *pts: Union[Point, str],
     # mode: Mode = Mode.ADDITION,
-    tag: Optional[str] = None,
+    tag: str = None,
     for_construction: bool = False,
 ) -> T:
     """Three Point Arc
@@ -2709,9 +2631,8 @@ def _three_point_arc_sketch(
 
     Args:
         pts (Union[Point,str]): sequence of points or snaps
-        mode (Mode, optional): combination mode. Defaults to Mode.ADDITION.
         tag (str, optional): feature label. Defaults to None.
-        # for_construction (bool, optional): edge used to build other geometry. Defaults to False.
+        for_construction (bool, optional): edge used to build other geometry. Defaults to False.
 
     Raises:
         ValueError: three_point_arc requires three points
@@ -2759,9 +2680,8 @@ def _tangent_arc_sketch(
         tangent (Point, optional): tangent value if snaps aren't used. Defaults to None.
         tangent_from_first (bool, optional) point to align tangent to. Note that
             using a value of False will build the arc in the reverse direction. Defaults to True.
-        mode (Mode, optional): combination mode. Defaults to Mode.ADDITION.
         tag (str, optional): feature label. Defaults to None.
-        # for_construction (bool, optional): edge used to build other geometry. Defaults to False.
+        for_construction (bool, optional): edge used to build other geometry. Defaults to False.
 
     Raises:
         ValueError: tangentArc requires two points
@@ -2771,21 +2691,20 @@ def _tangent_arc_sketch(
         Updated sketch
     """
     arc_pts = self.snap_to_vector(pts)
-    arc_tangents = self.snap_to_vector(pts, find_tangents=True)
-
-    if not tangent is None:
-        arc_tangents = [Vector(tangent)]
-
     if len(arc_pts) != 2:
         raise ValueError("tangent_arc requires two points")
-    if not arc_tangents:
+
+    if not isinstance(pts[not tangent_from_first], str) and not tangent:
         raise ValueError(
             "tangent_arc requires a edge that determines the tangent or an explicit tangent"
         )
+    if tangent is None:
+        arc_tangents = self.snap_to_vector(pts, find_tangents=True)
+    else:
+        arc_tangents = [Vector(tangent)]
 
-    point_indices = (0, -1) if tangent_from_first else (-1, 0)
     arc = Edge.makeTangentArc(
-        arc_pts[point_indices[0]], arc_tangents[0], arc_pts[point_indices[1]]
+        arc_pts[not tangent_from_first], arc_tangents[0], arc_pts[tangent_from_first]
     )
 
     return self.edge(arc, tag, for_construction)
@@ -2849,8 +2768,7 @@ def _bounding_box_sketch(
             cq.Sketch()
             .circle(10)
             .faces()
-            # .bounding_box(tag="bb", mode="c")
-            .bounding_box(tag="bb", mode=Mode.CONSTRUCTION)
+            .bounding_box(tag="bb", mode="c")
             .faces(tag="bb")
             .vertices(">Y")
             .circle(7)
@@ -2866,8 +2784,7 @@ def _bounding_box_sketch(
             .faces(tag="t")
             .circle(0.5, mode="s")
             .faces(tag="t")
-            # .bounding_box(tag="bb", mode="c")
-            .bounding_box(tag="bb", mode=Mode.CONSTRUCTION)
+            .bounding_box(tag="bb", mode="c")
             .faces(tag="bb")
             .rect(1, 1, mode="s")
         )
@@ -2878,15 +2795,13 @@ def _bounding_box_sketch(
             .circle(10)
             .reset()
             .faces()
-            # .bounding_box(tag="bb", mode="c")
-            .bounding_box(tag="bb", mode=Mode.CONSTRUCTION)
+            .bounding_box(tag="bb", mode="c")
             .vertices(tag="bb")
             .circle(7)
             .clean()
         )
 
     Args:
-        mode (Mode, optional): combination mode. Defaults to Mode.ADDITION.
         tag (Optional[str], optional): feature label. Defaults to None.
 
     Returns:
@@ -2894,8 +2809,6 @@ def _bounding_box_sketch(
     """
     bb_faces = []
     for obj in self._selection:
-        if isinstance(obj, Vertex):
-            continue
         bb = obj.BoundingBox()
         vertices = [
             (bb.xmin, bb.ymin),
@@ -2910,7 +2823,7 @@ def _bounding_box_sketch(
     bb_faces_iter = iter(bb_faces)
     self.push([(0, 0)] * len(bb_faces))
     self.each(lambda loc: next(bb_faces_iter).located(loc), mode, tag)
-    # self.each(lambda loc: next(bb_faces_iter).located(loc), Mode.legacy(mode), tag)
+    # self.each(lambda loc: next(bb_faces_iter).located(loc), mode.name.lower()[0:1], tag)
 
     return self
 
@@ -2918,32 +2831,29 @@ def _bounding_box_sketch(
 Sketch.bounding_box = _bounding_box_sketch
 
 
-def _hull_sketch(self: T, mode: Modes = "a", tag: Optional[str] = None) -> T:
-    # def _hull_sketch(self: T, mode: Mode = Mode.ADDITION, tag: Optional[str] = None) -> T:
-    """
-    Generate a convex hull from current selection or all objects.
-    """
+# def _hull_sketch(self: T, mode: Modes = "a", tag: Optional[str] = None) -> T:
+#     # def _hull_sketch(self: T, mode: Mode = Mode.ADDITION, tag: Optional[str] = None) -> T:
+#     """
+#     Generate a convex hull from current selection or all objects.
+#     """
 
-    hull_edges = []
-    for el in self._selection:
-        if isinstance(el, Edge):
-            hull_edges.append(el)
-        elif isinstance(el, (Face, Wire)):
-            hull_edges.extend(el.Edges())
-    if hull_edges:
-        rv = find_hull(hull_edges)
-    else:
-        raise ValueError("No objects available for hull construction")
+#     hull_edges = []
+#     for el in self._selection:
+#         if isinstance(el, Edge):
+#             hull_edges.append(el)
+#         elif isinstance(el, (Face, Wire)):
+#             hull_edges.extend(el.Edges())
+#     if hull_edges:
+#         rv = find_hull(hull_edges)
+#     else:
+#         raise ValueError("No objects available for hull construction")
 
-    self.face(rv, mode=mode, tag=tag, ignore_selection=bool(self._selection))
-    # self.face(
-    #     rv, mode=Mode.legacy(mode), tag=tag, ignore_selection=bool(self._selection)
-    # )
+#     self.face(rv, mode=mode, tag=tag, ignore_selection=bool(self._selection))
 
-    return self
+#     return self
 
 
-Sketch.hull = _hull_sketch
+# Sketch.hull = _hull_sketch
 
 """
 
@@ -3365,11 +3275,51 @@ def _sortedEdges_wire(self, tolerance: float = 1e-5):
 
 Wire.sortedEdges = _sortedEdges_wire
 
+
+def _distribute_locations(
+    self: Union["Wire", "Edge"],
+    count: int,
+    start: float = 0.0,
+    stop: float = 1.0,
+    positions_only: bool = False,
+) -> list[Location]:
+    """Distribute Locations
+
+    Distribute locations along edge or wire.
+
+    Args:
+        count (int): Number of locations to generate
+        start (float, optional): position along Edge|Wire to start. Defaults to 0.0.
+        stop (float, optional): position along Edge|Wire to end. Defaults to 1.0.
+        positions_only (bool, optional): only generate position not orientation. Defaults to False.
+
+    Raises:
+        ValueError: count must be two or greater
+
+    Returns:
+        list[Location]: locations distributed along Edge|Wire
+    """
+    if count < 2:
+        raise ValueError("count must be two or greater")
+
+    t_values = [start + i * (stop - start) / (count - 1) for i in range(count)]
+
+    locations = []
+    if positions_only:
+        locations.extend(Location(v) for v in self.positions(t_values))
+    else:
+        locations.extend(self.locations(t_values, planar=True))
+    return locations
+
+
+Wire.distributeLocations = _distribute_locations
+
 """
 
 Edge extensions: projectToShape(), embossToShape()
 
 """
+Edge.distributeLocations = _distribute_locations
 
 
 def _projectEdgeToShape(
