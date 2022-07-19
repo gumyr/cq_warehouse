@@ -2154,7 +2154,7 @@ class Washer(ABC):
     Base class used to create standard washers
 
     Args:
-        size (str): standard sizes - e.g. "M6-1"
+        size (str): standard sizes - e.g. "M6"
         fastener_type (str): type identifier - e.g. "iso4032"
 
     Raises:
