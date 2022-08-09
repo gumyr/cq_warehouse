@@ -136,6 +136,19 @@ class TestFunctionality(unittest.TestCase):
         self.assertEqual(cq.Vector(0,0,0), wire.startPoint())
         self.assertEqual(cq.Vector(10,10,0), wire.endPoint())
 
+    def test_extension_line_without_offset(self):
+        metric_drawing = Draft(
+            decimal_precision=0,
+            extension_gap=10
+        )
+        linear_measure_type_1 = metric_drawing.extension_line(
+            label="Type 1", object_edge=[(0, 0, 0), (100, 100, 0)], offset=0)
+        self.assertEqual(linear_measure_type_1.name, "Type 1_dimension_line")
+        self.assertEqual(len(linear_measure_type_1.children), 3)
+        self.assertEqual(linear_measure_type_1.children[0].name, "start_arrow")
+        self.assertEqual(linear_measure_type_1.children[1].name, "end_arrow")
+        self.assertEqual(linear_measure_type_1.children[2].name, "label")
+
     def test_extension_line_with_dimension_gap(self):
         metric_drawing = Draft(
             decimal_precision=0,

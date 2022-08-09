@@ -269,7 +269,7 @@ class Draft:
             .polyline(
                 [
                     path.startPoint().projectToLine(line),
-                    path.endPoint().projectToLine(line)
+                    path.endPoint().projectToLine(line),
                 ]
             )
             .vals()
@@ -575,6 +575,7 @@ class Draft:
         object_path = Draft._path_to_wire(object_edge)
         object_start = object_path.startPoint()
         object_end = object_path.endPoint()
+        object_mid = 0.5 * object_start.add(object_end)
         if project_line:
             object_path = Draft._project_wire(object_path, project_line)
         object_length = object_path.Length()
@@ -618,23 +619,46 @@ class Draft:
                 xDir=extension_tangent,
                 normal=self._label_normal,
             )
-            start_point = dimension_plane.toLocalCoords(object_start).toTuple()[:2]
-            end_point = dimension_plane.toLocalCoords(object_end).toTuple()[:2]
-            extension_gap = copysign(1, offset) * self.extension_gap * MM
+            # Extension line starts in the middle of the object.
+            extension_path = object_path.translate(
+                -object_path.positionAt(0.5) + object_mid + extension_tangent * offset
+            )
+
+            projected_extension = dimension_plane.toLocalCoords(extension_path)
+            extension_start = projected_extension.startPoint()
+            extension_end = projected_extension.endPoint()
+
+            obj_start = dimension_plane.toLocalCoords(object_start)
+            obj_end = dimension_plane.toLocalCoords(object_end)
+
+            # If we can't get direction of extension lines then a dimension_line is better suited.
+            try:
+                start_extension_direction = (-obj_start + extension_start).normalized()
+                end_extension_direction = (-obj_end + extension_end).normalized()
+            except:
+                return self.dimension_line(
+                    object_edge, label, arrows, tolerance, label_angle
+                )
+
+            if self.extension_gap:
+                obj_start = obj_start + (start_extension_direction * self.extension_gap)
+                obj_end = obj_end + (end_extension_direction * self.extension_gap)
+
+            # Extend the line past the arrow slightly.
+            extension_start = extension_start + start_extension_direction
+            extension_end = extension_end + end_extension_direction
+
             ext_line1 = (
                 Workplane(dimension_plane)
-                .moveTo(start_point[0] + extension_gap, start_point[1])
-                .lineTo(offset + extension_gap, start_point[1])
+                .moveTo(*obj_start.toTuple()[:2])
+                .lineTo(*extension_start.toTuple()[:2])
             )
             ext_line2 = (
                 Workplane(dimension_plane)
-                .moveTo(end_point[0] + extension_gap, end_point[1])
-                .lineTo(offset + extension_gap, end_point[1])
+                .moveTo(*obj_end.toTuple()[:2])
+                .lineTo(*extension_end.toTuple()[:2])
             )
             ext_line = [ext_line1, ext_line2]
-            extension_path = object_path.translate(
-                extension_tangent.normalized() * offset
-            )
 
         # Create the assembly
         d_line = self.dimension_line(
