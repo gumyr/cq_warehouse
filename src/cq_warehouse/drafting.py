@@ -632,13 +632,13 @@ class Draft:
             obj_end = dimension_plane.toLocalCoords(object_end)
 
             # If we can't get direction of extension lines then a dimension_line is better suited.
-            try:
-                start_extension_direction = (-obj_start + extension_start).normalized()
-                end_extension_direction = (-obj_end + extension_end).normalized()
-            except:
+            if obj_start == extension_start or obj_end == extension_end:
                 return self.dimension_line(
                     object_edge, label, arrows, tolerance, label_angle
                 )
+
+            start_extension_direction = (-obj_start + extension_start).normalized()
+            end_extension_direction = (-obj_end + extension_end).normalized()
 
             if self.extension_gap:
                 obj_start = obj_start + (start_extension_direction * self.extension_gap)
