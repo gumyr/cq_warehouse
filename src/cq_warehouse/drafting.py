@@ -71,6 +71,7 @@ class Draft:
         display_units (bool): control the display of units with numbers. Defaults to True.
         decimal_precision (int): number of decimal places when displaying numbers. Defaults to 2.
         fractional_precision (int): maximum fraction denominator - must be a factor of 2. Defaults to 64.
+        extension_gap (float): gap between the point and start of extension line in extension_line.
 
     Example:
 
@@ -110,6 +111,7 @@ class Draft:
         display_units: bool = True,
         decimal_precision: int = 2,
         fractional_precision: int = 64,
+        extension_gap: float = 0,
     ):
         self.font_size = font_size
         self.color = color
@@ -121,6 +123,7 @@ class Draft:
         self.display_units = display_units
         self.decimal_precision = decimal_precision
         self.fractional_precision = fractional_precision
+        self.extension_gap = extension_gap
 
         if not log2(fractional_precision).is_integer():
             raise ValueError(
@@ -255,6 +258,23 @@ class Draft:
             tangents=[path.tangentAt(t) for t in [tip_pos, tail_pos]],
         )
         return sub_path
+
+    @staticmethod
+    def _project_wire(path: Wire, line: VectorLike) -> Wire:
+        """Project a Wire to a line."""
+        if isinstance(line, Tuple):
+            line = Vector(line)
+        path_as_wire = Wire.assembleEdges(
+            Workplane()
+            .polyline(
+                [
+                    path.startPoint().projectToLine(line),
+                    path.endPoint().projectToLine(line),
+                ]
+            )
+            .vals()
+        )
+        return path_as_wire
 
     @staticmethod
     def _path_to_wire(path: PathDescriptor) -> Wire:
@@ -519,6 +539,7 @@ class Draft:
         arrows: Tuple[bool, bool] = (True, True),
         tolerance: Optional[Union[float, Tuple[float, float]]] = None,
         label_angle: bool = False,
+        project_line: Optional[VectorLike] = None,
     ) -> Assembly:
         """Extension Line
 
@@ -544,6 +565,7 @@ class Draft:
             label_angle (bool, optional): a flag indicating that instead of an extracted length
                 value, the size of the circular arc extracted from the path should be displayed
                 in degrees. Defaults to False.
+            project_line (Vector, optional): Vector line which to project dimension against.
 
         Returns:
             Assembly: the extension line
@@ -551,6 +573,11 @@ class Draft:
 
         # Create a wire modelling the path of the dimension lines from a variety of input types
         object_path = Draft._path_to_wire(object_edge)
+        object_start = object_path.startPoint()
+        object_end = object_path.endPoint()
+        object_mid = 0.5 * object_start.add(object_end)
+        if project_line:
+            object_path = Draft._project_wire(object_path, project_line)
         object_length = object_path.Length()
 
         # Determine if the provided object edge is a circular arc and if so extract its radius
@@ -588,22 +615,50 @@ class Draft:
         else:
             extension_tangent = object_path.tangentAt(0).cross(self._label_normal)
             dimension_plane = Plane(
-                # origin=object_path.positionAt(0),
                 object_path.positionAt(0),
                 xDir=extension_tangent,
                 normal=self._label_normal,
             )
-            ext_line = [
-                (
-                    Workplane(dimension_plane)
-                    .moveTo(copysign(1, offset) * 1.5 * MM, l)
-                    .lineTo(offset + copysign(1, offset) * 3 * MM, l)
-                )
-                for l in [0, object_length]
-            ]
+            # Extension line starts in the middle of the object.
             extension_path = object_path.translate(
-                extension_tangent.normalized() * offset
+                -object_path.positionAt(0.5) + object_mid + extension_tangent * offset
             )
+
+            projected_extension = dimension_plane.toLocalCoords(extension_path)
+            extension_start = projected_extension.startPoint()
+            extension_end = projected_extension.endPoint()
+
+            obj_start = dimension_plane.toLocalCoords(object_start)
+            obj_end = dimension_plane.toLocalCoords(object_end)
+
+            # If we can't get direction of extension lines then a dimension_line is better suited.
+            if obj_start == extension_start or obj_end == extension_end:
+                return self.dimension_line(
+                    object_edge, label, arrows, tolerance, label_angle
+                )
+
+            start_extension_direction = (-obj_start + extension_start).normalized()
+            end_extension_direction = (-obj_end + extension_end).normalized()
+
+            if self.extension_gap:
+                obj_start = obj_start + (start_extension_direction * self.extension_gap)
+                obj_end = obj_end + (end_extension_direction * self.extension_gap)
+
+            # Extend the line past the arrow slightly.
+            extension_start = extension_start + start_extension_direction
+            extension_end = extension_end + end_extension_direction
+
+            ext_line1 = (
+                Workplane(dimension_plane)
+                .moveTo(*obj_start.toTuple()[:2])
+                .lineTo(*extension_start.toTuple()[:2])
+            )
+            ext_line2 = (
+                Workplane(dimension_plane)
+                .moveTo(*obj_end.toTuple()[:2])
+                .lineTo(*extension_end.toTuple()[:2])
+            )
+            ext_line = [ext_line1, ext_line2]
 
         # Create the assembly
         d_line = self.dimension_line(
