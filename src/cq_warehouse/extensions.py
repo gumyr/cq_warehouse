@@ -107,13 +107,15 @@ from OCP.StdPrs import StdPrs_BRepFont, StdPrs_BRepTextBuilder as Font_BRepTextB
 from OCP.NCollection import NCollection_Utf8String
 
 # Logging configuration - all cq_warehouse logs are level DEBUG or WARNING
-logging.basicConfig(
-    filename="cq_warehouse.log",
-    encoding="utf-8",
-    # level=logging.DEBUG,
-    level=logging.CRITICAL,
-    format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)s - %(funcName)20s() ] - %(message)s",
-)
+# logging.basicConfig(
+#     filename="cq_warehouse.log",
+#     encoding="utf-8",
+#     # level=logging.DEBUG,
+#     level=logging.CRITICAL,
+#     format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)s - %(funcName)20s() ] - %(message)s",
+# )
+logging.getLogger("cq_warehouse").addHandler(logging.NullHandler())
+logger = logging.getLogger("cq_warehouse")
 
 """
 
