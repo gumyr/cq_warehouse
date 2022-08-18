@@ -107,13 +107,15 @@ from OCP.StdPrs import StdPrs_BRepFont, StdPrs_BRepTextBuilder as Font_BRepTextB
 from OCP.NCollection import NCollection_Utf8String
 
 # Logging configuration - all cq_warehouse logs are level DEBUG or WARNING
-logging.basicConfig(
-    filename="cq_warehouse.log",
-    encoding="utf-8",
-    # level=logging.DEBUG,
-    level=logging.CRITICAL,
-    format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)s - %(funcName)20s() ] - %(message)s",
-)
+# logging.basicConfig(
+#     filename="cq_warehouse.log",
+#     encoding="utf-8",
+#     # level=logging.DEBUG,
+#     level=logging.CRITICAL,
+#     format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)s - %(funcName)20s() ] - %(message)s",
+# )
+logging.getLogger("cq_warehouse").addHandler(logging.NullHandler())
+logger = logging.getLogger("cq_warehouse")
 
 """
 
@@ -347,31 +349,32 @@ def _areObjectsValid(self) -> bool:
 Assembly.areObjectsValid = _areObjectsValid
 
 
-# def _crossSection_Assembly(self, plane: "Plane") -> "Assembly":
-#     """Cross Section
+def _crossSection_Assembly(self, plane: "Plane") -> "Assembly":
+    """Cross Section
 
-#     Generate a 2D slice of an assembly as a colorize Assembly
+    Generate a 2D slice of an assembly as a colorize Assembly
 
-#     Args:
-#         plane (Plane): the plane with which to slice the Assembly
+    Args:
+        plane (Plane): the plane with which to slice the Assembly
 
-#     Returns:
-#         Assembly: The cross section assembly with original colors
-#     """
-#     plane_as_face = Face.makePlane(basePnt=plane.origin, dir=plane.zDir)
+    Returns:
+        Assembly: The cross section assembly with original colors
+    """
+    plane_as_face = Face.makePlane(basePnt=plane.origin, dir=plane.zDir)
 
-#     cross_section = cq.Assembly(None, name=self.name)
-#     for name, part in self.traverse():
-#         for shape in part.shapes:
-#             cross_section.add(
-#                 shape.intersect(plane_as_face),
-#                 loc=part.loc,
-#                 color=part.color,
-#                 name=name,
-#             )
-#     return cross_section
+    cross_section = cq.Assembly(None, name=self.name)
+    for name, part in self.traverse():
+        location = self.findLocation(name)
+        for shape in part.shapes:
+            cross_section.add(
+                shape.located(location).intersect(plane_as_face),
+                color=part.color,
+                name=name,
+            )
+    return cross_section
 
-# Assembly.section = _crossSection_Assembly
+Assembly.section = _crossSection_Assembly
+
 """
 
 Plane extensions: toLocalCoords(), toWorldCoords()

@@ -103,23 +103,29 @@ class AssemblyTests(unittest.TestCase):
         )
         self.assertTrue(test_assembly.doObjectsIntersect())
 
-    # def test_section(self):
-    #     test_assembly = cq.Assembly(None, name="test")
-    #     test_assembly.add(cq.Solid.makeSphere(1), color=cq.Color("red"), name="red")
-    #     test_assembly.add(
-    #         cq.Assembly(
-    #             cq.Solid.makeSphere(1),
-    #             loc=cq.Location(cq.Vector(0, 0, 10)),
-    #             color=cq.Color("blue"),
-    #             name="blue",
-    #         )
-    #     )
-    #     xsection = test_assembly.section(cq.Plane.named("XZ"))
+    def test_section(self):
+        test_assembly = cq.Assembly(None, name="test")
+        test_assembly.add(cq.Solid.makeSphere(1), color=cq.Color("red"), name="red")
+        test_assembly.add(
+            cq.Assembly(
+                cq.Solid.makeSphere(1),
+                loc=cq.Location(cq.Vector(0, 0, 10)),
+                color=cq.Color("blue"),
+                name="blue",
+            )
+        )
+        xsection: Assembly = test_assembly.section(cq.Plane.named("XZ"))
 
-    #     for (n1, p1), (n2, p2) in zip(test_assembly.traverse(), xsection.traverse()):
-    #         self.assertEqual(n1, n2)
-    #         self.assertTupleAlmostEquals(p1.loc.toTuple()[0], p2.loc.toTuple()[0], 5)
-    #         self.assertTupleAlmostEquals(p1.loc.toTuple()[1], p2.loc.toTuple()[1], 5)
+        for (n1, p1), (n2, p2) in zip(test_assembly.traverse(), xsection.traverse()):
+            self.assertEqual(n1, n2)
+            # If the assembly contains an object, it should be in the same location on the XZ plane
+            if p1.obj:
+                bb1 = p1.obj.located(p1.loc).BoundingBox()
+                bb2 = p2.obj.located(p2.loc).BoundingBox()
+                self.assertAlmostEqual(bb1.xmin, bb2.xmin, 5)
+                self.assertAlmostEqual(bb1.xmax, bb2.xmax, 5)
+                self.assertAlmostEqual(bb1.zmin, bb2.zmin, 5)
+                self.assertAlmostEqual(bb1.zmax, bb2.zmax, 5)
 
 
 class FaceTests(unittest.TestCase):
