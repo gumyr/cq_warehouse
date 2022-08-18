@@ -117,6 +117,35 @@ Shape class extensions
 ***********************
 Sketch class extensions
 ***********************
+The Sketch extensions introduce a new way of specifying a point: a "snap" defined
+as `"<tag>@<position>"` which allows one to easily create features relative to previously
+tagged features.
+
+.. glossary::
+
+	<tag>
+		<tag> refers to a previously defined tagged Edge or Wire.
+
+	<position>
+		A float or int value between 0 and 1 which refers to a relative position along
+		the object. A value of 0 (or 0.0) refers to the start of the Edge while
+		1 (or 1.0) refers to the end of the Edge. The middle of the Edge would be "my_edge@0.5".
+
+		In addition to the numeric values, three string values can be used: `start`, `middle`,
+		and `end`. For example: "perimeter@middle" will return the point half way along the
+		previously tagged object `perimeter`.
+
+Here is an example of using a pair of "snaps" to define a chord:
+
+.. code-block:: python
+
+	chord = (
+		cq.Sketch()
+		.center_arc(center=(0, 0), radius=10, start_angle=0, arc_size=60, tag="c")
+		.polyline("c@1", "c@0")
+		.assemble()
+	)
+
 
 .. autoclass:: Sketch
 	:members:

@@ -111,6 +111,17 @@ class Assembly(object):
         Returns:
             bool: all objects are valid
         """
+    def section(self, plane: "Plane") -> "Assembly":
+        """Cross Section
+    
+        Generate a 2D slice of an assembly as a colorize Assembly
+    
+        Args:
+            plane (Plane): the plane with which to slice the Assembly
+    
+        Returns:
+            Assembly: The cross section assembly with original colors
+        """
 class Plane(object):
     def _toFromLocalCoords(
         self, obj: Union["VectorLike", "Shape", "BoundBox"], to: bool = True
