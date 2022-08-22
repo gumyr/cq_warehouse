@@ -237,9 +237,7 @@ class TestNuts(unittest.TestCase):
                     size=nut_size, fastener_type=nut_type, simple=True
                 )
                 nut = nut_class(size=nut_size, fastener_type=nut_type, simple=False)
-                self.assertLess(
-                    len(simple_nut.cq_object.Edges()), len(nut.cq_object.Edges())
-                )
+                self.assertLess(len(simple_nut.Edges()), len(nut.Edges()))
 
 
 class TestScrews(unittest.TestCase):
@@ -358,7 +356,7 @@ class TestScrews(unittest.TestCase):
         screw = SetScrew(size="M6-1", fastener_type="iso4026", length=5, simple=False)
         self.assertEqual(screw.head_diameter, 0)
         self.assertEqual(screw.head_height, 0)
-        self.assertIsNotNone(screw.cq_object)
+        self.assertIsNotNone(screw)
         self.assertIsNone(screw.shank)
         self.assertGreater(len(screw.nominal_lengths), 0)
 
@@ -389,9 +387,7 @@ class TestScrews(unittest.TestCase):
                 screw = screw_class(
                     size=screw_size, fastener_type=screw_type, length=10, simple=False
                 )
-                self.assertLess(
-                    len(simple_screw.cq_object.Edges()), len(screw.cq_object.Edges())
-                )
+                self.assertLess(len(simple_screw.Edges()), len(screw.Edges()))
 
 
 if __name__ == "__main__":

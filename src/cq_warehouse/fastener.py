@@ -30,6 +30,7 @@ license:
     limitations under the License.
 
 """
+from warnings import warn
 from abc import ABC, abstractmethod
 from typing import Literal, Tuple, Optional, List
 from math import sin, cos, tan, radians, pi, degrees, sqrt
@@ -354,7 +355,12 @@ def select_by_size_fn(cls, size: str) -> dict:
     return type_dict
 
 
-class Nut(ABC):
+def method_exists(cls, method: str) -> bool:
+    """Did the derived class create this method"""
+    return hasattr(cls, method) and callable(getattr(cls, method))
+
+
+class Nut(ABC, cq.Compound):
     """Parametric Nut
 
     Base Class used to create standard threaded nuts
@@ -387,7 +393,7 @@ class Nut(ABC):
 
     """
 
-    # Read clearance and tap hole dimesions tables
+    # Read clearance and tap hole dimensions tables
     # Close, Medium, Loose
     clearance_hole_drill_sizes = read_fastener_parameters_from_csv(
         "clearance_hole_sizes.csv"
@@ -486,12 +492,12 @@ class Nut(ABC):
     @property
     def nut_thickness(self):
         """Calculate the maximum thickness of the nut"""
-        return cq.Workplane(self.cq_object).vertices(">Z").val().Z
+        return cq.Workplane(self).vertices(">Z").val().Z
 
     @property
     def nut_diameter(self):
         """Calculate the maximum diameter of the nut"""
-        vertices = cq.Workplane(self.cq_object).vertices().vals()
+        vertices = cq.Workplane(self).vertices().vals()
         radii = [
             (cq.Vector(0, 0, v.Z) - cq.Vector(v.toTuple())).Length for v in vertices
         ]
@@ -502,6 +508,7 @@ class Nut(ABC):
     @property
     def cq_object(self):
         """A cadquery Compound nut as defined by class attributes"""
+        warn("cq_object will be deprecated.", DeprecationWarning, stacklevel=2)
         return self._cq_object
 
     def length_offset(self):
@@ -558,16 +565,14 @@ class Nut(ABC):
             raise ValueError(
                 f"{size} invalid, must be one of {self.sizes(self.fastener_type)}"
             ) from e
-        self._cq_object = self.make_nut().val()
+        if method_exists(self.__class__, "custom_make"):
+            self._cq_object = self.custom_make()
+        else:
+            self._cq_object = self.make_nut().val()
+        super().__init__(self._cq_object.wrapped)
 
     def make_nut(self) -> cq.Workplane:
         """Create a screw head from the 2D shapes defined in the derived class"""
-
-        def method_exists(method: str) -> bool:
-            """Did the derived class create this method"""
-            return hasattr(self.__class__, method) and callable(
-                getattr(self.__class__, method)
-            )
 
         # pylint: disable=no-member
         profile = self.nut_profile()
@@ -591,7 +596,7 @@ class Nut(ABC):
         nut = nut.intersect(nut_blank)
 
         # Add a flange as it exists outside of the head plan
-        if method_exists("flange_profile"):
+        if method_exists(self.__class__, "flange_profile"):
             flange = (
                 cq.Workplane("XZ")
                 .add(self.flange_profile().val())
@@ -719,16 +724,16 @@ class BradTeeNut(Nut):
 
     fastener_data = read_fastener_parameters_from_csv("brad_tee_nut_parameters.csv")
 
-    @property
-    def cq_object(self):
+    def custom_make(self):
         """A cadquery Compound nut as defined by class attributes"""
         brad = CounterSunkScrew(
             size=self.nut_data["brad_size"],
             length=2 * self.nut_data["c"],
             fastener_type="iso10642",
         )
+
         return (
-            cq.Workplane(self._cq_object)
+            self.make_nut()
             .faces(">Z")
             .workplane()
             .polarArray(self.nut_data["bcd"] / 2, 0, 360, self.nut_data["brad_num"])
@@ -927,7 +932,7 @@ class HeatSetNut(Nut):
         drill_sizes = read_drill_sizes()
         hole_radius = drill_sizes[self.nut_data["drill"].strip()] / 2
         heatset_volume = (
-            self.cq_object.Volume()
+            self.Volume()
             + self.nut_data["m"] * pi * (self.thread_diameter / 2) ** 2
         )
         hole_volume = self.nut_data["m"] * pi * hole_radius**2
@@ -1227,7 +1232,7 @@ class SquareNut(Nut):
         return cq.Workplane("XZ").rect(width / 2, m, centered=False)
 
 
-class Screw(ABC):
+class Screw(ABC, cq.Compound):
     """Parametric Screw
 
     Base class for a set of threaded screws or bolts
@@ -1427,6 +1432,7 @@ class Screw(ABC):
     @property
     def cq_object(self):
         """A cadquery Compound screw as defined by class attributes"""
+        warn("cq_object will be deprecated.", DeprecationWarning, stacklevel=2)
         return self._cq_object
 
     # @cache
@@ -1509,24 +1515,28 @@ class Screw(ABC):
             )
             if not self.simple:
                 self.shank = self.shank.fuse(thread.cq_object)
+
+        if method_exists(self.__class__, "custom_make"):
+            # self._cq_object = self.custom_make().val()
+            self._cq_object = self.custom_make()
+        else:
             self._cq_object = self._head.union(
                 self.shank.translate(cq.Vector(0, 0, -self.length))
             ).val()
+        super().__init__(self._cq_object.wrapped)
 
     def make_head(self) -> cq.Workplane:
         """Create a screw head from the 2D shapes defined in the derived class"""
 
-        def method_exists(method: str) -> bool:
-            """Did the derived class create this method"""
-            return hasattr(self.__class__, method) and callable(
-                getattr(self.__class__, method)
-            )
-
         # Determine what shape creation methods have been defined
-        has_profile = method_exists("head_profile")
-        has_plan = method_exists("head_plan")
-        has_recess = method_exists("head_recess")
-        has_flange = method_exists("flange_profile")
+        has_profile = method_exists(self.__class__, "head_profile")
+        has_plan = method_exists(self.__class__, "head_plan")
+        has_recess = method_exists(self.__class__, "head_recess")
+        has_flange = method_exists(self.__class__, "flange_profile")
+        # print(
+        #     f"{self.__class__},{has_profile=},{has_plan=},{has_recess=},{has_flange=}"
+        # )
+        # raise RuntimeError
         if has_profile:
             # pylint: disable=no-member
             profile = self.head_profile()
@@ -2077,8 +2087,7 @@ class SetScrew(Screw):
         """Setscrews don't have shanks"""
         return None
 
-    @property
-    def cq_object(self):
+    def custom_make(self):
         """Setscrews are custom builds"""
         return self.make_setscrew()
 
@@ -2148,7 +2157,7 @@ class SocketHeadCapScrew(Screw):
     countersink_profile = Screw.default_countersink_profile
 
 
-class Washer(ABC):
+class Washer(ABC, cq.Solid):
     """Parametric Washer
 
     Base class used to create standard washers
@@ -2233,12 +2242,12 @@ class Washer(ABC):
     @property
     def washer_thickness(self):
         """Calculate the maximum thickness of the washer"""
-        return cq.Workplane(self.cq_object).vertices(">Z").val().Z
+        return cq.Workplane(self).vertices(">Z").val().Z
 
     @property
     def washer_diameter(self):
         """Calculate the maximum diameter of the washer"""
-        vertices = cq.Workplane(self.cq_object).vertices().vals()
+        vertices = cq.Workplane(self).vertices().vals()
         radii = [
             (cq.Vector(0, 0, v.Z) - cq.Vector(v.toTuple())).Length for v in vertices
         ]
@@ -2246,7 +2255,8 @@ class Washer(ABC):
 
     @property
     def cq_object(self):
-        """A cadquery Compound screw as defined by class attributes"""
+        """A cadquery Solid washer as defined by class attributes"""
+        warn("cq_object will be deprecated.", DeprecationWarning, stacklevel=2)
         return self._cq_object
 
     # @cache
@@ -2278,6 +2288,7 @@ class Washer(ABC):
                 f"{size} invalid, must be one of {self.sizes(self.fastener_type)}"
             ) from e
         self._cq_object = self.make_washer().val()
+        super().__init__(self._cq_object.wrapped)
 
     def make_washer(self) -> cq.Workplane:
         """Create a screw head from the 2D shapes defined in the derived class"""
