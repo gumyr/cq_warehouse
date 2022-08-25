@@ -43,7 +43,7 @@ from turtle import position
 from typing import Optional, Literal, Union, Tuple, Iterable
 from types import MethodType
 import cadquery as cq
-from cadquery.occ_impl.shapes import VectorLike
+from cadquery.occ_impl.shapes import VectorLike, fix, downcast, shapetype
 from cadquery.cq import T
 from cadquery.hull import find_hull
 from cadquery import (
@@ -105,6 +105,8 @@ from OCP.Font import (
 from OCP.TCollection import TCollection_AsciiString
 from OCP.StdPrs import StdPrs_BRepFont, StdPrs_BRepTextBuilder as Font_BRepTextBuilder
 from OCP.NCollection import NCollection_Utf8String
+from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform, BRepBuilderAPI_Copy
+from OCP.ShapeUpgrade import ShapeUpgrade_UnifySameDomain
 
 # Logging configuration - all cq_warehouse logs are level DEBUG or WARNING
 # logging.basicConfig(
@@ -372,6 +374,7 @@ def _crossSection_Assembly(self, plane: "Plane") -> "Assembly":
                 name=name,
             )
     return cross_section
+
 
 Assembly.section = _crossSection_Assembly
 
@@ -3472,14 +3475,14 @@ Edge.embossToShape = _embossEdgeToShape
 """
 
 Shape extensions: transformed(), findIntersection(), projectText(), embossText(), makeFingerJointFaces(),
-                  maxFillet()
+                  maxFillet(), _apply_transform(), clean(), fix(), located(), moved()
 
 """
 
 
 def _transformed(
     self, rotate: VectorLike = (0, 0, 0), offset: VectorLike = (0, 0, 0)
-) -> T:
+) -> "Shape":
     """Transform Shape
 
     Rotate and translate the Shape by the three angles (in degrees) and offset.
@@ -3490,7 +3493,7 @@ def _transformed(
         offset (VectorLike, optional): 3-tuple to offset. Defaults to (0, 0, 0).
 
     Returns:
-        T: transformed object
+        Shape: transformed object
     """
 
     # Convert to a Vector of radians
@@ -3508,6 +3511,99 @@ def _transformed(
 
 
 Shape.transformed = _transformed
+
+
+def shape_apply_transform(self: "Shape", Tr: gp_Trsf) -> "Shape":
+    """_apply_transform
+
+    Apply the provided transformation matrix to a copy of Shape
+
+    Args:
+        Tr (gp_Trsf): transformation matrix
+
+    Returns:
+        Shape: copy of transformed Shape
+    """
+    shape_copy: "Shape" = self.copy()
+    shape_copy.wrapped = self.__class__.__base__(
+        BRepBuilderAPI_Transform(self.wrapped, Tr, True).Shape()
+    ).wrapped
+    return shape_copy
+
+
+Shape._apply_transform = shape_apply_transform
+
+
+def shape_clean(self: "Shape") -> "Shape":
+    """clean - remove internal edges"""
+
+    upgrader = ShapeUpgrade_UnifySameDomain(self.wrapped, True, True, True)
+    upgrader.AllowInternalEdges(False)
+    upgrader.Build()
+    shape_copy: "Shape" = self.copy()
+    shape_copy.wrapped = self.__class__.__base__(upgrader.Shape()).wrapped
+    return shape_copy
+
+
+Shape.clean = shape_clean
+
+
+def shape_fix(self: "Shape") -> "Shape":
+    """fix - try to fix shape if not valid"""
+    if not self.isValid():
+        shape_copy: "Shape" = self.copy()
+        shape_copy.wrapped = fix(self.wrapped)
+
+        return shape_copy
+
+    return self
+
+
+Shape.fix = shape_fix
+
+
+def shape_located(self: "Shape", loc: Location) -> "Shape":
+    """located
+
+    Apply a location in absolute sense to a copy of self
+
+    Args:
+        loc (Location): new absolute location
+
+    Returns:
+        Shape: copy of Shape at location
+    """
+    shape_copy: "Shape" = self.copy()
+    shape_copy.wrapped = self.__class__.__base__(
+        self.wrapped.Located(loc.wrapped)
+    ).wrapped
+
+    return shape_copy
+
+
+Shape.located = shape_located
+
+
+def shape_moved(self: "Shape", loc: Location) -> "Shape":
+    """moved
+
+    Apply a location in relative sense (i.e. update current location) to a copy of self
+
+    Args:
+        loc (Location): new location relative to current location
+
+    Returns:
+        Shape: copy of Shape moved to relative location
+    """
+    shape_copy: "Shape" = self.copy()
+    shape_copy.wrapped = self.__class__.__base__(
+        self.wrapped.Moved(loc.wrapped)
+    ).wrapped
+
+    return shape_copy
+
+
+Shape.moved = shape_moved
 
 
 def _findIntersection(
