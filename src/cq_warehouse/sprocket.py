@@ -29,9 +29,12 @@ license:
     limitations under the License.
 
 """
+from warnings import warn
 from math import sin, asin, cos, pi, radians, sqrt
+from OCP.TopoDS import TopoDS_Shape
+from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
 import cadquery as cq
-from cadquery import Vector, Workplane, Wire
+from cadquery import Vector, Workplane, Wire, Compound, Solid
 import cq_warehouse.extensions
 
 MM = 1
@@ -40,7 +43,7 @@ INCH = 25.4 * MM
 #
 #  =============================== CLASSES ===============================
 #
-class Sprocket:
+class Sprocket(Solid):
     """
     Create a new sprocket object as defined by the given parameters. The input parameter
     defaults are appropriate for a standard bicycle chain.
@@ -108,8 +111,9 @@ class Sprocket:
         return Sprocket.sprocket_circumference(self.num_teeth, self.chain_pitch)
 
     @property
-    def cq_object(self):
-        """A cadquery Workplane sprocket as defined by class attributes"""
+    def cq_object(self) -> cq.Compound:
+        """A cadquery Solid sprocket as defined by class attributes"""
+        warn("cq_object will be deprecated.", DeprecationWarning, stacklevel=2)
         return self._cq_object
 
     def __init__(
@@ -147,8 +151,12 @@ class Sprocket:
             )
         # Create the sprocket
         self._cq_object = self._make_sprocket()
+        # Unwrap the Compound - why does it get generated?
+        if isinstance(self._cq_object, Compound) and len(self._cq_object.Solids()) == 1:
+            self._cq_object = self._cq_object.Solids()[0]
+        super().__init__(self._cq_object.wrapped)
 
-    def _make_sprocket(self) -> Workplane:
+    def _make_sprocket(self) -> cq.Compound:
         """Create a new sprocket object as defined by the class attributes"""
         sprocket = (
             Workplane("XY")
@@ -190,8 +198,24 @@ class Sprocket:
         # Create a central bore
         if self.bore_diameter != 0:
             sprocket = sprocket.circle(self.bore_diameter / 2).cutThruAll()
+        return sprocket.val()
 
-        return sprocket
+    def copy(self) -> "Sprocket":
+        sprocket_copy = Sprocket(
+            self.num_teeth,
+            self.chain_pitch,
+            self.roller_diameter,
+            self.clearance,
+            self.thickness,
+            self.bolt_circle_diameter,
+            self.num_mount_bolts,
+            self.mount_bolt_diameter,
+            self.bore_diameter,
+        )
+        sprocket_copy.wrapped = BRepBuilderAPI_Copy(self.wrapped).Shape()
+        sprocket_copy.forConstruction = self.forConstruction
+        sprocket_copy.label = self.label
+        return sprocket_copy
 
     @staticmethod
     def sprocket_pitch_radius(num_teeth: int, chain_pitch: float) -> float:

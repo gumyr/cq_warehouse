@@ -37,6 +37,7 @@ from math import sin, cos, tan, radians, pi, degrees, sqrt
 import csv
 import importlib.resources as pkg_resources
 import cadquery as cq
+from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
 from cq_warehouse.thread import is_safe, imperial_str_to_float, IsoThread
 import cq_warehouse
 
@@ -515,6 +516,13 @@ class Nut(ABC, cq.Compound):
         """Screw only parameter"""
         return 0
 
+    def copy(self) -> "Nut":
+        nut_copy = Nut(self.size, self.fastener_type, self.hand, self.simple)
+        nut_copy.wrapped = BRepBuilderAPI_Copy(self.wrapped).Shape()
+        nut_copy.forConstruction = self.forConstruction
+        nut_copy.label = self.label
+        return nut_copy
+
     # @cache
     def __init__(
         self,
@@ -932,8 +940,7 @@ class HeatSetNut(Nut):
         drill_sizes = read_drill_sizes()
         hole_radius = drill_sizes[self.nut_data["drill"].strip()] / 2
         heatset_volume = (
-            self.Volume()
-            + self.nut_data["m"] * pi * (self.thread_diameter / 2) ** 2
+            self.Volume() + self.nut_data["m"] * pi * (self.thread_diameter / 2) ** 2
         )
         hole_volume = self.nut_data["m"] * pi * hole_radius**2
         return heatset_volume / hole_volume

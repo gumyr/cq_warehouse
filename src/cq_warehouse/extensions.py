@@ -378,6 +378,38 @@ def _crossSection_Assembly(self, plane: "Plane") -> "Assembly":
 
 Assembly.section = _crossSection_Assembly
 
+
+def assembly__init__(
+    self,
+    obj: cq.Shape = None,
+    loc: Optional[Location] = None,
+    name: Optional[str] = None,
+    color: Optional[Color] = None,
+    metadata: Optional[dict[str]] = None,
+    asm: Assembly = None,
+):
+    if asm:
+        self = asm._copy()
+    else:
+        self.obj = obj
+        self.loc = loc if loc else Location()
+        self.name = name
+        self.color = color if color else None
+        self.metadata = metadata if metadata else {}
+        self.parent = None
+
+        self.children = []
+        self.constraints = []
+        self.objects = {self.name: self}
+
+        self._solve_result = None
+
+
+# Assembly.__init__ = assembly__init__
+
+# Monkey patch a class method
+# Assembly.init = MethodType(assembly_init, Assembly)
+
 """
 
 Plane extensions: toLocalCoords(), toWorldCoords()
@@ -996,7 +1028,7 @@ def _fastenerHole(
             if not washers is None:
                 for washer in washers:
                     baseAssembly.add(
-                        washer.cq_object,
+                        washer,
                         loc=hole_loc
                         * Location(
                             bore_direction
@@ -1011,8 +1043,12 @@ def _fastenerHole(
                     # Create a metadata entry associating the auto-generated name & fastener
                     baseAssembly.metadata[baseAssembly.children[-1].name] = washer
 
+            # As bearings are assemblies, they still use cq_object
+            fastener_object = (
+                fastener if isinstance(fastener, Shape) else fastener.cq_object
+            )
             baseAssembly.add(
-                fastener.cq_object,
+                fastener_object,
                 loc=hole_loc
                 * Location(
                     bore_direction
@@ -3525,7 +3561,12 @@ def shape_apply_transform(self: "Shape", Tr: gp_Trsf) -> "Shape":
         Shape: copy of transformed Shape
     """
     shape_copy: "Shape" = self.copy()
-    shape_copy.wrapped = self.__class__.__base__(
+    base_class = (
+        self.__class__
+        if self.__class__.__name__ == "Shape"
+        else self.__class__.__base__
+    )
+    shape_copy.wrapped = base_class(
         BRepBuilderAPI_Transform(self.wrapped, Tr, True).Shape()
     ).wrapped
     return shape_copy
@@ -3541,7 +3582,12 @@ def shape_clean(self: "Shape") -> "Shape":
     upgrader.AllowInternalEdges(False)
     upgrader.Build()
     shape_copy: "Shape" = self.copy()
-    shape_copy.wrapped = self.__class__.__base__(upgrader.Shape()).wrapped
+    base_class = (
+        self.__class__
+        if self.__class__.__name__ == "Shape"
+        else self.__class__.__base__
+    )
+    shape_copy.wrapped = base_class(upgrader.Shape()).wrapped
     return shape_copy
 
 
@@ -3574,9 +3620,12 @@ def shape_located(self: "Shape", loc: Location) -> "Shape":
         Shape: copy of Shape at location
     """
     shape_copy: "Shape" = self.copy()
-    shape_copy.wrapped = self.__class__.__base__(
-        self.wrapped.Located(loc.wrapped)
-    ).wrapped
+    base_class = (
+        self.__class__
+        if self.__class__.__name__ == "Shape"
+        else self.__class__.__base__
+    )
+    shape_copy.wrapped = base_class(self.wrapped.Located(loc.wrapped)).wrapped
 
     return shape_copy
 
@@ -3596,9 +3645,12 @@ def shape_moved(self: "Shape", loc: Location) -> "Shape":
         Shape: copy of Shape moved to relative location
     """
     shape_copy: "Shape" = self.copy()
-    shape_copy.wrapped = self.__class__.__base__(
-        self.wrapped.Moved(loc.wrapped)
-    ).wrapped
+    base_class = (
+        self.__class__
+        if self.__class__.__name__ == "Shape"
+        else self.__class__.__base__
+    )
+    shape_copy.wrapped = base_class(self.wrapped.Moved(loc.wrapped)).wrapped
 
     return shape_copy
 

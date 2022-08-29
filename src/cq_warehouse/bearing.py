@@ -27,6 +27,7 @@ license:
     limitations under the License.
 
 """
+from warnings import warn
 from abc import ABC, abstractmethod
 from math import pi, radians, degrees, asin, sin
 from cadquery import (
@@ -50,6 +51,7 @@ from cq_warehouse.fastener import (
 MM = 1
 
 
+# class Bearing(ABC, Assembly):
 class Bearing(ABC):
     """Parametric Bearing
 
@@ -110,6 +112,7 @@ class Bearing(ABC):
     @property
     def cq_object(self):
         """A cadquery Assembly bearing as defined by class attributes"""
+        # warn("cq_object will be deprecated.", DeprecationWarning, stacklevel=2)
         return self._cq_object
 
     @classmethod
@@ -216,6 +219,7 @@ class Bearing(ABC):
             1.8 * pi * self.race_center_radius / self.roller_diameter
         )
         self._cq_object = self.make_bearing()
+        # super().__init__(self._cq_object)
 
     def make_bearing(self) -> Assembly:
         """Create bearing from the shapes defined in the derived class"""

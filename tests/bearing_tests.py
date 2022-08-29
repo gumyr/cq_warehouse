@@ -75,6 +75,7 @@ class TestBearings(unittest.TestCase):
                         self.assertGreater(bearing.outer_diameter, 0)
                         self.assertGreater(bearing.thickness, 0)
                         self.assertGreater(len(bearing.info), 0)
+                        # self.assertGreater(len(bearing.children), 0)
                         self.assertGreater(len(bearing.cq_object.children), 0)
 
                         # Check the hole data if available
