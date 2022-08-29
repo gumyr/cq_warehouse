@@ -1442,6 +1442,20 @@ class Screw(ABC, cq.Compound):
         warn("cq_object will be deprecated.", DeprecationWarning, stacklevel=2)
         return self._cq_object
 
+    def copy(self) -> "Screw":
+        screw_copy = Screw(
+            self.size,
+            self.length,
+            self.fastener_type,
+            self.hand,
+            self.simple,
+            self.socket_clearance,
+        )
+        screw_copy.wrapped = BRepBuilderAPI_Copy(self.wrapped).Shape()
+        screw_copy.forConstruction = self.forConstruction
+        screw_copy.label = self.label
+        return screw_copy
+
     # @cache
     def __init__(
         self,
@@ -1453,6 +1467,7 @@ class Screw(ABC, cq.Compound):
         socket_clearance: Optional[float] = 6 * MM,
     ):
         """Parse Screw input parameters"""
+        self.size = size
         size_parts = size.strip().split("-")
         if not len(size_parts) == 2:
             raise ValueError(
@@ -2266,12 +2281,20 @@ class Washer(ABC, cq.Solid):
         warn("cq_object will be deprecated.", DeprecationWarning, stacklevel=2)
         return self._cq_object
 
+    def copy(self) -> "Washer":
+        washer_copy = Washer(self.size, self.fastener_type)
+        washer_copy.wrapped = BRepBuilderAPI_Copy(self.wrapped).Shape()
+        washer_copy.forConstruction = self.forConstruction
+        washer_copy.label = self.label
+        return washer_copy
+
     # @cache
     def __init__(
         self,
         size: str,
         fastener_type: str,
     ):
+        self.size = size
         self.thread_size = size
         self.is_metric = self.thread_size[0] == "M"
         # Used only for clearance gap calculations
