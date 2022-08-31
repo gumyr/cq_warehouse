@@ -2315,10 +2315,9 @@ def _text_sketch(
         # valign.name.lower(),
         position_on_path,
         text_path,
-    ).rotate(Vector(), Vector(0, 0, 1), angle)
-
-    # return self.each(lambda l: res.located(l), mode.name.lower()[0:1], tag)
-    return self.each(lambda l: res.located(l), mode, tag)
+    )
+    orientation = Location(Vector(), Vector(0, 0, 1), angle)
+    return self.each(lambda l: res.located(l * orientation), mode, tag)
 
 
 Sketch.text = _text_sketch
@@ -3561,14 +3560,8 @@ def shape_apply_transform(self: "Shape", Tr: gp_Trsf) -> "Shape":
         Shape: copy of transformed Shape
     """
     shape_copy: "Shape" = self.copy()
-    base_class = (
-        self.__class__
-        if self.__class__.__name__ == "Shape"
-        else self.__class__.__base__
-    )
-    shape_copy.wrapped = base_class(
-        BRepBuilderAPI_Transform(self.wrapped, Tr, True).Shape()
-    ).wrapped
+    transformed_shape = BRepBuilderAPI_Transform(shape_copy.wrapped, Tr, True).Shape()
+    shape_copy.wrapped = downcast(transformed_shape)
     return shape_copy
 
 
@@ -3582,12 +3575,7 @@ def shape_clean(self: "Shape") -> "Shape":
     upgrader.AllowInternalEdges(False)
     upgrader.Build()
     shape_copy: "Shape" = self.copy()
-    base_class = (
-        self.__class__
-        if self.__class__.__name__ == "Shape"
-        else self.__class__.__base__
-    )
-    shape_copy.wrapped = base_class(upgrader.Shape()).wrapped
+    shape_copy.wrapped = downcast(upgrader.Shape())
     return shape_copy
 
 
@@ -3620,13 +3608,7 @@ def shape_located(self: "Shape", loc: Location) -> "Shape":
         Shape: copy of Shape at location
     """
     shape_copy: "Shape" = self.copy()
-    base_class = (
-        self.__class__
-        if self.__class__.__name__ == "Shape"
-        else self.__class__.__base__
-    )
-    shape_copy.wrapped = base_class(self.wrapped.Located(loc.wrapped)).wrapped
-
+    shape_copy.wrapped.Location(loc.wrapped)
     return shape_copy
 
 
@@ -3645,13 +3627,7 @@ def shape_moved(self: "Shape", loc: Location) -> "Shape":
         Shape: copy of Shape moved to relative location
     """
     shape_copy: "Shape" = self.copy()
-    base_class = (
-        self.__class__
-        if self.__class__.__name__ == "Shape"
-        else self.__class__.__base__
-    )
-    shape_copy.wrapped = base_class(self.wrapped.Moved(loc.wrapped)).wrapped
-
+    shape_copy.wrapped = downcast(shape_copy.wrapped.Moved(loc.wrapped))
     return shape_copy
 
 

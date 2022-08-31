@@ -517,7 +517,7 @@ class Nut(ABC, cq.Compound):
         return 0
 
     def copy(self) -> "Nut":
-        nut_copy = Nut(self.size, self.fastener_type, self.hand, self.simple)
+        nut_copy = self.__class__(self.size, self.fastener_type, self.hand, self.simple)
         nut_copy.wrapped = BRepBuilderAPI_Copy(self.wrapped).Shape()
         nut_copy.forConstruction = self.forConstruction
         nut_copy.label = self.label
@@ -1443,7 +1443,7 @@ class Screw(ABC, cq.Compound):
         return self._cq_object
 
     def copy(self) -> "Screw":
-        screw_copy = Screw(
+        screw_copy = self.__class__(
             self.size,
             self.length,
             self.fastener_type,
@@ -2282,7 +2282,7 @@ class Washer(ABC, cq.Solid):
         return self._cq_object
 
     def copy(self) -> "Washer":
-        washer_copy = Washer(self.size, self.fastener_type)
+        washer_copy = self.__class__(self.size, self.fastener_type)
         washer_copy.wrapped = BRepBuilderAPI_Copy(self.wrapped).Shape()
         washer_copy.forConstruction = self.forConstruction
         washer_copy.label = self.label

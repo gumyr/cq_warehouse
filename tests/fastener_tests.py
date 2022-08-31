@@ -71,6 +71,16 @@ class TestWashers(unittest.TestCase):
     def test_select_by_size(self):
         self.assertGreater(len(Washer.select_by_size("M6")), 0)
 
+    def test_transformation(self):
+        washer = PlainWasher(size="M6", fastener_type="iso7094")
+        washer_center = washer.Center()
+        washer = washer.translate(cq.Vector(100, 100, 100))
+        self.assertTupleAlmostEquals(
+            (washer_center + cq.Vector(100, 100, 100)).toTuple(),
+            washer.Center().toTuple(),
+            5,
+        )
+
     def test_size(self):
         """Validate diameter and thickness of washers"""
         for washer_class in Washer.__subclasses__():
@@ -144,6 +154,14 @@ class TestNuts(unittest.TestCase):
     def test_bad_hand(self):
         with self.assertRaises(ValueError):
             DomedCapNut(size="M6-1", fastener_type="din1587", hand="lefty")
+
+    def test_transformation(self):
+        nut = DomedCapNut(size="M6-1", fastener_type="din1587")
+        nut_center = nut.Center()
+        nut = nut.translate(cq.Vector(100, 100, 100))
+        self.assertTupleAlmostEquals(
+            (nut_center + cq.Vector(100, 100, 100)).toTuple(), nut.Center().toTuple(), 5
+        )
 
     def test_size(self):
         """Validate diameter and thickness of nuts"""
@@ -266,6 +284,16 @@ class TestScrews(unittest.TestCase):
         """Validate check for countersunk screws too short for their head"""
         with self.assertRaises(ValueError):
             CounterSunkScrew(size="M20-2.5", fastener_type="iso2009", length=10)
+
+    def test_transformation(self):
+        screw = CounterSunkScrew(size="M6-1", fastener_type="iso2009", length=30)
+        screw_center = screw.Center()
+        screw = screw.translate(cq.Vector(100, 100, 100))
+        self.assertTupleAlmostEquals(
+            (screw_center + cq.Vector(100, 100, 100)).toTuple(),
+            screw.Center().toTuple(),
+            5,
+        )
 
     def test_size(self):
         """Validate head diameter and height of screws"""

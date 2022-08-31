@@ -330,6 +330,7 @@ class Thread:
             ).translate((0, 0, i * self.apex_width + local_apex_offset))
             for i in [-0.5, 0.5]
         ]
+        assert apex_helix_wires[0].isValid()
         root_helix_wires = [
             cq.Workplane("XY")
             .parametricCurve(
