@@ -27,7 +27,6 @@ license:
 
 """
 from __future__ import annotations
-import cadquery as cq
 from cadquery import Solid, Location, Vector
 from cadquery.occ_impl.shapes import VectorLike
 from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
@@ -39,7 +38,7 @@ nut = DomedCapNut(size="M6-1", fastener_type="din1587")
 
 # Observe how normal cadquery methods apply to the sub-classed object
 print(f"{nut.Center()=}")
-nut_moved = nut.translate(cq.Vector(20, 20, 10))
+nut_moved = nut.translate(Vector(20, 20, 10))
 
 
 class FilletBox(Solid):
