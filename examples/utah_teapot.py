@@ -49,7 +49,7 @@ this shape and it will be used to refine the spout.
 pot_profile = (
     cq.Sketch()
     .segment((0, 0.5), (11, 0.5), tag="b")
-    .spline(["b@1", (15, 2), (13, 20)], tag="s")
+    .spline("b@1", (15, 2), (13, 20), tag="s")
     .segment((13, 20), (0, 20))
     .close()
     .assemble()
@@ -63,7 +63,7 @@ lid_profile = (
     cq.Sketch()
     .segment((0, 20), (13, 20))
     .segment((13, 20 + teapot_thickness), tag="b")
-    .spline(["b@1", (2, 24), (4, 25), (0, 26)], [(-1, 0.3), (-1, 0.1)])
+    .spline("b@1", (2, 24), (4, 25), (0, 26), tangents=[(-1, 0.3), (-1, 0.1)])
     .close()
     .assemble()
 )
