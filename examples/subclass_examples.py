@@ -29,7 +29,6 @@ license:
 from __future__ import annotations
 from cadquery import Solid, Location, Vector
 from cadquery.occ_impl.shapes import VectorLike
-from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
 from cq_warehouse.fastener import DomedCapNut
 import cq_warehouse.extensions
 
@@ -78,17 +77,6 @@ class FilletBox(Solid):
         obj = obj.fillet(radius, obj_edges)
         # Initialize the Solid class with the new OCCT object
         super().__init__(obj.wrapped)
-
-    def copy(self) -> FilletBox:
-        """Create a copy of a FilletBox with Solid attributes"""
-        box_copy = self.__class__(
-            self.length, self.width, self.height, self.radius, self.pnt, self.dir
-        )
-        # Copy the OCCT CAD object and the Shape attributes
-        box_copy.wrapped = BRepBuilderAPI_Copy(self.wrapped).Shape()
-        box_copy.forConstruction = self.forConstruction
-        box_copy.label = self.label
-        return box_copy
 
 
 # Create an instance of the FilletBox
