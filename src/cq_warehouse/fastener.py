@@ -516,13 +516,6 @@ class Nut(ABC, cq.Compound):
         """Screw only parameter"""
         return 0
 
-    def copy(self) -> "Nut":
-        nut_copy = self.__class__(self.size, self.fastener_type, self.hand, self.simple)
-        nut_copy.wrapped = BRepBuilderAPI_Copy(self.wrapped).Shape()
-        nut_copy.forConstruction = self.forConstruction
-        nut_copy.label = self.label
-        return nut_copy
-
     # @cache
     def __init__(
         self,
@@ -1410,51 +1403,10 @@ class Screw(ABC, cq.Compound):
         return type(self).__name__
 
     @property
-    def head_height(self):
-        """Calculate the maximum height of the head"""
-        if self.head is None:
-            result = 0
-        else:
-            result = self.head.vertices(">Z").val().Z - self.head.vertices("<Z").val().Z
-        return result
-
-    @property
-    def head_diameter(self):
-        """Calculate the maximum diameter of the head"""
-        if self.head is None:
-            result = 0
-        else:
-            vertices = self.head.vertices().vals()
-            radii = [
-                (cq.Vector(0, 0, v.Z) - cq.Vector(v.toTuple())).Length for v in vertices
-            ]
-            result = 2 * max(radii)
-        return result
-
-    @property
-    def head(self):
-        """cadquery Solid screw head as defined by class attributes"""
-        return self._head
-
-    @property
     def cq_object(self):
         """A cadquery Compound screw as defined by class attributes"""
         warn("cq_object will be deprecated.", DeprecationWarning, stacklevel=2)
         return self._cq_object
-
-    def copy(self) -> "Screw":
-        screw_copy = self.__class__(
-            self.size,
-            self.length,
-            self.fastener_type,
-            self.hand,
-            self.simple,
-            self.socket_clearance,
-        )
-        screw_copy.wrapped = BRepBuilderAPI_Copy(self.wrapped).Shape()
-        screw_copy.forConstruction = self.forConstruction
-        screw_copy.label = self.label
-        return screw_copy
 
     # @cache
     def __init__(
@@ -1515,11 +1467,14 @@ class Screw(ABC, cq.Compound):
         self.thread_length = length - length_offset
         head = self.make_head()
         if head is None:  # A fully custom screw
-            self._head = None
-            self._shank = None
             self._cq_object = None
+            self.head_height = 0
+            self.head_diameter = 0
         else:
-            self._head = head.translate((0, 0, -self.length_offset()))
+            head_bb = head.val().BoundingBox()
+            self.head_height = head_bb.zmax
+            self.head_diameter = 2 * max(head_bb.xmax, head_bb.ymax)
+            head = head.translate((0, 0, -self.length_offset()))
             thread = IsoThread(
                 major_diameter=self.thread_diameter,
                 pitch=self.thread_pitch,
@@ -1529,21 +1484,20 @@ class Screw(ABC, cq.Compound):
                 end_finishes=("fade", "raw"),
             )
 
-            self.shank = (
+            shank = (
                 cq.Workplane("XY")
                 .circle(thread.min_radius)
                 .extrude(self.thread_length)
                 .val()
             )
             if not self.simple:
-                self.shank = self.shank.fuse(thread.cq_object)
+                shank = shank.fuse(thread.cq_object)
 
         if method_exists(self.__class__, "custom_make"):
-            # self._cq_object = self.custom_make().val()
             self._cq_object = self.custom_make()
         else:
-            self._cq_object = self._head.union(
-                self.shank.translate(cq.Vector(0, 0, -self.length))
+            self._cq_object = head.union(
+                shank.translate(cq.Vector(0, 0, -self.length))
             ).val()
         super().__init__(self._cq_object.wrapped)
 
@@ -2099,16 +2053,6 @@ class SetScrew(Screw):
 
     fastener_data = read_fastener_parameters_from_csv("setscrew_parameters.csv")
 
-    @property
-    def head(self):
-        """Setscrews don't have heads"""
-        return None
-
-    @property
-    def shank(self):
-        """Setscrews don't have shanks"""
-        return None
-
     def custom_make(self):
         """Setscrews are custom builds"""
         return self.make_setscrew()
@@ -2280,13 +2224,6 @@ class Washer(ABC, cq.Solid):
         """A cadquery Solid washer as defined by class attributes"""
         warn("cq_object will be deprecated.", DeprecationWarning, stacklevel=2)
         return self._cq_object
-
-    def copy(self) -> "Washer":
-        washer_copy = self.__class__(self.size, self.fastener_type)
-        washer_copy.wrapped = BRepBuilderAPI_Copy(self.wrapped).Shape()
-        washer_copy.forConstruction = self.forConstruction
-        washer_copy.label = self.label
-        return washer_copy
 
     # @cache
     def __init__(

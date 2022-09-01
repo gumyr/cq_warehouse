@@ -26,10 +26,9 @@ license:
     limitations under the License.
 
 """
-from __future__ import annotations
 from cadquery import Solid, Location, Vector
 from cadquery.occ_impl.shapes import VectorLike
-from cq_warehouse.fastener import DomedCapNut
+from cq_warehouse.fastener import DomedCapNut, CounterSunkScrew
 import cq_warehouse.extensions
 
 # Use a pre-defined sub-classed object
@@ -38,6 +37,10 @@ nut = DomedCapNut(size="M6-1", fastener_type="din1587")
 # Observe how normal cadquery methods apply to the sub-classed object
 print(f"{nut.Center()=}")
 nut_moved = nut.translate(Vector(20, 20, 10))
+
+screw = CounterSunkScrew(size="M6-1", fastener_type="iso2009", length=30)
+print(screw.__dict__)
+screw_rotated = screw.rotate((0, 0, 0), (0, 1, 0), 90)
 
 
 class FilletBox(Solid):
