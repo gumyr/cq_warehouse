@@ -114,7 +114,7 @@ class Sprocket(Solid):
     def cq_object(self) -> cq.Compound:
         """A cadquery Solid sprocket as defined by class attributes"""
         warn("cq_object will be deprecated.", DeprecationWarning, stacklevel=2)
-        return self._cq_object
+        return Solid(self.wrapped)
 
     def __init__(
         self,
@@ -150,11 +150,14 @@ class Sprocket(Solid):
                 f"num_teeth must be an integer greater than 2 not {num_teeth}"
             )
         # Create the sprocket
-        self._cq_object = self._make_sprocket()
-        # Unwrap the Compound - why does it get generated?
-        if isinstance(self._cq_object, Compound) and len(self._cq_object.Solids()) == 1:
-            self._cq_object = self._cq_object.Solids()[0]
-        super().__init__(self._cq_object.wrapped)
+        cq_object = self._make_sprocket()
+
+        # Unwrap the Compound - it always gets generated but is unnecessary
+        # (possibly due to some cadquery internals that might change)
+        if isinstance(cq_object, Compound) and len(cq_object.Solids()) == 1:
+            super().__init__(cq_object.Solids()[0].wrapped)
+        else:
+            super().__init__(cq_object.wrapped)
 
     def _make_sprocket(self) -> cq.Compound:
         """Create a new sprocket object as defined by the class attributes"""

@@ -37,6 +37,7 @@ from math import sin, cos, tan, radians, pi, degrees, sqrt
 import csv
 import importlib.resources as pkg_resources
 import cadquery as cq
+from cadquery import Solid, Compound
 from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
 from cq_warehouse.thread import is_safe, imperial_str_to_float, IsoThread
 import cq_warehouse
@@ -361,7 +362,7 @@ def method_exists(cls, method: str) -> bool:
     return hasattr(cls, method) and callable(getattr(cls, method))
 
 
-class Nut(ABC, cq.Compound):
+class Nut(ABC, Solid):
     """Parametric Nut
 
     Base Class used to create standard threaded nuts
@@ -390,7 +391,6 @@ class Nut(ABC, cq.Compound):
         nut_class (class): the derived class that created this nut
         nut_thickness (float): maximum thickness of the nut
         nut_diameter (float): maximum diameter of the nut
-        cq_object (Compound): cadquery Compound nut as defined by class attributes
 
     """
 
@@ -508,9 +508,9 @@ class Nut(ABC, cq.Compound):
 
     @property
     def cq_object(self):
-        """A cadquery Compound nut as defined by class attributes"""
+        """A cadquery Solid nut as defined by class attributes"""
         warn("cq_object will be deprecated.", DeprecationWarning, stacklevel=2)
-        return self._cq_object
+        return Solid(self.wrapped)
 
     def length_offset(self):
         """Screw only parameter"""
@@ -567,10 +567,16 @@ class Nut(ABC, cq.Compound):
                 f"{size} invalid, must be one of {self.sizes(self.fastener_type)}"
             ) from e
         if method_exists(self.__class__, "custom_make"):
-            self._cq_object = self.custom_make()
+            cq_object = self.custom_make()
         else:
-            self._cq_object = self.make_nut().val()
-        super().__init__(self._cq_object.wrapped)
+            cq_object = self.make_nut().val()
+
+        # Unwrap the Compound - it always gets generated but is unnecessary
+        # (possibly due to some cadquery internals that might change)
+        if isinstance(cq_object, Compound) and len(cq_object.Solids()) == 1:
+            super().__init__(cq_object.Solids()[0].wrapped)
+        else:
+            super().__init__(cq_object.wrapped)
 
     def make_nut(self) -> cq.Workplane:
         """Create a screw head from the 2D shapes defined in the derived class"""
@@ -1039,7 +1045,7 @@ class HeatSetNut(Nut):
         )
 
         # Finally create the Solid from the Shell
-        nut = cq.Workplane(cq.Solid.makeSolid(nut_shell))
+        nut = cq.Workplane(Solid.makeSolid(nut_shell))
 
         # Add the thread to the nut body
         if not self.simple:
@@ -1232,7 +1238,7 @@ class SquareNut(Nut):
         return cq.Workplane("XZ").rect(width / 2, m, centered=False)
 
 
-class Screw(ABC, cq.Compound):
+class Screw(ABC, Solid):
     """Parametric Screw
 
     Base class for a set of threaded screws or bolts
@@ -1252,7 +1258,7 @@ class Screw(ABC, cq.Compound):
         ValueError: invalid hand, must be one of 'left' or 'right'
         ValueError: invalid size
 
-    Each screw instance creates a set of properties that provide the Compound CAD object as
+    Each screw instance creates a set of properties that provide the Solid CAD object as
     well as valuable parameters, as follows (values intended for internal use are not shown):
 
     Attributes:
@@ -1266,8 +1272,6 @@ class Screw(ABC, cq.Compound):
         head_height (float): maximum height of the screw head
         head_diameter (float): maximum diameter of the screw head
         head (Solid): cadquery Solid screw head as defined by class attributes
-        cq_object (Compound): cadquery Compound nut as defined by class attributes
-
     """
 
     # Read clearance and tap hole dimesions tables
@@ -1404,9 +1408,9 @@ class Screw(ABC, cq.Compound):
 
     @property
     def cq_object(self):
-        """A cadquery Compound screw as defined by class attributes"""
+        """A cadquery Solid screw as defined by class attributes"""
         warn("cq_object will be deprecated.", DeprecationWarning, stacklevel=2)
-        return self._cq_object
+        return Solid(self.wrapped)
 
     # @cache
     def __init__(
@@ -1467,7 +1471,7 @@ class Screw(ABC, cq.Compound):
         self.thread_length = length - length_offset
         head = self.make_head()
         if head is None:  # A fully custom screw
-            self._cq_object = None
+            cq_object = None
             self.head_height = 0
             self.head_diameter = 0
         else:
@@ -1494,12 +1498,16 @@ class Screw(ABC, cq.Compound):
                 shank = shank.fuse(thread.cq_object)
 
         if method_exists(self.__class__, "custom_make"):
-            self._cq_object = self.custom_make()
+            cq_object = self.custom_make()
         else:
-            self._cq_object = head.union(
-                shank.translate(cq.Vector(0, 0, -self.length))
-            ).val()
-        super().__init__(self._cq_object.wrapped)
+            cq_object = head.union(shank.translate(cq.Vector(0, 0, -self.length))).val()
+
+        # Unwrap the Compound - it always gets generated but is unnecessary
+        # (possibly due to some cadquery internals that might change)
+        if isinstance(cq_object, Compound) and len(cq_object.Solids()) == 1:
+            super().__init__(cq_object.Solids()[0].wrapped)
+        else:
+            super().__init__(cq_object.wrapped)
 
     def make_head(self) -> cq.Workplane:
         """Create a screw head from the 2D shapes defined in the derived class"""
@@ -1509,9 +1517,6 @@ class Screw(ABC, cq.Compound):
         has_plan = method_exists(self.__class__, "head_plan")
         has_recess = method_exists(self.__class__, "head_recess")
         has_flange = method_exists(self.__class__, "flange_profile")
-        # print(
-        #     f"{self.__class__},{has_profile=},{has_plan=},{has_recess=},{has_flange=}"
-        # )
         # raise RuntimeError
         if has_profile:
             # pylint: disable=no-member
@@ -1539,7 +1544,7 @@ class Screw(ABC, cq.Compound):
         if has_recess:
             # pylint: disable=no-member
             (recess_plan, recess_depth, recess_taper) = self.head_recess()
-            recess = cq.Solid.extrudeLinear(
+            recess = Solid.extrudeLinear(
                 recess_plan.val(),
                 [],
                 cq.Vector(0, 0, -recess_depth),
@@ -2123,7 +2128,7 @@ class SocketHeadCapScrew(Screw):
     countersink_profile = Screw.default_countersink_profile
 
 
-class Washer(ABC, cq.Solid):
+class Washer(ABC, Solid):
     """Parametric Washer
 
     Base class used to create standard washers
@@ -2136,7 +2141,7 @@ class Washer(ABC, cq.Solid):
         ValueError: invalid fastener_type
         ValueError: invalid size
 
-    Each washer instance creates a set of properties that provide the Compound CAD object
+    Each washer instance creates a set of properties that provide the Solid CAD object
     as well as valuable parameters, as follows (values intended for internal use are not shown):
 
     Attributes:
@@ -2147,7 +2152,6 @@ class Washer(ABC, cq.Solid):
         washer_class (str): display friendly class name
         washer_diameter (float): maximum diameter of the washer
         washer_thickness (float): maximum thickness of the washer
-        cq_object (Compound): cadquery Compound washer as defined by class attributes
 
     """
 
@@ -2223,7 +2227,7 @@ class Washer(ABC, cq.Solid):
     def cq_object(self):
         """A cadquery Solid washer as defined by class attributes"""
         warn("cq_object will be deprecated.", DeprecationWarning, stacklevel=2)
-        return self._cq_object
+        return Solid(self.wrapped)
 
     # @cache
     def __init__(
@@ -2254,8 +2258,14 @@ class Washer(ABC, cq.Solid):
             raise ValueError(
                 f"{size} invalid, must be one of {self.sizes(self.fastener_type)}"
             ) from e
-        self._cq_object = self.make_washer().val()
-        super().__init__(self._cq_object.wrapped)
+        cq_object = self.make_washer().val()
+
+        # Unwrap the Compound - it always gets generated but is unnecessary
+        # (possibly due to some cadquery internals that might change)
+        if isinstance(cq_object, Compound) and len(cq_object.Solids()) == 1:
+            super().__init__(cq_object.Solids()[0].wrapped)
+        else:
+            super().__init__(cq_object.wrapped)
 
     def make_washer(self) -> cq.Workplane:
         """Create a screw head from the 2D shapes defined in the derived class"""

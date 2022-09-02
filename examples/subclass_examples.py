@@ -39,7 +39,6 @@ print(f"{nut.Center()=}")
 nut_moved = nut.translate(Vector(20, 20, 10))
 
 screw = CounterSunkScrew(size="M6-1", fastener_type="iso2009", length=30)
-print(screw.__dict__)
 screw_rotated = screw.rotate((0, 0, 0), (0, 1, 0), 90)
 
 

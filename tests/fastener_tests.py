@@ -318,7 +318,7 @@ class TestScrews(unittest.TestCase):
                             simple=simple_thread,
                         )
                         # if screw.head is None:
-                        if screw_class==SetScrew:
+                        if screw_class == SetScrew:
                             self.assertEqual(screw.head_height, 0)
                             self.assertEqual(screw.head_diameter, 0)
                         else:
