@@ -96,5 +96,15 @@ class ApplyTransformTests(unittest.TestCase):
         self.assertAlmostEqual(translated_box_bb.zmin, 0, 5)
 
 
+class MaintainAttributesTest(unittest.TestCase):
+    """Test that object attributes are maintained during normal operations"""
+
+    def test_apply_transform(self):
+        box = cq.Solid.makeBox(1, 1, 1)
+        box.label = "test box"
+        box = box.translate((1, 1, 1))
+        self.assertAlmostEqual(box.label, "test box")
+
+
 if __name__ == "__main__":
     unittest.main()
