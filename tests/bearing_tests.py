@@ -76,7 +76,7 @@ class TestBearings(unittest.TestCase):
                         self.assertGreater(bearing.thickness, 0)
                         self.assertGreater(len(bearing.info), 0)
                         # self.assertGreater(len(bearing.children), 0)
-                        self.assertGreater(len(bearing.cq_object.children), 0)
+                        self.assertGreater(len(bearing.Solids()), 0)
 
                         # Check the hole data if available
                         try:
@@ -118,4 +118,4 @@ class TestBearings(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(failfast=True)
