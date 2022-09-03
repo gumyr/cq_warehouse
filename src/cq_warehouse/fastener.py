@@ -630,7 +630,7 @@ class Nut(ABC, Solid):
                 end_finishes=("fade", "fade"),
                 hand=self.hand,
             )
-            nut = nut.union(thread.cq_object)
+            nut = nut.union(thread)
 
         return nut
 
@@ -1058,7 +1058,7 @@ class HeatSetNut(Nut):
                 end_finishes=("fade", "fade"),
                 hand=self.hand,
             )
-            nut = nut.union(thread.cq_object)
+            nut = nut.union(thread)
 
         return nut
 
@@ -1486,6 +1486,7 @@ class Screw(ABC, Solid):
                 external=True,
                 hand=self.hand,
                 end_finishes=("fade", "raw"),
+                simple=self.simple,
             )
 
             shank = (
@@ -1495,7 +1496,7 @@ class Screw(ABC, Solid):
                 .val()
             )
             if not self.simple:
-                shank = shank.fuse(thread.cq_object)
+                shank = shank.fuse(thread)
 
         if method_exists(self.__class__, "custom_make"):
             cq_object = self.custom_make()
@@ -2075,6 +2076,7 @@ class SetScrew(Screw):
             external=True,
             end_finishes=("fade", "fade"),
             hand=self.hand,
+            simple=self.simple,
         )
         core = (
             cq.Workplane("XY")
@@ -2091,7 +2093,7 @@ class SetScrew(Screw):
         if self.simple:
             ret = core
         else:
-            ret = core.union(thread.cq_object.translate((0, 0, -thread.length)))
+            ret = core.union(thread.translate((0, 0, -thread.length)))
 
         return ret.val()
 
