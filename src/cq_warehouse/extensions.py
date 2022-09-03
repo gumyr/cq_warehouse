@@ -1044,12 +1044,8 @@ def _fastenerHole(
                     # Create a metadata entry associating the auto-generated name & fastener
                     baseAssembly.metadata[baseAssembly.children[-1].name] = washer
 
-            # As bearings are assemblies, they still use cq_object
-            fastener_object = (
-                fastener if isinstance(fastener, Shape) else fastener.cq_object
-            )
             baseAssembly.add(
-                fastener_object,
+                fastener,
                 loc=hole_loc
                 * Location(
                     bore_direction
@@ -1077,9 +1073,7 @@ def _fastenerHole(
             hand=hand,
         )
         for hole_loc in hole_locations:
-            part = part.union(
-                thread.cq_object.moved(hole_loc * Location(bore_direction * depth))
-            )
+            part = part.union(thread.moved(hole_loc * Location(bore_direction * depth)))
     if clean:
         part = part.clean()
     return part

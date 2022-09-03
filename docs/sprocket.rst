@@ -10,7 +10,7 @@ of python code using the :ref:`Sprocket <sprocket>` class:
    from cq_warehouse.sprocket import Sprocket
 
    sprocket32 = Sprocket(num_teeth=32)
-   cq.exporters.export(sprocket32.cq_object,"sprocket.step")
+   cq.exporters.export(sprocket32,"sprocket.step")
 
 
 How does this code work?
@@ -21,10 +21,12 @@ How does this code work?
 #. The fourth line uses the cadquery exporter functionality to save the generated
    sprocket object in STEP format
 
-Note that instead of exporting ``sprocket32``, ``sprocket32.cq_object`` is exported as
-``sprocket32`` contains much more than just the raw CAD object - it contains all of
-the parameters used to generate this sprocket - such as the chain pitch - and some
-derived information that may be useful - such as the chain pitch radius.
+.. deprecated:: 0.8
+
+	Previous versions of cq_warehouse required the used of a ``cq_object`` instance variable to access
+	the CadQuery cad object. Currently sprocket objects are a sub-class of the CadQuery Solid
+	object and therefore can be used as any other Solid object without referencing ``cq_object``.
+	Future versions of cq_warehouse will remove ``cq_object`` entirely.
 
 .. py:module:: sprocket
 

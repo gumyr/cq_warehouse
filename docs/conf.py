@@ -44,6 +44,7 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx_autodoc_typehints",
     "sphinx.ext.doctest",
+    "sphinx.ext.graphviz",
 ]
 
 # Napoleon settings
@@ -77,6 +78,9 @@ templates_path = ["_templates"]
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+
+# -- GraphViz configuration ----------------------------------
+graphviz_output_format = "svg"
 
 
 # -- Options for HTML output -------------------------------------------------
