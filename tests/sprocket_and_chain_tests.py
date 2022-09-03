@@ -15,7 +15,7 @@ sprocket_and_chain_tests.py                       141      1    99%
 """
 import math
 import unittest
-from cadquery import Vector
+from cadquery import Vector, Solid
 from cq_warehouse.sprocket import Sprocket
 from cq_warehouse.chain import Chain
 
@@ -164,6 +164,18 @@ class TestSprocketShape(unittest.TestCase):
         self.assertAlmostEqual(spkt.pitch_radius, 32.54902618631712)
         self.assertAlmostEqual(spkt.outer_radius, 33.19993997888148)
         self.assertAlmostEqual(spkt.pitch_circumference, 204.51156309687133)
+
+    def test_deprecation(self):
+        spkt = Sprocket(
+            num_teeth=32,
+            bolt_circle_diameter=104 * MM,
+            num_mount_bolts=4,
+            mount_bolt_diameter=8 * MM,
+            bore_diameter=80 * MM,
+        )
+        with self.assertWarns(DeprecationWarning):
+            occt = spkt.cq_object
+            self.assertTrue(isinstance(occt, Solid))
 
 
 class TestChainShape(unittest.TestCase):

@@ -59,6 +59,12 @@ class TestBearings(unittest.TestCase):
         with self.assertRaises(ValueError):
             SingleRowDeepGrooveBallBearing(size="M8-22-7", bearing_type="common")
 
+    def test_deprecation(self):
+        bearing = SingleRowDeepGrooveBallBearing(size="M8-22-7", bearing_type="SKT")
+        with self.assertWarns(DeprecationWarning):
+            occt = bearing.cq_object
+            self.assertTrue(isinstance(occt, Compound))
+
     def test_size(self):
         """Validate diameter and thickness of bearings"""
         for bearing_class in Bearing.__subclasses__():

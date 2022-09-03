@@ -449,24 +449,24 @@ class Nut(ABC, Solid):
     @property
     @classmethod
     @abstractmethod
-    def fastener_data(cls):
+    def fastener_data(cls):  # pragma: no cover
         """Each derived class must provide a fastener_data dictionary"""
         return NotImplementedError
 
     @abstractmethod
-    def nut_profile(self) -> cq.Workplane:
+    def nut_profile(self) -> cq.Workplane:  # pragma: no cover
         """Each derived class must provide the profile of the nut"""
         return NotImplementedError
 
     @abstractmethod
-    def nut_plan(self) -> cq.Workplane:
+    def nut_plan(self) -> cq.Workplane:  # pragma: no cover
         """Each derived class must provide the plan of the nut"""
         return NotImplementedError
 
     @abstractmethod
     def countersink_profile(
         self, fit: Literal["Close", "Normal", "Loose"]
-    ) -> cq.Workplane:
+    ) -> cq.Workplane:  # pragma: no cover
         """Each derived class must provide the profile of a countersink cutter"""
         return NotImplementedError
 
@@ -1062,11 +1062,11 @@ class HeatSetNut(Nut):
 
         return nut
 
-    def nut_profile(self):
+    def nut_profile(self):  # pragma: no cover
         """Not used but required by the abstract base class"""
         pass
 
-    def nut_plan(self):
+    def nut_plan(self):  # pragma: no cover
         """Not used but required by the abstract base class"""
         pass
 
@@ -1327,14 +1327,14 @@ class Screw(ABC, Solid):
     @property
     @classmethod
     @abstractmethod
-    def fastener_data(cls):
+    def fastener_data(cls):  # pragma: no cover
         """Each derived class must provide a fastener_data dictionary"""
         return NotImplementedError
 
     @abstractmethod
     def countersink_profile(
         self, fit: Literal["Close", "Normal", "Loose"]
-    ) -> cq.Workplane:
+    ) -> cq.Workplane:  # pragma: no cover
         """Each derived class must provide the profile of a countersink cutter"""
         return NotImplementedError
 
@@ -2177,12 +2177,12 @@ class Washer(ABC, Solid):
     @property
     @classmethod
     @abstractmethod
-    def fastener_data(cls):
+    def fastener_data(cls):  # pragma: no cover
         """Each derived class must provide a fastener_data dictionary"""
         return NotImplementedError
 
     @abstractmethod
-    def washer_profile(self) -> cq.Workplane:
+    def washer_profile(self) -> cq.Workplane:  # pragma: no cover
         """Each derived class must provide the profile of the washer"""
         return NotImplementedError
 
@@ -2262,12 +2262,7 @@ class Washer(ABC, Solid):
             ) from e
         cq_object = self.make_washer().val()
 
-        # Unwrap the Compound - it always gets generated but is unnecessary
-        # (possibly due to some cadquery internals that might change)
-        if isinstance(cq_object, Compound) and len(cq_object.Solids()) == 1:
-            super().__init__(cq_object.Solids()[0].wrapped)
-        else:
-            super().__init__(cq_object.wrapped)
+        super().__init__(cq_object.wrapped)
 
     def make_washer(self) -> cq.Workplane:
         """Create a screw head from the 2D shapes defined in the derived class"""

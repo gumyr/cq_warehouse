@@ -379,38 +379,6 @@ def _crossSection_Assembly(self, plane: "Plane") -> "Assembly":
 
 Assembly.section = _crossSection_Assembly
 
-
-def assembly__init__(
-    self,
-    obj: cq.Shape = None,
-    loc: Optional[Location] = None,
-    name: Optional[str] = None,
-    color: Optional[Color] = None,
-    metadata: Optional[dict[str]] = None,
-    asm: Assembly = None,
-):
-    if asm:
-        self = asm._copy()
-    else:
-        self.obj = obj
-        self.loc = loc if loc else Location()
-        self.name = name
-        self.color = color if color else None
-        self.metadata = metadata if metadata else {}
-        self.parent = None
-
-        self.children = []
-        self.constraints = []
-        self.objects = {self.name: self}
-
-        self._solve_result = None
-
-
-# Assembly.__init__ = assembly__init__
-
-# Monkey patch a class method
-# Assembly.init = MethodType(assembly_init, Assembly)
-
 """
 
 Plane extensions: toLocalCoords(), toWorldCoords()

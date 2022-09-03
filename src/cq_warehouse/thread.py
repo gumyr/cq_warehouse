@@ -26,6 +26,7 @@ license:
 
 """
 import re
+from warnings import warn
 from abc import ABC, abstractmethod
 from typing import Literal, Optional, Tuple, List
 from math import sin, cos, tan, radians, pi
@@ -164,8 +165,6 @@ class Thread(Solid):
         self.simple = simple
 
         if not simple:
-
-            """A cadquery Solid thread as defined by class attributes"""
             # Create base cylindrical thread
             number_faded_ends = self.end_finishes.count("fade")
             cylindrical_thread_length = self.length + self.pitch * (
@@ -414,7 +413,8 @@ class IsoThread(Solid):
 
     .. image:: https://upload.wikimedia.org/wikipedia/commons/4/4b/ISO_and_UTS_Thread_Dimensions.svg
 
-    The following is an example of an internal thread with a chamfered end as might be found inside a nut:
+    The following is an example of an internal thread with a chamfered end as might
+    be found inside a nut:
 
     .. image:: internal_iso_thread.png
 
@@ -570,13 +570,13 @@ class TrapezoidalThread(ABC, Solid):
 
     @property
     @abstractmethod
-    def thread_angle(self) -> float:
+    def thread_angle(self) -> float:  # pragma: no cover
         """The thread angle in degrees"""
         return NotImplementedError
 
     @classmethod
     @abstractmethod
-    def parse_size(cls, size: str) -> Tuple[float, float]:
+    def parse_size(cls, size: str) -> Tuple[float, float]:  # pragma: no cover
         """Convert the provided size into a tuple of diameter and pitch"""
         return NotImplementedError
 
@@ -800,12 +800,14 @@ class PlasticBottleThread(Solid):
     L Style:
         All-Purpose Thread - trapezoidal shape with 30° shoulders, metal or platsic closures
     M Style:
-        Modified Buttress Thread - asymmetric shape with 10° and 40/45/50° shoulders, plastic closures
+        Modified Buttress Thread - asymmetric shape with 10° and 40/45/50°
+        shoulders, plastic closures
 
     .. image:: plasticThread.png
 
     Args:
-        size (str): as defined by the ASTM is specified as [L|M][diameter(mm)]SP[100|103|110|200|400|410|415|425|444]
+        size (str): as defined by the ASTM is specified as
+            [L|M][diameter(mm)]SP[100|103|110|200|400|410|415|425|444]
         external (bool, optional): external or internal thread selector. Defaults to True.
         hand (Literal[, optional): twist direction. Defaults to "right".
         manufacturingCompensation (float, optional): used to compensate for over-extrusion of 3D
@@ -815,7 +817,8 @@ class PlasticBottleThread(Solid):
 
     Raises:
         ValueError: hand must be one of "right" or "left"
-        ValueError: size invalid, must match [L|M][diameter(mm)]SP[100|103|110|200|400|410|415:425|444]
+        ValueError: size invalid, must match
+            [L|M][diameter(mm)]SP[100|103|110|200|400|410|415:425|444]
         ValueError: finish invalid
         ValueError: diameter invalid
 
@@ -935,18 +938,21 @@ class PlasticBottleThread(Solid):
         size_match = re.match(r"([LM])(\d+)SP(\d+)", size)
         if not size_match:
             raise ValueError(
-                "size invalid, must match [L|M][diameter(mm)]SP[100|103|110|200|400|410|415:425|444]"
+                "size invalid, must match \
+                    [L|M][diameter(mm)]SP[100|103|110|200|400|410|415:425|444]"
             )
         self.style = size_match.group(1)
         self.diameter = int(size_match.group(2))
         self.finish = int(size_match.group(3))
-        if not self.finish in PlasticBottleThread.finish_data.keys():
+        if self.finish not in PlasticBottleThread.finish_data.keys():
             raise ValueError(
-                f"finish ({self.finish}) invalid, must be one of {list(PlasticBottleThread.finish_data.keys())}"
+                f"finish ({self.finish}) invalid, must be one of"
+                f" {list(PlasticBottleThread.finish_data.keys())}"
             )
         if not self.diameter in PlasticBottleThread.finish_data[self.finish][1]:
             raise ValueError(
-                f"diameter ({self.diameter}) invalid, must be one of {PlasticBottleThread.finish_data[self.finish][1]}"
+                f"diameter ({self.diameter}) invalid, must be one"
+                f" of {PlasticBottleThread.finish_data[self.finish][1]}"
             )
         (diameter_max, diameter_min, self.tpi) = PlasticBottleThread.thread_dimensions[
             self.diameter

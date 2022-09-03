@@ -57,6 +57,19 @@ class TestThread(unittest.TestCase):
                 end_finishes=("not", "supported"),
             )
 
+    def test_deprecation(self):
+        thread = Thread(
+            apex_radius=10,
+            apex_width=2,
+            root_radius=8,
+            root_width=3,
+            pitch=2,
+            length=20,
+        )
+        with self.assertWarns(DeprecationWarning):
+            occt = thread.cq_object
+            self.assertTrue(isinstance(occt, Solid))
+
 
 class TestIsoThread(unittest.TestCase):
     end_finishes = ["raw", "fade", "square", "chamfer"]
@@ -102,6 +115,12 @@ class TestIsoThread(unittest.TestCase):
                 major_diameter=5, pitch=1, length=5, end_finishes=("not", "supported")
             )
 
+    def test_deprecation(self):
+        thread = IsoThread(major_diameter=6 * MM, pitch=1 * MM, length=8 * MM)
+        with self.assertWarns(DeprecationWarning):
+            occt = thread.cq_object
+            self.assertTrue(isinstance(occt, Solid))
+
     def test_simple(self):
         thread = IsoThread(
             major_diameter=6 * MM, pitch=1 * MM, length=8 * MM, simple=True
@@ -143,6 +162,16 @@ class TestAcmeThread(unittest.TestCase):
         with self.assertRaises(ValueError):
             AcmeThread(size="1 1/4", length=1 * IN, end_finishes=("not", "supported"))
 
+    def test_deprecation(self):
+        acme_thread = AcmeThread(
+            size="1 1/4",
+            length=1 * IN,
+            external=False,
+        )
+        with self.assertWarns(DeprecationWarning):
+            occt = acme_thread.cq_object
+            self.assertTrue(isinstance(occt, Solid))
+
 
 class TestMetricTrapezoidalThread(unittest.TestCase):
     def test_exterior_thread(self):
@@ -183,6 +212,15 @@ class TestPlasticBottleThread(unittest.TestCase):
             external=True,
         )
         self.assertTrue(bottle_thread.isValid())
+
+    def test_deprecation(self):
+        bottle_thread = PlasticBottleThread(
+            size="M38SP444",
+            external=True,
+        )
+        with self.assertWarns(DeprecationWarning):
+            occt = bottle_thread.cq_object
+            self.assertTrue(isinstance(occt, Solid))
 
     def test_exterior_left_thread(self):
         """Simple validity check for an exterior thread"""

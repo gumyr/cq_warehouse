@@ -71,6 +71,12 @@ class TestWashers(unittest.TestCase):
     def test_select_by_size(self):
         self.assertGreater(len(Washer.select_by_size("M6")), 0)
 
+    def test_deprecation(self):
+        washer = PlainWasher(size="M6", fastener_type="iso7094")
+        with self.assertWarns(DeprecationWarning):
+            occt = washer.cq_object
+            self.assertTrue(isinstance(occt, Solid))
+
     def test_transformation(self):
         washer = PlainWasher(size="M6", fastener_type="iso7094")
         washer_center = washer.Center()
@@ -154,6 +160,12 @@ class TestNuts(unittest.TestCase):
     def test_bad_hand(self):
         with self.assertRaises(ValueError):
             DomedCapNut(size="M6-1", fastener_type="din1587", hand="lefty")
+
+    def test_deprecation(self):
+        nut = DomedCapNut(size="M6-1", fastener_type="din1587")
+        with self.assertWarns(DeprecationWarning):
+            occt = nut.cq_object
+            self.assertTrue(isinstance(occt, Solid))
 
     def test_transformation(self):
         nut = DomedCapNut(size="M6-1", fastener_type="din1587")
@@ -279,6 +291,12 @@ class TestScrews(unittest.TestCase):
             ButtonHeadScrew(
                 size="M6-1", fastener_type="iso7380_1", length=20, hand="lefty"
             )
+
+    def test_deprecation(self):
+        screw = ButtonHeadScrew(size="M6-1", fastener_type="iso7380_1", length=20)
+        with self.assertWarns(DeprecationWarning):
+            occt = screw.cq_object
+            self.assertTrue(isinstance(occt, Solid))
 
     def test_screw_shorter_then_head(self):
         """Validate check for countersunk screws too short for their head"""
