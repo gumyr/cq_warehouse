@@ -75,8 +75,7 @@ class FilletBox(Solid):
 
         # Create the object
         obj = Solid.makeBox(length, width, height, pnt, dir)
-        obj_edges = obj.Edges()
-        obj = obj.fillet(radius, obj_edges)
+        obj = obj.fillet(radius, obj.Edges())
         # Initialize the Solid class with the new OCCT object
         super().__init__(obj.wrapped)
 

@@ -22,7 +22,7 @@ of Solid and is defined as follows:
 
     class Nut(ABC, Solid):
 
-and therefore inherits the methods of Solid and therefore Shape. ``Nut`` is itself
+and therefore inherits the methods of Solid and Shape. ``Nut`` is itself
 a base class for a whole series of different classes of nuts like ``DomedCadNut``
 which is defined as follows:
 
@@ -72,10 +72,10 @@ apply to ``nut`` like this:
 Creating Custom Sub-Classes
 ===========================
 To create custom sub-classes of Shape, there are three necessary steps and
-one extra step of complex classes:
+one extra step for complex classes:
 
-1. The class definition must include Shape: ``class MyCustomShape(Shape):``.
-2. All parameters must be stored as instance attributes.
+1. The class definition must include the base class, e.g: ``class MyCustomShape(Solid):``.
+2. All parameters must be stored as instance attributes so a copy can be created.
 3. The class' ``__init__`` method must initialize the base class
    object: ``super().__init__(obj.wrapped)``. Recall that the Shape
    class stores the OpenCascade CAD object in the ``wrapped`` attribute
@@ -120,8 +120,7 @@ that is a sub-class of Solid:
 
             # Create the object
             obj = Solid.makeBox(length, width, height, pnt, dir)
-            obj_edges = obj.Edges()
-            obj = obj.fillet(radius, obj_edges)
+            obj = obj.fillet(radius, obj.Edges())
             # Initialize the Solid class with the new OCCT object
             super().__init__(obj.wrapped)
 
