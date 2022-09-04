@@ -73,7 +73,6 @@ class Sprocket(Solid):
         pitch_radius (float): radius of the circle formed by the center of the chain rollers
         outer_radius (float): size of the sprocket from center to tip of the teeth
         pitch_circumference (float): circumference of the sprocket at the pitch radius
-        cq_object (Workplane): cadquery sprocket object
 
     Example:
 
@@ -82,7 +81,7 @@ class Sprocket(Solid):
             >>> s = Sprocket(num_teeth=32)
             >>> print(s.pitch_radius)
             64.78458745735234
-            >>> s.cq_object.rotate((0,0,0),(0,0,1),10)
+            >>> s.rotate((0,0,0),(0,0,1),10)
 
     """
 
