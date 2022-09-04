@@ -40,7 +40,7 @@ add new sizes or entirely new types of bearings.
 Both metric and imperial sized standard bearings are directly supported by the bearing sub-package
 although the majority of the bearings currently implemented are metric.
 
-.. deprecated:: 0.8
+.. deprecated:: 0.8.0
 
 	Previous versions of cq_warehouse required the used of a ``cq_object`` instance variable to access
 	the CadQuery cad object. Currently all bearing objects are a sub-class of the CadQuery Compound

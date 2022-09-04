@@ -21,7 +21,7 @@ How does this code work?
 #. The fourth line uses the cadquery exporter functionality to save the generated
    sprocket object in STEP format
 
-.. deprecated:: 0.8
+.. deprecated:: 0.8.0
 
 	Previous versions of cq_warehouse required the used of a ``cq_object`` instance variable to access
 	the CadQuery cad object. Currently sprocket objects are a sub-class of the CadQuery Solid
