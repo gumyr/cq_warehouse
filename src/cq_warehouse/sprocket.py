@@ -29,9 +29,12 @@ license:
     limitations under the License.
 
 """
+from warnings import warn
 from math import sin, asin, cos, pi, radians, sqrt
+from OCP.TopoDS import TopoDS_Shape
+from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
 import cadquery as cq
-from cadquery import Vector, Workplane, Wire
+from cadquery import Vector, Workplane, Wire, Compound, Solid
 import cq_warehouse.extensions
 
 MM = 1
@@ -40,7 +43,7 @@ INCH = 25.4 * MM
 #
 #  =============================== CLASSES ===============================
 #
-class Sprocket:
+class Sprocket(Solid):
     """
     Create a new sprocket object as defined by the given parameters. The input parameter
     defaults are appropriate for a standard bicycle chain.
@@ -70,7 +73,6 @@ class Sprocket:
         pitch_radius (float): radius of the circle formed by the center of the chain rollers
         outer_radius (float): size of the sprocket from center to tip of the teeth
         pitch_circumference (float): circumference of the sprocket at the pitch radius
-        cq_object (Workplane): cadquery sprocket object
 
     Example:
 
@@ -79,7 +81,7 @@ class Sprocket:
             >>> s = Sprocket(num_teeth=32)
             >>> print(s.pitch_radius)
             64.78458745735234
-            >>> s.cq_object.rotate((0,0,0),(0,0,1),10)
+            >>> s.rotate((0,0,0),(0,0,1),10)
 
     """
 
@@ -108,9 +110,10 @@ class Sprocket:
         return Sprocket.sprocket_circumference(self.num_teeth, self.chain_pitch)
 
     @property
-    def cq_object(self):
-        """A cadquery Workplane sprocket as defined by class attributes"""
-        return self._cq_object
+    def cq_object(self) -> cq.Compound:
+        """A cadquery Solid sprocket as defined by class attributes"""
+        warn("cq_object will be deprecated.", DeprecationWarning, stacklevel=2)
+        return Solid(self.wrapped)
 
     def __init__(
         self,
@@ -146,9 +149,16 @@ class Sprocket:
                 f"num_teeth must be an integer greater than 2 not {num_teeth}"
             )
         # Create the sprocket
-        self._cq_object = self._make_sprocket()
+        cq_object = self._make_sprocket()
 
-    def _make_sprocket(self) -> Workplane:
+        # Unwrap the Compound - it always gets generated but is unnecessary
+        # (possibly due to some cadquery internals that might change)
+        if isinstance(cq_object, Compound) and len(cq_object.Solids()) == 1:
+            super().__init__(cq_object.Solids()[0].wrapped)
+        else:
+            super().__init__(cq_object.wrapped)
+
+    def _make_sprocket(self) -> cq.Compound:
         """Create a new sprocket object as defined by the class attributes"""
         sprocket = (
             Workplane("XY")
@@ -190,8 +200,24 @@ class Sprocket:
         # Create a central bore
         if self.bore_diameter != 0:
             sprocket = sprocket.circle(self.bore_diameter / 2).cutThruAll()
+        return sprocket.val()
 
-        return sprocket
+    def copy(self) -> "Sprocket":
+        sprocket_copy = Sprocket(
+            self.num_teeth,
+            self.chain_pitch,
+            self.roller_diameter,
+            self.clearance,
+            self.thickness,
+            self.bolt_circle_diameter,
+            self.num_mount_bolts,
+            self.mount_bolt_diameter,
+            self.bore_diameter,
+        )
+        sprocket_copy.wrapped = BRepBuilderAPI_Copy(self.wrapped).Shape()
+        sprocket_copy.forConstruction = self.forConstruction
+        sprocket_copy.label = self.label
+        return sprocket_copy
 
     @staticmethod
     def sprocket_pitch_radius(num_teeth: int, chain_pitch: float) -> float:

@@ -15,7 +15,7 @@ sprocket_and_chain_tests.py                       141      1    99%
 """
 import math
 import unittest
-from cadquery import Vector
+from cadquery import Vector, Solid
 from cq_warehouse.sprocket import Sprocket
 from cq_warehouse.chain import Chain
 
@@ -144,12 +144,10 @@ class TestSprocketShape(unittest.TestCase):
             mount_bolt_diameter=8 * MM,
             bore_diameter=80 * MM,
         )
-        spkt_object = spkt.cq_object
-        self.assertTrue(spkt_object.val().isValid())
-        # self.assertEqual(spkt.hashCode(),2035876455)  # hashCode() isn't consistent
-        self.assertAlmostEqual(spkt_object.val().Area(), 16935.40667143173)
-        self.assertAlmostEqual(spkt_object.val().Volume(), 15851.936489869417)
-        self.assertEqual(len(spkt_object.val().Edges()), 591)
+        self.assertTrue(spkt.isValid())
+        self.assertAlmostEqual(spkt.Area(), 16935.40667143173)
+        self.assertAlmostEqual(spkt.Volume(), 15851.936489869417)
+        self.assertEqual(len(spkt.Edges()), 591)
         self.assertAlmostEqual(spkt.pitch_radius, 64.78458745735234)
         self.assertAlmostEqual(spkt.outer_radius, 66.76896245735234)
         self.assertAlmostEqual(spkt.pitch_circumference, 407.0535680437272)
@@ -159,14 +157,25 @@ class TestSprocketShape(unittest.TestCase):
         spkt = Sprocket(
             num_teeth=16, chain_pitch=0.5 * INCH, roller_diameter=0.49 * INCH
         )
-        spkt_object = spkt.cq_object
-        self.assertTrue(spkt_object.val().isValid())
-        self.assertAlmostEqual(spkt_object.val().Area(), 5475.870128515104)
-        self.assertAlmostEqual(spkt_object.val().Volume(), 5124.246302618558)
-        self.assertEqual(len(spkt_object.val().Edges()), 144)
+        self.assertTrue(spkt.isValid())
+        self.assertAlmostEqual(spkt.Area(), 5475.870128515104)
+        self.assertAlmostEqual(spkt.Volume(), 5124.246302618558)
+        self.assertEqual(len(spkt.Edges()), 144)
         self.assertAlmostEqual(spkt.pitch_radius, 32.54902618631712)
         self.assertAlmostEqual(spkt.outer_radius, 33.19993997888148)
         self.assertAlmostEqual(spkt.pitch_circumference, 204.51156309687133)
+
+    def test_deprecation(self):
+        spkt = Sprocket(
+            num_teeth=32,
+            bolt_circle_diameter=104 * MM,
+            num_mount_bolts=4,
+            mount_bolt_diameter=8 * MM,
+            bore_diameter=80 * MM,
+        )
+        with self.assertWarns(DeprecationWarning):
+            occt = spkt.cq_object
+            self.assertTrue(isinstance(occt, Solid))
 
 
 class TestChainShape(unittest.TestCase):
@@ -363,16 +372,15 @@ class TestChainMethods(unittest.TestCase):
         """Validate input parsing"""
         spkt0 = Sprocket(num_teeth=16)
         spkt1 = Sprocket(num_teeth=16)
-
         chain = Chain(
             spkt_teeth=[16, 16],
             spkt_locations=[Vector(-3 * INCH, 40, 50), Vector(+3 * INCH, 40, 50)],
             positive_chain_wrap=[True, True],
         )
         with self.assertRaises(ValueError):
-            chain.assemble_chain_transmission(spkt0.cq_object)
+            chain.assemble_chain_transmission(spkt0)
         with self.assertRaises(ValueError):
-            chain.assemble_chain_transmission([spkt0, spkt1.cq_object])
+            chain.assemble_chain_transmission([spkt0.wrapped, spkt1])
 
         """ Validate a transmission assembly composed of two sprockets and a chain """
         chain = Chain(
@@ -388,7 +396,7 @@ class TestChainMethods(unittest.TestCase):
         self.assertTupleAlmostEquals(chain.chain_angles[0], (0, 180), 7)
         self.assertAlmostEqual(chain.spkt_initial_rotation[0], 11.25, 7)
         transmission = (
-            chain.assemble_chain_transmission([spkt0.cq_object, spkt1.cq_object])
+            chain.assemble_chain_transmission([spkt0, spkt1])
             .rotate((1, 0, 0), 90)
             .translate((0, 0, -40))
         )

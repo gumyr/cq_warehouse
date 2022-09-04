@@ -26,10 +26,13 @@ license:
 
 """
 import re
+from warnings import warn
 from abc import ABC, abstractmethod
 from typing import Literal, Optional, Tuple, List
 from math import sin, cos, tan, radians, pi
 import cadquery as cq
+from cadquery import Solid, Compound
+from OCP.TopoDS import TopoDS_Shape
 
 # from functools import cached_property, cache
 
@@ -53,7 +56,7 @@ def imperial_str_to_float(measure: str) -> float:
     return result
 
 
-class Thread:
+class Thread(Solid):
     """Helical thread
 
     The most general thread class used to build all of the other threads.
@@ -85,9 +88,7 @@ class Thread:
                 into a nut
 
             Defaults to ("raw","raw").
-
-    Attributes:
-        cq_object: cadquery Solid object
+        simple: Stop at thread calculation, don't create thread. Defaults to False.
 
     Raises:
         ValueError: if end_finishes not in ["raw", "square", "fade", "chamfer"]:
@@ -100,14 +101,12 @@ class Thread:
         self.tooth_height in self.pitch/4"""
         if self.external:
             radius = (
-                # self.apex_radius - t * self.tooth_height if apex else self.root_radius
                 self.apex_radius - sin(t * pi / 2) * self.tooth_height
                 if apex
                 else self.root_radius
             )
         else:
             radius = (
-                # self.apex_radius + t * self.tooth_height if apex else self.root_radius
                 self.apex_radius + sin(t * pi / 2) * self.tooth_height
                 if apex
                 else self.root_radius
@@ -121,34 +120,8 @@ class Thread:
     @property
     def cq_object(self):
         """A cadquery Solid thread as defined by class attributes"""
-        # Create base cylindrical thread
-        number_faded_ends = self.end_finishes.count("fade")
-        cylindrical_thread_length = self.length + self.pitch * (
-            1 - 1 * number_faded_ends
-        )
-        if self.end_finishes[0] == "fade":
-            cylindrical_thread_displacement = self.pitch / 2
-        else:
-            cylindrical_thread_displacement = -self.pitch / 2
-
-        # Either create a cylindrical thread for further processing
-        # or create a cylindrical thread segment with faded ends
-        if number_faded_ends == 0:
-            self._cq_object = self.make_thread_solid(
-                cylindrical_thread_length
-            ).translate((0, 0, cylindrical_thread_displacement))
-        else:
-            self.make_thread_with_faded_ends(
-                number_faded_ends,
-                cylindrical_thread_length,
-                cylindrical_thread_displacement,
-            )
-
-        # Square off ends if requested
-        self.square_off_ends()
-        # Chamfer ends if requested
-        self.chamfer_ends()
-        return self._cq_object
+        warn("cq_object will be deprecated.", DeprecationWarning, stacklevel=2)
+        return Solid(self.wrapped)
 
     def __init__(
         self,
@@ -165,6 +138,7 @@ class Thread:
             Literal["raw", "square", "fade", "chamfer"],
             Literal["raw", "square", "fade", "chamfer"],
         ] = ("raw", "raw"),
+        simple: bool = False,
     ):
         """Store the parameters and create the thread object"""
         for finish in end_finishes:
@@ -175,7 +149,7 @@ class Thread:
         self.external = apex_radius > root_radius
         self.apex_radius = apex_radius
         self.apex_width = apex_width
-        # Unfortunately, when creating "fade" ends inacuraries in parametric curve calculations
+        # Unfortunately, when creating "fade" ends inaccuracies in parametric curve calculations
         # can result in a gap which causes the OCCT core to fail when combining with other
         # object (like the core of the thread). To avoid this, subtract (or add) a fudge factor
         # to the root radius to make it small enough to intersect the given radii.
@@ -188,6 +162,44 @@ class Thread:
         self.end_finishes = end_finishes
         self.tooth_height = abs(self.apex_radius - self.root_radius)
         self.taper = 360 if taper_angle is None else taper_angle
+        self.simple = simple
+
+        if not simple:
+            # Create base cylindrical thread
+            number_faded_ends = self.end_finishes.count("fade")
+            cylindrical_thread_length = self.length + self.pitch * (
+                1 - 1 * number_faded_ends
+            )
+            if self.end_finishes[0] == "fade":
+                cylindrical_thread_displacement = self.pitch / 2
+            else:
+                cylindrical_thread_displacement = -self.pitch / 2
+
+            # Either create a cylindrical thread for further processing
+            # or create a cylindrical thread segment with faded ends
+            if number_faded_ends == 0:
+                cq_object = self.make_thread_solid(cylindrical_thread_length).translate(
+                    (0, 0, cylindrical_thread_displacement)
+                )
+            else:
+                cq_object = self.make_thread_with_faded_ends(
+                    number_faded_ends,
+                    cylindrical_thread_length,
+                    cylindrical_thread_displacement,
+                )
+
+            # Square off ends if requested
+            cq_object = self.square_off_ends(cq_object)
+            # Chamfer ends if requested
+            cq_object = self.chamfer_ends(cq_object)
+            if isinstance(cq_object, Compound) and len(cq_object.Solids()) == 1:
+                super().__init__(cq_object.Solids()[0].wrapped)
+            else:
+                super().__init__(cq_object.wrapped)
+        else:
+            # Initialize with a valid shape then nullify
+            super().__init__(Solid.makeBox(1, 1, 1).wrapped)
+            self.wrapped = TopoDS_Shape()
 
     def make_thread_with_faded_ends(
         self,
@@ -253,11 +265,12 @@ class Thread:
             thread_shell = cq.Shell.makeShell(
                 thread_faces + fade_faces_top + [end_faces[0]]
             )
-        self._cq_object = cq.Solid.makeSolid(thread_shell)
+        return cq.Solid.makeSolid(thread_shell)
 
-    def square_off_ends(self):
+    def square_off_ends(self, cq_object: Solid):
         """Square off the ends of the thread"""
 
+        squared = cq_object
         if self.end_finishes.count("square") != 0:
             # Note: box_size must be > max(apex,root) radius or the core doesn't cut correctly
             half_box_size = 2 * max(self.apex_radius, self.root_radius)
@@ -270,13 +283,15 @@ class Thread:
             )
             for i in range(2):
                 if self.end_finishes[i] == "square":
-                    self._cq_object = self._cq_object.cut(
+                    squared = cq_object.cut(
                         cutter.translate(cq.Vector(0, 0, 2 * i * self.length))
                     )
+        return squared
 
-    def chamfer_ends(self):
+    def chamfer_ends(self, cq_object: Solid):
         """Chamfer the ends of the thread"""
 
+        chamfered = cq_object
         if self.end_finishes.count("chamfer") != 0:
             cutter = (
                 cq.Workplane("XY")
@@ -293,7 +308,8 @@ class Thread:
                         .edges(cq.selectors.RadiusNthSelector(edge_radius_selector))
                         .chamfer(self.tooth_height * 0.5, self.tooth_height * 0.75)
                     )
-            self._cq_object = self._cq_object.intersect(cutter.val())
+            chamfered = cq_object.intersect(cutter.val())
+        return chamfered
 
     def make_thread_faces(
         self, length: float, fade_helix: bool = False, asymmetric_flip: bool = False
@@ -330,6 +346,7 @@ class Thread:
             ).translate((0, 0, i * self.apex_width + local_apex_offset))
             for i in [-0.5, 0.5]
         ]
+        assert apex_helix_wires[0].isValid()
         root_helix_wires = [
             cq.Workplane("XY")
             .parametricCurve(
@@ -388,7 +405,7 @@ class Thread:
         return thread_solid
 
 
-class IsoThread:
+class IsoThread(Solid):
     """ISO Standard Thread
 
     Both external and internal ISO standard 60° threads as shown in
@@ -396,7 +413,8 @@ class IsoThread:
 
     .. image:: https://upload.wikimedia.org/wikipedia/commons/4/4b/ISO_and_UTS_Thread_Dimensions.svg
 
-    The following is an example of an internal thread with a chamfered end as might be found inside a nut:
+    The following is an example of an internal thread with a chamfered end as might
+    be found inside a nut:
 
     .. image:: internal_iso_thread.png
 
@@ -421,12 +439,12 @@ class IsoThread:
                 into a nut
 
             Defaults to ("fade", "square").
+        simple: Stop at thread calculation, don't create thread. Defaults to False.
 
     Attributes:
         thread_angle (int): 60 degrees
         h_parameter (float): Value of `h` as shown in the thread diagram
         min_radius (float): Inside radius of the thread diagram
-        cq_object (Solid): The generated cadquery Solid thread object
 
     Raises:
         ValueError: if hand not in ["right", "left"]:
@@ -445,9 +463,10 @@ class IsoThread:
         return (self.major_diameter - 2 * (5 / 8) * self.h_parameter) / 2
 
     @property
-    def cq_object(self) -> cq.Solid:
+    def cq_object(self):
         """A cadquery Solid thread as defined by class attributes"""
-        return self._cq_object
+        warn("cq_object will be deprecated.", DeprecationWarning, stacklevel=2)
+        return Solid(self.wrapped)
 
     def __init__(
         self,
@@ -460,6 +479,7 @@ class IsoThread:
             Literal["raw", "square", "fade", "chamfer"],
             Literal["raw", "square", "fade", "chamfer"],
         ] = ("fade", "square"),
+        simple: bool = False,
     ):
 
         self.major_diameter = major_diameter
@@ -476,11 +496,12 @@ class IsoThread:
                     'end_finishes invalid, must be tuple() of "raw, square, taper, or chamfer"'
                 )
         self.end_finishes = end_finishes
+        self.simple = simple
         self.apex_radius = self.major_diameter / 2 if external else self.min_radius
         apex_width = self.pitch / 8 if external else self.pitch / 4
         self.root_radius = self.min_radius if external else self.major_diameter / 2
         root_width = 3 * self.pitch / 4 if external else 7 * self.pitch / 8
-        self._cq_object = Thread(
+        cq_object = Thread(
             apex_radius=self.apex_radius,
             apex_width=apex_width,
             root_radius=self.root_radius,
@@ -489,10 +510,17 @@ class IsoThread:
             length=self.length,
             end_finishes=self.end_finishes,
             hand=self.hand,
-        ).cq_object
+            simple=simple,
+        )
+        if simple:
+            # Initialize with a valid shape then nullify
+            super().__init__(Solid.makeBox(1, 1, 1).wrapped)
+            self.wrapped = TopoDS_Shape()
+        else:
+            super().__init__(cq_object.wrapped)
 
 
-class TrapezoidalThread(ABC):
+class TrapezoidalThread(ABC, Solid):
     """Trapezoidal Thread Base Class
 
     Trapezoidal Thread base class for Metric and Acme derived classes
@@ -531,24 +559,24 @@ class TrapezoidalThread(ABC):
         thread_angle (int): thread angle in degrees
         diameter (float): thread diameter
         pitch (float): thread pitch
-        cq_object (Solid): The generated cadquery Solid thread object
 
     """
 
     @property
-    def cq_object(self) -> cq.Solid:
+    def cq_object(self):
         """A cadquery Solid thread as defined by class attributes"""
-        return self._cq_object
+        warn("cq_object will be deprecated.", DeprecationWarning, stacklevel=2)
+        return Solid(self.wrapped)
 
     @property
     @abstractmethod
-    def thread_angle(self) -> float:
+    def thread_angle(self) -> float:  # pragma: no cover
         """The thread angle in degrees"""
         return NotImplementedError
 
     @classmethod
     @abstractmethod
-    def parse_size(cls, size: str) -> Tuple[float, float]:
+    def parse_size(cls, size: str) -> Tuple[float, float]:  # pragma: no cover
         """Convert the provided size into a tuple of diameter and pitch"""
         return NotImplementedError
 
@@ -586,7 +614,7 @@ class TrapezoidalThread(ABC):
                     'end_finishes invalid, must be tuple() of "raw, square, taper, or chamfer"'
                 )
         self.end_finishes = end_finishes
-        self._cq_object = Thread(
+        cq_object = Thread(
             apex_radius=self.apex_radius,
             apex_width=apex_width,
             root_radius=self.root_radius,
@@ -595,7 +623,8 @@ class TrapezoidalThread(ABC):
             length=self.length,
             end_finishes=self.end_finishes,
             hand=self.hand,
-        ).cq_object
+        )
+        super().__init__(cq_object.wrapped)
 
 
 class AcmeThread(TrapezoidalThread):
@@ -637,7 +666,6 @@ class AcmeThread(TrapezoidalThread):
         thread_angle (int): thread angle in degrees
         diameter (float): thread diameter
         pitch (float): thread pitch
-        cq_object (Solid): The generated cadquery Solid thread object
 
     """
 
@@ -711,7 +739,6 @@ class MetricTrapezoidalThread(TrapezoidalThread):
         thread_angle (int): thread angle in degrees
         diameter (float): thread diameter
         pitch (float): thread pitch
-        cq_object (Solid): The generated cadquery Solid thread object
     """
 
     # Turn off black auto-format for this array as it will be spread over hundreds of lines
@@ -765,7 +792,7 @@ class MetricTrapezoidalThread(TrapezoidalThread):
         return (diameter, pitch)
 
 
-class PlasticBottleThread:
+class PlasticBottleThread(Solid):
     """ASTM D2911 Plastic Bottle Thread
 
     The `ASTM D2911 Standard <https://www.astm.org/d2911-10.html>`_ Plastic Bottle Thread.
@@ -773,12 +800,14 @@ class PlasticBottleThread:
     L Style:
         All-Purpose Thread - trapezoidal shape with 30° shoulders, metal or platsic closures
     M Style:
-        Modified Buttress Thread - asymmetric shape with 10° and 40/45/50° shoulders, plastic closures
+        Modified Buttress Thread - asymmetric shape with 10° and 40/45/50°
+        shoulders, plastic closures
 
     .. image:: plasticThread.png
 
     Args:
-        size (str): as defined by the ASTM is specified as [L|M][diameter(mm)]SP[100|103|110|200|400|410|415|425|444]
+        size (str): as defined by the ASTM is specified as
+            [L|M][diameter(mm)]SP[100|103|110|200|400|410|415|425|444]
         external (bool, optional): external or internal thread selector. Defaults to True.
         hand (Literal[, optional): twist direction. Defaults to "right".
         manufacturingCompensation (float, optional): used to compensate for over-extrusion of 3D
@@ -788,12 +817,10 @@ class PlasticBottleThread:
 
     Raises:
         ValueError: hand must be one of "right" or "left"
-        ValueError: size invalid, must match [L|M][diameter(mm)]SP[100|103|110|200|400|410|415:425|444]
+        ValueError: size invalid, must match
+            [L|M][diameter(mm)]SP[100|103|110|200|400|410|415:425|444]
         ValueError: finish invalid
         ValueError: diameter invalid
-
-    Attributes:
-        cq_object (Solid): cadquery thread object
 
     Example:
         .. code-block:: python
@@ -891,9 +918,10 @@ class PlasticBottleThread:
     }
 
     @property
-    def cq_object(self) -> cq.Solid:
+    def cq_object(self):
         """A cadquery Solid thread as defined by class attributes"""
-        return self._cq_object
+        warn("cq_object will be deprecated.", DeprecationWarning, stacklevel=2)
+        return Solid(self.wrapped)
 
     def __init__(
         self,
@@ -910,18 +938,21 @@ class PlasticBottleThread:
         size_match = re.match(r"([LM])(\d+)SP(\d+)", size)
         if not size_match:
             raise ValueError(
-                "size invalid, must match [L|M][diameter(mm)]SP[100|103|110|200|400|410|415:425|444]"
+                "size invalid, must match \
+                    [L|M][diameter(mm)]SP[100|103|110|200|400|410|415:425|444]"
             )
         self.style = size_match.group(1)
         self.diameter = int(size_match.group(2))
         self.finish = int(size_match.group(3))
-        if not self.finish in PlasticBottleThread.finish_data.keys():
+        if self.finish not in PlasticBottleThread.finish_data.keys():
             raise ValueError(
-                f"finish ({self.finish}) invalid, must be one of {list(PlasticBottleThread.finish_data.keys())}"
+                f"finish ({self.finish}) invalid, must be one of"
+                f" {list(PlasticBottleThread.finish_data.keys())}"
             )
         if not self.diameter in PlasticBottleThread.finish_data[self.finish][1]:
             raise ValueError(
-                f"diameter ({self.diameter}) invalid, must be one of {PlasticBottleThread.finish_data[self.finish][1]}"
+                f"diameter ({self.diameter}) invalid, must be one"
+                f" of {PlasticBottleThread.finish_data[self.finish][1]}"
             )
         (diameter_max, diameter_min, self.tpi) = PlasticBottleThread.thread_dimensions[
             self.diameter
@@ -958,7 +989,7 @@ class PlasticBottleThread:
         self.length = (
             PlasticBottleThread.finish_data[self.finish][0] + 0.75
         ) * self.pitch
-        self._cq_object = Thread(
+        cq_object = Thread(
             apex_radius=self.apex_radius,
             apex_width=self.apex_width,
             root_radius=self.root_radius,
@@ -968,4 +999,5 @@ class PlasticBottleThread:
             apex_offset=self.apex_offset,
             hand=self.hand,
             end_finishes=("fade", "fade"),
-        ).cq_object
+        )
+        super().__init__(cq_object.wrapped)

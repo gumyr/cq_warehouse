@@ -507,7 +507,7 @@ class Chain:
             )
 
     def assemble_chain_transmission(
-        self, spkts: list[Union[Shape, Workplane]]
+        self, spkts: list[Sprocket]
     ) -> Assembly:
         """Build Socket/Chain Assembly
 
@@ -520,9 +520,9 @@ class Chain:
             Chain wrapped around sprockets
         """
         if not isinstance(spkts, list) or not all(
-            isinstance(s, (Shape, Workplane)) for s in spkts
+            isinstance(s, Sprocket) for s in spkts
         ):
-            raise ValueError("spkts must be a list of Solid or Workplane")
+            raise ValueError("spkts must be a list of Sprocket")
 
         transmission = Assembly(None, name="transmission")
 
@@ -530,7 +530,6 @@ class Chain:
             spktname = "spkt" + str(spkt_num)
             transmission.add(
                 spkt.rotate(
-                    # (0, 0, 0), (0, 0, 1), self._spkt_initial_rotation[spkt_num]
                     (0, 0, 0),
                     self.spkt_normal,
                     self._spkt_initial_rotation[spkt_num],

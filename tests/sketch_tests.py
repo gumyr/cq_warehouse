@@ -2,7 +2,7 @@
 
 Extensions Sketch Unit Tests
 
-name: finger_joint_tests.py
+name: sketch_tests.py
 by:   Gumyr
 date: June 10th 2022
 

@@ -59,6 +59,12 @@ class TestBearings(unittest.TestCase):
         with self.assertRaises(ValueError):
             SingleRowDeepGrooveBallBearing(size="M8-22-7", bearing_type="common")
 
+    def test_deprecation(self):
+        bearing = SingleRowDeepGrooveBallBearing(size="M8-22-7", bearing_type="SKT")
+        with self.assertWarns(DeprecationWarning):
+            occt = bearing.cq_object
+            self.assertTrue(isinstance(occt, Compound))
+
     def test_size(self):
         """Validate diameter and thickness of bearings"""
         for bearing_class in Bearing.__subclasses__():
@@ -75,7 +81,8 @@ class TestBearings(unittest.TestCase):
                         self.assertGreater(bearing.outer_diameter, 0)
                         self.assertGreater(bearing.thickness, 0)
                         self.assertGreater(len(bearing.info), 0)
-                        self.assertGreater(len(bearing.cq_object.children), 0)
+                        # self.assertGreater(len(bearing.children), 0)
+                        self.assertGreater(len(bearing.Solids()), 0)
 
                         # Check the hole data if available
                         try:
@@ -117,4 +124,4 @@ class TestBearings(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(failfast=True)

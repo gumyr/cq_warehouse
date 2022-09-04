@@ -68,6 +68,7 @@ Table Of Contents
     :maxdepth: 2
 
     installation.rst
+    subclassing.rst
     bearing.rst
     chain.rst
     drafting.rst

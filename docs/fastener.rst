@@ -88,8 +88,12 @@ without dramatically impacting performance.
 All of the fasteners default to right-handed thread but each of them provide a ``hand`` string
 parameter which can either be ``"right"`` or ``"left"``.
 
-All of the fastener classes provide a ``cq_object`` instance variable which contains the cadquery
-object.
+.. deprecated:: 0.8.0
+
+	Previous versions of cq_warehouse required the used of a ``cq_object`` instance variable to access
+	the CadQuery cad object. Currently all fastener objects are a sub-class of the CadQuery Solid
+	object and therefore can be used as any other Solid object without referencing ``cq_object``.
+	Future versions of cq_warehouse will remove ``cq_object`` entirely.
 
 The following sections describe each of the provided classes.
 

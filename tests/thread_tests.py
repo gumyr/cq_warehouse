@@ -27,7 +27,8 @@ license:
 """
 import unittest
 from cq_warehouse.thread import *
-
+import cq_warehouse.extensions
+from OCP.TopoDS import TopoDS_Shape
 
 MM = 1
 IN = 25.4 * MM
@@ -56,6 +57,19 @@ class TestThread(unittest.TestCase):
                 end_finishes=("not", "supported"),
             )
 
+    def test_deprecation(self):
+        thread = Thread(
+            apex_radius=10,
+            apex_width=2,
+            root_radius=8,
+            root_width=3,
+            pitch=2,
+            length=20,
+        )
+        with self.assertWarns(DeprecationWarning):
+            occt = thread.cq_object
+            self.assertTrue(isinstance(occt, Solid))
+
 
 class TestIsoThread(unittest.TestCase):
     end_finishes = ["raw", "fade", "square", "chamfer"]
@@ -74,7 +88,7 @@ class TestIsoThread(unittest.TestCase):
                         end_finishes=(end0, end1),
                         hand="right",
                     )
-                    self.assertTrue(thread.cq_object.isValid())
+                    self.assertTrue(thread.isValid())
 
     def test_interior_thread(self):
         """Simple validity check for an interior thread"""
@@ -90,7 +104,7 @@ class TestIsoThread(unittest.TestCase):
                         end_finishes=(end0, end1),
                         hand="left" if end0 == end1 else "right",
                     )
-                    self.assertTrue(thread.cq_object.isValid())
+                    self.assertTrue(thread.isValid())
 
     def test_parsing(self):
 
@@ -100,6 +114,18 @@ class TestIsoThread(unittest.TestCase):
             IsoThread(
                 major_diameter=5, pitch=1, length=5, end_finishes=("not", "supported")
             )
+
+    def test_deprecation(self):
+        thread = IsoThread(major_diameter=6 * MM, pitch=1 * MM, length=8 * MM)
+        with self.assertWarns(DeprecationWarning):
+            occt = thread.cq_object
+            self.assertTrue(isinstance(occt, Solid))
+
+    def test_simple(self):
+        thread = IsoThread(
+            major_diameter=6 * MM, pitch=1 * MM, length=8 * MM, simple=True
+        )
+        self.assertTrue(thread.wrapped.IsNull())
 
 
 class TestAcmeThread(unittest.TestCase):
@@ -111,7 +137,7 @@ class TestAcmeThread(unittest.TestCase):
             length=1 * IN,
             external=True,
         )
-        self.assertTrue(acme_thread.cq_object.isValid())
+        self.assertTrue(acme_thread.isValid())
 
     def test_interior_thread(self):
         """Simple validity check for an interior thread"""
@@ -121,7 +147,7 @@ class TestAcmeThread(unittest.TestCase):
             length=1 * IN,
             external=False,
         )
-        self.assertTrue(acme_thread.cq_object.isValid())
+        self.assertTrue(acme_thread.isValid())
 
     def test_sizes(self):
         """Validate sizes list if created"""
@@ -136,6 +162,16 @@ class TestAcmeThread(unittest.TestCase):
         with self.assertRaises(ValueError):
             AcmeThread(size="1 1/4", length=1 * IN, end_finishes=("not", "supported"))
 
+    def test_deprecation(self):
+        acme_thread = AcmeThread(
+            size="1 1/4",
+            length=1 * IN,
+            external=False,
+        )
+        with self.assertWarns(DeprecationWarning):
+            occt = acme_thread.cq_object
+            self.assertTrue(isinstance(occt, Solid))
+
 
 class TestMetricTrapezoidalThread(unittest.TestCase):
     def test_exterior_thread(self):
@@ -146,7 +182,7 @@ class TestMetricTrapezoidalThread(unittest.TestCase):
             length=10 * MM,
             external=True,
         )
-        self.assertTrue(trap_thread.cq_object.isValid())
+        self.assertTrue(trap_thread.isValid())
 
     def test_interior_thread(self):
         """Simple validity check for an interior thread"""
@@ -156,7 +192,7 @@ class TestMetricTrapezoidalThread(unittest.TestCase):
             length=100 * MM,
             external=False,
         )
-        self.assertTrue(trap_thread.cq_object.isValid())
+        self.assertTrue(trap_thread.isValid())
 
     def test_parsing(self):
         with self.assertRaises(ValueError):
@@ -175,13 +211,22 @@ class TestPlasticBottleThread(unittest.TestCase):
             size="M38SP444",
             external=True,
         )
-        self.assertTrue(bottle_thread.cq_object.isValid())
+        self.assertTrue(bottle_thread.isValid())
+
+    def test_deprecation(self):
+        bottle_thread = PlasticBottleThread(
+            size="M38SP444",
+            external=True,
+        )
+        with self.assertWarns(DeprecationWarning):
+            occt = bottle_thread.cq_object
+            self.assertTrue(isinstance(occt, Solid))
 
     def test_exterior_left_thread(self):
         """Simple validity check for an exterior thread"""
 
         bottle_thread = PlasticBottleThread(size="M38SP444", external=True, hand="left")
-        self.assertTrue(bottle_thread.cq_object.isValid())
+        self.assertTrue(bottle_thread.isValid())
 
     def test_interior_thread(self):
         """Simple validity check for an interior thread"""
@@ -189,7 +234,7 @@ class TestPlasticBottleThread(unittest.TestCase):
         bottle_thread = PlasticBottleThread(
             size="L18SP400", external=False, manufacturingCompensation=0.2
         )
-        self.assertTrue(bottle_thread.cq_object.isValid())
+        self.assertTrue(bottle_thread.isValid())
 
     def test_parsing(self):
         """Validate sizes"""
@@ -206,4 +251,4 @@ class TestPlasticBottleThread(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(failfast=True)
