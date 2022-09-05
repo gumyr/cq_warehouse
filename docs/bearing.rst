@@ -40,8 +40,12 @@ add new sizes or entirely new types of bearings.
 Both metric and imperial sized standard bearings are directly supported by the bearing sub-package
 although the majority of the bearings currently implemented are metric.
 
-All of the fastener classes provide a ``cq_object`` instance variable which contains the cadquery
-object.
+.. deprecated:: 0.8.0
+
+	Previous versions of cq_warehouse required the used of a ``cq_object`` instance variable to access
+	the CadQuery cad object. Currently all bearing objects are a sub-class of the CadQuery Compound
+	object and therefore can be used as any other Compound object without referencing ``cq_object``.
+	Future versions of cq_warehouse will remove ``cq_object`` entirely.
 
 The following sections describe each of the provided classes.
 

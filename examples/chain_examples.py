@@ -72,14 +72,14 @@ if test_case == TestCases.TWO_SPROCKETS:
         spkt_locations=[Vector(-5 * INCH, 0, 0), Vector(+5 * INCH, 0, 0)],
     )
     sprocket_transmission = two_sprocket_chain.assemble_chain_transmission(
-        spkts=[spkt32.cq_object, spkt32.cq_object]
+        spkts=[spkt32, spkt32]
     )
 
 elif test_case == TestCases.TWO_SPROCKETS_ON_YZ:
     #
     # Create a set of example transmissions
     print("Two sprockets on YZ plane example...")
-    spkt32_y = spkt32.cq_object.rotate((0, 0, 0), (0, 1, 0), 90)
+    spkt32_y = spkt32.rotate((0, 0, 0), (0, 1, 0), 90)
     two_sprocket_chain = Chain(
         spkt_teeth=[32, 32],
         positive_chain_wrap=[True, True],
@@ -108,7 +108,7 @@ elif test_case == TestCases.BICYCLE_DERAILUER:
         ],
     )
     sprocket_transmission = derailleur_chain.assemble_chain_transmission(
-        spkts=[spkt32.cq_object, spkt10.cq_object, spkt10.cq_object, spkt16.cq_object]
+        spkts=[spkt32, spkt10, spkt10, spkt16]
     )
     # sprocket_transmission.save("deraileur.step")
 
@@ -125,9 +125,7 @@ elif test_case == TestCases.OBLIQUE_PLANE:
     )
     # Align the sprockets to the oblique plane defined by the spkt locations
     spkts_aligned = [
-        s.cq_object.val()._apply_transform(
-            derailleur_chain.chain_plane.rG.wrapped.Trsf()
-        )
+        s._apply_transform(derailleur_chain.chain_plane.rG.wrapped.Trsf())
         for s in [spkt32, spkt10, spkt16]
     ]
     sprocket_transmission = derailleur_chain.assemble_chain_transmission(
@@ -151,13 +149,7 @@ elif test_case == TestCases.FIVE_SPROCKET:
         ],
     )
     sprocket_transmission = five_sprocket_chain.assemble_chain_transmission(
-        spkts=[
-            spkt32.cq_object,
-            spkt10.cq_object,
-            spkt10.cq_object,
-            spkt10.cq_object,
-            spkt16.cq_object,
-        ]
+        spkts=[spkt32, spkt10, spkt10, spkt10, spkt16]
     )
     # sprocket_transmission.save("five_sprocket.step")
 
@@ -170,9 +162,7 @@ elif test_case == TestCases.TRANSLATED_AND_ROTATED:
         spkt_locations=[(-5 * INCH, 0), (+5 * INCH, 0)],
     )
     sprocket_transmission = (
-        two_sprocket_chain.assemble_chain_transmission(
-            spkts=[spkt32.cq_object, spkt32.cq_object]
-        )
+        two_sprocket_chain.assemble_chain_transmission(spkts=[spkt32, spkt32])
         .rotate(axis=(0, 1, 1), angle=45)
         .translate((20, 20, 20))
     )

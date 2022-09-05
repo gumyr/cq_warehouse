@@ -30,12 +30,15 @@ license:
     limitations under the License.
 
 """
+from warnings import warn
 from abc import ABC, abstractmethod
 from typing import Literal, Tuple, Optional, List
 from math import sin, cos, tan, radians, pi, degrees, sqrt
 import csv
 import importlib.resources as pkg_resources
 import cadquery as cq
+from cadquery import Solid, Compound
+from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
 from cq_warehouse.thread import is_safe, imperial_str_to_float, IsoThread
 import cq_warehouse
 
@@ -354,7 +357,12 @@ def select_by_size_fn(cls, size: str) -> dict:
     return type_dict
 
 
-class Nut(ABC):
+def method_exists(cls, method: str) -> bool:
+    """Did the derived class create this method"""
+    return hasattr(cls, method) and callable(getattr(cls, method))
+
+
+class Nut(ABC, Solid):
     """Parametric Nut
 
     Base Class used to create standard threaded nuts
@@ -383,11 +391,10 @@ class Nut(ABC):
         nut_class (class): the derived class that created this nut
         nut_thickness (float): maximum thickness of the nut
         nut_diameter (float): maximum diameter of the nut
-        cq_object (Compound): cadquery Compound nut as defined by class attributes
 
     """
 
-    # Read clearance and tap hole dimesions tables
+    # Read clearance and tap hole dimensions tables
     # Close, Medium, Loose
     clearance_hole_drill_sizes = read_fastener_parameters_from_csv(
         "clearance_hole_sizes.csv"
@@ -442,24 +449,24 @@ class Nut(ABC):
     @property
     @classmethod
     @abstractmethod
-    def fastener_data(cls):
+    def fastener_data(cls):  # pragma: no cover
         """Each derived class must provide a fastener_data dictionary"""
         return NotImplementedError
 
     @abstractmethod
-    def nut_profile(self) -> cq.Workplane:
+    def nut_profile(self) -> cq.Workplane:  # pragma: no cover
         """Each derived class must provide the profile of the nut"""
         return NotImplementedError
 
     @abstractmethod
-    def nut_plan(self) -> cq.Workplane:
+    def nut_plan(self) -> cq.Workplane:  # pragma: no cover
         """Each derived class must provide the plan of the nut"""
         return NotImplementedError
 
     @abstractmethod
     def countersink_profile(
         self, fit: Literal["Close", "Normal", "Loose"]
-    ) -> cq.Workplane:
+    ) -> cq.Workplane:  # pragma: no cover
         """Each derived class must provide the profile of a countersink cutter"""
         return NotImplementedError
 
@@ -486,12 +493,12 @@ class Nut(ABC):
     @property
     def nut_thickness(self):
         """Calculate the maximum thickness of the nut"""
-        return cq.Workplane(self.cq_object).vertices(">Z").val().Z
+        return cq.Workplane(self).vertices(">Z").val().Z
 
     @property
     def nut_diameter(self):
         """Calculate the maximum diameter of the nut"""
-        vertices = cq.Workplane(self.cq_object).vertices().vals()
+        vertices = cq.Workplane(self).vertices().vals()
         radii = [
             (cq.Vector(0, 0, v.Z) - cq.Vector(v.toTuple())).Length for v in vertices
         ]
@@ -501,8 +508,9 @@ class Nut(ABC):
 
     @property
     def cq_object(self):
-        """A cadquery Compound nut as defined by class attributes"""
-        return self._cq_object
+        """A cadquery Solid nut as defined by class attributes"""
+        warn("cq_object will be deprecated.", DeprecationWarning, stacklevel=2)
+        return Solid(self.wrapped)
 
     def length_offset(self):
         """Screw only parameter"""
@@ -558,16 +566,20 @@ class Nut(ABC):
             raise ValueError(
                 f"{size} invalid, must be one of {self.sizes(self.fastener_type)}"
             ) from e
-        self._cq_object = self.make_nut().val()
+        if method_exists(self.__class__, "custom_make"):
+            cq_object = self.custom_make()
+        else:
+            cq_object = self.make_nut().val()
+
+        # Unwrap the Compound - it always gets generated but is unnecessary
+        # (possibly due to some cadquery internals that might change)
+        if isinstance(cq_object, Compound) and len(cq_object.Solids()) == 1:
+            super().__init__(cq_object.Solids()[0].wrapped)
+        else:
+            super().__init__(cq_object.wrapped)
 
     def make_nut(self) -> cq.Workplane:
         """Create a screw head from the 2D shapes defined in the derived class"""
-
-        def method_exists(method: str) -> bool:
-            """Did the derived class create this method"""
-            return hasattr(self.__class__, method) and callable(
-                getattr(self.__class__, method)
-            )
 
         # pylint: disable=no-member
         profile = self.nut_profile()
@@ -591,7 +603,7 @@ class Nut(ABC):
         nut = nut.intersect(nut_blank)
 
         # Add a flange as it exists outside of the head plan
-        if method_exists("flange_profile"):
+        if method_exists(self.__class__, "flange_profile"):
             flange = (
                 cq.Workplane("XZ")
                 .add(self.flange_profile().val())
@@ -618,7 +630,7 @@ class Nut(ABC):
                 end_finishes=("fade", "fade"),
                 hand=self.hand,
             )
-            nut = nut.union(thread.cq_object)
+            nut = nut.union(thread)
 
         return nut
 
@@ -719,16 +731,16 @@ class BradTeeNut(Nut):
 
     fastener_data = read_fastener_parameters_from_csv("brad_tee_nut_parameters.csv")
 
-    @property
-    def cq_object(self):
+    def custom_make(self):
         """A cadquery Compound nut as defined by class attributes"""
         brad = CounterSunkScrew(
             size=self.nut_data["brad_size"],
             length=2 * self.nut_data["c"],
             fastener_type="iso10642",
         )
+
         return (
-            cq.Workplane(self._cq_object)
+            self.make_nut()
             .faces(">Z")
             .workplane()
             .polarArray(self.nut_data["bcd"] / 2, 0, 360, self.nut_data["brad_num"])
@@ -927,8 +939,7 @@ class HeatSetNut(Nut):
         drill_sizes = read_drill_sizes()
         hole_radius = drill_sizes[self.nut_data["drill"].strip()] / 2
         heatset_volume = (
-            self.cq_object.Volume()
-            + self.nut_data["m"] * pi * (self.thread_diameter / 2) ** 2
+            self.Volume() + self.nut_data["m"] * pi * (self.thread_diameter / 2) ** 2
         )
         hole_volume = self.nut_data["m"] * pi * hole_radius**2
         return heatset_volume / hole_volume
@@ -1034,7 +1045,7 @@ class HeatSetNut(Nut):
         )
 
         # Finally create the Solid from the Shell
-        nut = cq.Workplane(cq.Solid.makeSolid(nut_shell))
+        nut = cq.Workplane(Solid.makeSolid(nut_shell))
 
         # Add the thread to the nut body
         if not self.simple:
@@ -1047,15 +1058,15 @@ class HeatSetNut(Nut):
                 end_finishes=("fade", "fade"),
                 hand=self.hand,
             )
-            nut = nut.union(thread.cq_object)
+            nut = nut.union(thread)
 
         return nut
 
-    def nut_profile(self):
+    def nut_profile(self):  # pragma: no cover
         """Not used but required by the abstract base class"""
         pass
 
-    def nut_plan(self):
+    def nut_plan(self):  # pragma: no cover
         """Not used but required by the abstract base class"""
         pass
 
@@ -1227,7 +1238,7 @@ class SquareNut(Nut):
         return cq.Workplane("XZ").rect(width / 2, m, centered=False)
 
 
-class Screw(ABC):
+class Screw(ABC, Solid):
     """Parametric Screw
 
     Base class for a set of threaded screws or bolts
@@ -1247,7 +1258,7 @@ class Screw(ABC):
         ValueError: invalid hand, must be one of 'left' or 'right'
         ValueError: invalid size
 
-    Each screw instance creates a set of properties that provide the Compound CAD object as
+    Each screw instance creates a set of properties that provide the Solid CAD object as
     well as valuable parameters, as follows (values intended for internal use are not shown):
 
     Attributes:
@@ -1261,8 +1272,6 @@ class Screw(ABC):
         head_height (float): maximum height of the screw head
         head_diameter (float): maximum diameter of the screw head
         head (Solid): cadquery Solid screw head as defined by class attributes
-        cq_object (Compound): cadquery Compound nut as defined by class attributes
-
     """
 
     # Read clearance and tap hole dimesions tables
@@ -1318,14 +1327,14 @@ class Screw(ABC):
     @property
     @classmethod
     @abstractmethod
-    def fastener_data(cls):
+    def fastener_data(cls):  # pragma: no cover
         """Each derived class must provide a fastener_data dictionary"""
         return NotImplementedError
 
     @abstractmethod
     def countersink_profile(
         self, fit: Literal["Close", "Normal", "Loose"]
-    ) -> cq.Workplane:
+    ) -> cq.Workplane:  # pragma: no cover
         """Each derived class must provide the profile of a countersink cutter"""
         return NotImplementedError
 
@@ -1398,36 +1407,10 @@ class Screw(ABC):
         return type(self).__name__
 
     @property
-    def head_height(self):
-        """Calculate the maximum height of the head"""
-        if self.head is None:
-            result = 0
-        else:
-            result = self.head.vertices(">Z").val().Z - self.head.vertices("<Z").val().Z
-        return result
-
-    @property
-    def head_diameter(self):
-        """Calculate the maximum diameter of the head"""
-        if self.head is None:
-            result = 0
-        else:
-            vertices = self.head.vertices().vals()
-            radii = [
-                (cq.Vector(0, 0, v.Z) - cq.Vector(v.toTuple())).Length for v in vertices
-            ]
-            result = 2 * max(radii)
-        return result
-
-    @property
-    def head(self):
-        """cadquery Solid screw head as defined by class attributes"""
-        return self._head
-
-    @property
     def cq_object(self):
-        """A cadquery Compound screw as defined by class attributes"""
-        return self._cq_object
+        """A cadquery Solid screw as defined by class attributes"""
+        warn("cq_object will be deprecated.", DeprecationWarning, stacklevel=2)
+        return Solid(self.wrapped)
 
     # @cache
     def __init__(
@@ -1440,6 +1423,7 @@ class Screw(ABC):
         socket_clearance: Optional[float] = 6 * MM,
     ):
         """Parse Screw input parameters"""
+        self.size = size
         size_parts = size.strip().split("-")
         if not len(size_parts) == 2:
             raise ValueError(
@@ -1487,11 +1471,14 @@ class Screw(ABC):
         self.thread_length = length - length_offset
         head = self.make_head()
         if head is None:  # A fully custom screw
-            self._head = None
-            self._shank = None
-            self._cq_object = None
+            cq_object = None
+            self.head_height = 0
+            self.head_diameter = 0
         else:
-            self._head = head.translate((0, 0, -self.length_offset()))
+            head_bb = head.val().BoundingBox()
+            self.head_height = head_bb.zmax
+            self.head_diameter = 2 * max(head_bb.xmax, head_bb.ymax)
+            head = head.translate((0, 0, -self.length_offset()))
             thread = IsoThread(
                 major_diameter=self.thread_diameter,
                 pitch=self.thread_pitch,
@@ -1499,34 +1486,39 @@ class Screw(ABC):
                 external=True,
                 hand=self.hand,
                 end_finishes=("fade", "raw"),
+                simple=self.simple,
             )
 
-            self.shank = (
+            shank = (
                 cq.Workplane("XY")
                 .circle(thread.min_radius)
                 .extrude(self.thread_length)
                 .val()
             )
             if not self.simple:
-                self.shank = self.shank.fuse(thread.cq_object)
-            self._cq_object = self._head.union(
-                self.shank.translate(cq.Vector(0, 0, -self.length))
-            ).val()
+                shank = shank.fuse(thread)
+
+        if method_exists(self.__class__, "custom_make"):
+            cq_object = self.custom_make()
+        else:
+            cq_object = head.union(shank.translate(cq.Vector(0, 0, -self.length))).val()
+
+        # Unwrap the Compound - it always gets generated but is unnecessary
+        # (possibly due to some cadquery internals that might change)
+        if isinstance(cq_object, Compound) and len(cq_object.Solids()) == 1:
+            super().__init__(cq_object.Solids()[0].wrapped)
+        else:
+            super().__init__(cq_object.wrapped)
 
     def make_head(self) -> cq.Workplane:
         """Create a screw head from the 2D shapes defined in the derived class"""
 
-        def method_exists(method: str) -> bool:
-            """Did the derived class create this method"""
-            return hasattr(self.__class__, method) and callable(
-                getattr(self.__class__, method)
-            )
-
         # Determine what shape creation methods have been defined
-        has_profile = method_exists("head_profile")
-        has_plan = method_exists("head_plan")
-        has_recess = method_exists("head_recess")
-        has_flange = method_exists("flange_profile")
+        has_profile = method_exists(self.__class__, "head_profile")
+        has_plan = method_exists(self.__class__, "head_plan")
+        has_recess = method_exists(self.__class__, "head_recess")
+        has_flange = method_exists(self.__class__, "flange_profile")
+        # raise RuntimeError
         if has_profile:
             # pylint: disable=no-member
             profile = self.head_profile()
@@ -1553,7 +1545,7 @@ class Screw(ABC):
         if has_recess:
             # pylint: disable=no-member
             (recess_plan, recess_depth, recess_taper) = self.head_recess()
-            recess = cq.Solid.extrudeLinear(
+            recess = Solid.extrudeLinear(
                 recess_plan.val(),
                 [],
                 cq.Vector(0, 0, -recess_depth),
@@ -2067,18 +2059,7 @@ class SetScrew(Screw):
 
     fastener_data = read_fastener_parameters_from_csv("setscrew_parameters.csv")
 
-    @property
-    def head(self):
-        """Setscrews don't have heads"""
-        return None
-
-    @property
-    def shank(self):
-        """Setscrews don't have shanks"""
-        return None
-
-    @property
-    def cq_object(self):
+    def custom_make(self):
         """Setscrews are custom builds"""
         return self.make_setscrew()
 
@@ -2095,6 +2076,7 @@ class SetScrew(Screw):
             external=True,
             end_finishes=("fade", "fade"),
             hand=self.hand,
+            simple=self.simple,
         )
         core = (
             cq.Workplane("XY")
@@ -2111,7 +2093,7 @@ class SetScrew(Screw):
         if self.simple:
             ret = core
         else:
-            ret = core.union(thread.cq_object.translate((0, 0, -thread.length)))
+            ret = core.union(thread.translate((0, 0, -thread.length)))
 
         return ret.val()
 
@@ -2148,7 +2130,7 @@ class SocketHeadCapScrew(Screw):
     countersink_profile = Screw.default_countersink_profile
 
 
-class Washer(ABC):
+class Washer(ABC, Solid):
     """Parametric Washer
 
     Base class used to create standard washers
@@ -2161,7 +2143,7 @@ class Washer(ABC):
         ValueError: invalid fastener_type
         ValueError: invalid size
 
-    Each washer instance creates a set of properties that provide the Compound CAD object
+    Each washer instance creates a set of properties that provide the Solid CAD object
     as well as valuable parameters, as follows (values intended for internal use are not shown):
 
     Attributes:
@@ -2172,7 +2154,6 @@ class Washer(ABC):
         washer_class (str): display friendly class name
         washer_diameter (float): maximum diameter of the washer
         washer_thickness (float): maximum thickness of the washer
-        cq_object (Compound): cadquery Compound washer as defined by class attributes
 
     """
 
@@ -2196,12 +2177,12 @@ class Washer(ABC):
     @property
     @classmethod
     @abstractmethod
-    def fastener_data(cls):
+    def fastener_data(cls):  # pragma: no cover
         """Each derived class must provide a fastener_data dictionary"""
         return NotImplementedError
 
     @abstractmethod
-    def washer_profile(self) -> cq.Workplane:
+    def washer_profile(self) -> cq.Workplane:  # pragma: no cover
         """Each derived class must provide the profile of the washer"""
         return NotImplementedError
 
@@ -2233,12 +2214,12 @@ class Washer(ABC):
     @property
     def washer_thickness(self):
         """Calculate the maximum thickness of the washer"""
-        return cq.Workplane(self.cq_object).vertices(">Z").val().Z
+        return cq.Workplane(self).vertices(">Z").val().Z
 
     @property
     def washer_diameter(self):
         """Calculate the maximum diameter of the washer"""
-        vertices = cq.Workplane(self.cq_object).vertices().vals()
+        vertices = cq.Workplane(self).vertices().vals()
         radii = [
             (cq.Vector(0, 0, v.Z) - cq.Vector(v.toTuple())).Length for v in vertices
         ]
@@ -2246,8 +2227,9 @@ class Washer(ABC):
 
     @property
     def cq_object(self):
-        """A cadquery Compound screw as defined by class attributes"""
-        return self._cq_object
+        """A cadquery Solid washer as defined by class attributes"""
+        warn("cq_object will be deprecated.", DeprecationWarning, stacklevel=2)
+        return Solid(self.wrapped)
 
     # @cache
     def __init__(
@@ -2255,6 +2237,7 @@ class Washer(ABC):
         size: str,
         fastener_type: str,
     ):
+        self.size = size
         self.thread_size = size
         self.is_metric = self.thread_size[0] == "M"
         # Used only for clearance gap calculations
@@ -2277,7 +2260,9 @@ class Washer(ABC):
             raise ValueError(
                 f"{size} invalid, must be one of {self.sizes(self.fastener_type)}"
             ) from e
-        self._cq_object = self.make_washer().val()
+        cq_object = self.make_washer().val()
+
+        super().__init__(cq_object.wrapped)
 
     def make_washer(self) -> cq.Workplane:
         """Create a screw head from the 2D shapes defined in the derived class"""

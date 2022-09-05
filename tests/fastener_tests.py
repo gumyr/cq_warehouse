@@ -71,6 +71,22 @@ class TestWashers(unittest.TestCase):
     def test_select_by_size(self):
         self.assertGreater(len(Washer.select_by_size("M6")), 0)
 
+    def test_deprecation(self):
+        washer = PlainWasher(size="M6", fastener_type="iso7094")
+        with self.assertWarns(DeprecationWarning):
+            occt = washer.cq_object
+            self.assertTrue(isinstance(occt, Solid))
+
+    def test_transformation(self):
+        washer = PlainWasher(size="M6", fastener_type="iso7094")
+        washer_center = washer.Center()
+        washer = washer.translate(cq.Vector(100, 100, 100))
+        self.assertTupleAlmostEquals(
+            (washer_center + cq.Vector(100, 100, 100)).toTuple(),
+            washer.Center().toTuple(),
+            5,
+        )
+
     def test_size(self):
         """Validate diameter and thickness of washers"""
         for washer_class in Washer.__subclasses__():
@@ -144,6 +160,20 @@ class TestNuts(unittest.TestCase):
     def test_bad_hand(self):
         with self.assertRaises(ValueError):
             DomedCapNut(size="M6-1", fastener_type="din1587", hand="lefty")
+
+    def test_deprecation(self):
+        nut = DomedCapNut(size="M6-1", fastener_type="din1587")
+        with self.assertWarns(DeprecationWarning):
+            occt = nut.cq_object
+            self.assertTrue(isinstance(occt, Solid))
+
+    def test_transformation(self):
+        nut = DomedCapNut(size="M6-1", fastener_type="din1587")
+        nut_center = nut.Center()
+        nut = nut.translate(cq.Vector(100, 100, 100))
+        self.assertTupleAlmostEquals(
+            (nut_center + cq.Vector(100, 100, 100)).toTuple(), nut.Center().toTuple(), 5
+        )
 
     def test_size(self):
         """Validate diameter and thickness of nuts"""
@@ -237,9 +267,7 @@ class TestNuts(unittest.TestCase):
                     size=nut_size, fastener_type=nut_type, simple=True
                 )
                 nut = nut_class(size=nut_size, fastener_type=nut_type, simple=False)
-                self.assertLess(
-                    len(simple_nut.cq_object.Edges()), len(nut.cq_object.Edges())
-                )
+                self.assertLess(len(simple_nut.Edges()), len(nut.Edges()))
 
 
 class TestScrews(unittest.TestCase):
@@ -264,10 +292,26 @@ class TestScrews(unittest.TestCase):
                 size="M6-1", fastener_type="iso7380_1", length=20, hand="lefty"
             )
 
+    def test_deprecation(self):
+        screw = ButtonHeadScrew(size="M6-1", fastener_type="iso7380_1", length=20)
+        with self.assertWarns(DeprecationWarning):
+            occt = screw.cq_object
+            self.assertTrue(isinstance(occt, Solid))
+
     def test_screw_shorter_then_head(self):
         """Validate check for countersunk screws too short for their head"""
         with self.assertRaises(ValueError):
             CounterSunkScrew(size="M20-2.5", fastener_type="iso2009", length=10)
+
+    def test_transformation(self):
+        screw = CounterSunkScrew(size="M6-1", fastener_type="iso2009", length=30)
+        screw_center = screw.Center()
+        screw = screw.translate(cq.Vector(100, 100, 100))
+        self.assertTupleAlmostEquals(
+            (screw_center + cq.Vector(100, 100, 100)).toTuple(),
+            screw.Center().toTuple(),
+            5,
+        )
 
     def test_size(self):
         """Validate head diameter and height of screws"""
@@ -291,7 +335,8 @@ class TestScrews(unittest.TestCase):
                             length=15,
                             simple=simple_thread,
                         )
-                        if screw.head is None:
+                        # if screw.head is None:
+                        if screw_class == SetScrew:
                             self.assertEqual(screw.head_height, 0)
                             self.assertEqual(screw.head_diameter, 0)
                         else:
@@ -358,8 +403,8 @@ class TestScrews(unittest.TestCase):
         screw = SetScrew(size="M6-1", fastener_type="iso4026", length=5, simple=False)
         self.assertEqual(screw.head_diameter, 0)
         self.assertEqual(screw.head_height, 0)
-        self.assertIsNotNone(screw.cq_object)
-        self.assertIsNone(screw.shank)
+        self.assertIsNotNone(screw)
+        # self.assertIsNone(screw.shank)
         self.assertGreater(len(screw.nominal_lengths), 0)
 
     def test_missing_hole_data(self):
@@ -389,10 +434,8 @@ class TestScrews(unittest.TestCase):
                 screw = screw_class(
                     size=screw_size, fastener_type=screw_type, length=10, simple=False
                 )
-                self.assertLess(
-                    len(simple_screw.cq_object.Edges()), len(screw.cq_object.Edges())
-                )
+                self.assertLess(len(simple_screw.Edges()), len(screw.Edges()))
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(failfast=True)

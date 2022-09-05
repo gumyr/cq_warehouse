@@ -27,6 +27,7 @@ license:
     limitations under the License.
 
 """
+from warnings import warn
 from abc import ABC, abstractmethod
 from math import pi, radians, degrees, asin, sin
 from cadquery import (
@@ -50,7 +51,7 @@ from cq_warehouse.fastener import (
 MM = 1
 
 
-class Bearing(ABC):
+class Bearing(ABC, Compound):
     """Parametric Bearing
 
     Base Class used to create standard bearings
@@ -71,7 +72,7 @@ class Bearing(ABC):
             getattr(self.__class__, method)
         )
 
-    # Read clearance and tap hole dimesions tables
+    # Read clearance and tap hole dimensions tables
     # Close, Medium, Loose
     clearance_hole_drill_sizes = read_fastener_parameters_from_csv(
         "clearance_hole_sizes.csv"
@@ -110,7 +111,8 @@ class Bearing(ABC):
     @property
     def cq_object(self):
         """A cadquery Assembly bearing as defined by class attributes"""
-        return self._cq_object
+        warn("cq_object will be deprecated.", DeprecationWarning, stacklevel=2)
+        return Compound(self.wrapped)
 
     @classmethod
     def select_by_size(cls, size: str) -> dict:
@@ -215,9 +217,10 @@ class Bearing(ABC):
         self.roller_count = int(
             1.8 * pi * self.race_center_radius / self.roller_diameter
         )
-        self._cq_object = self.make_bearing()
+        cq_object = self.make_bearing()
+        super().__init__(cq_object.wrapped)
 
-    def make_bearing(self) -> Assembly:
+    def make_bearing(self) -> Compound:
         """Create bearing from the shapes defined in the derived class"""
 
         outer_race = (
@@ -227,14 +230,12 @@ class Bearing(ABC):
             Workplane("XZ").add(self.inner_race_section().val()).toPending().revolve()
         )
 
-        bearing = Assembly(outer_race)
-        bearing.add(inner_race)
+        bearing = outer_race.val()
+        bearing = bearing.fuse(inner_race.val())
         if self.capped:
-            bearing.add(self.cap(), color=Color("darkslategray"))
-            bearing.add(
-                self.cap().mirror("XY"),
-                loc=Location(Vector(0, 0, self.bearing_dict["B"])),
-                color=Color("darkslategray"),
+            bearing = bearing.fuse(self.cap().val())
+            bearing = bearing.fuse(
+                self.cap().mirror("XY").val().translate((0, 0, self.bearing_dict["B"])),
             )
         else:
             roller_locations = (
@@ -248,14 +249,15 @@ class Bearing(ABC):
                 .vals()
             )
             for roller_location in roller_locations:
-                bearing.add(
-                    self.roller(),
-                    loc=roller_location
-                    * Location(Vector(0, 0, self.bearing_dict["B"] / 2)),
+                bearing = bearing.fuse(
+                    self.roller().located(
+                        roller_location
+                        * Location(Vector(0, 0, self.bearing_dict["B"] / 2)),
+                    )
                 )
 
             if self.method_exists("cage"):
-                bearing.add(self.cage())
+                bearing = bearing.fuse(self.cage())
 
         return bearing
 

@@ -3,6 +3,8 @@ from fastener import Screw, Nut, Washer
 from bearing import Bearing
 class gp_Ax1:
     pass
+class gp_Trsf:
+    pass
 class T:
     pass
 class Vector:
@@ -1427,7 +1429,7 @@ class Edge(object):
 class Shape(object):
     def transformed(
         self, rotate: VectorLike = (0, 0, 0), offset: VectorLike = (0, 0, 0)
-    ) -> T:
+    ) -> "Shape":
         """Transform Shape
     
         Rotate and translate the Shape by the three angles (in degrees) and offset.
@@ -1438,7 +1440,68 @@ class Shape(object):
             offset (VectorLike, optional): 3-tuple to offset. Defaults to (0, 0, 0).
     
         Returns:
-            T: transformed object
+            Shape: transformed object
+        """
+    def _apply_transform(self: "Shape", Tr: gp_Trsf) -> "Shape":
+        """_apply_transform
+    
+        Apply the provided transformation matrix to a copy of Shape
+    
+        Args:
+            Tr (gp_Trsf): transformation matrix
+    
+        Returns:
+            Shape: copy of transformed Shape
+        """
+    def copy(self: "Shape") -> "Shape":
+        """
+        Creates a new object that is a copy of this object.
+        """
+    def clean(self: "Shape") -> "Shape":
+        """clean - remove internal edges"""
+    
+        upgrader = ShapeUpgrade_UnifySameDomain(self.wrapped, True, True, True)
+        upgrader.AllowInternalEdges(False)
+        upgrader.Build()
+        shape_copy: "Shape" = self.copy()
+        shape_copy.wrapped = downcast(upgrader.Shape())
+        return shape_copy
+    
+    
+    
+    def fix(self: "Shape") -> "Shape":
+        """fix - try to fix shape if not valid"""
+        if not self.isValid():
+            shape_copy: "Shape" = self.copy()
+            shape_copy.wrapped = fix(self.wrapped)
+    
+            return shape_copy
+    
+        return self
+    
+    
+    
+    def located(self: "Shape", loc: Location) -> "Shape":
+        """located
+    
+        Apply a location in absolute sense to a copy of self
+    
+        Args:
+            loc (Location): new absolute location
+    
+        Returns:
+            Shape: copy of Shape at location
+        """
+    def moved(self: "Shape", loc: Location) -> "Shape":
+        """moved
+    
+        Apply a location in relative sense (i.e. update current location) to a copy of self
+    
+        Args:
+            loc (Location): new location relative to current location
+    
+        Returns:
+            Shape: copy of Shape moved to relative location
         """
     def findIntersection(
         self, point: "Vector", direction: "Vector"

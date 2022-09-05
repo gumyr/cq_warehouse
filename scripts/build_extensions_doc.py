@@ -52,11 +52,11 @@ import sys
 import getopt
 import os
 import re
-from tokenize import PlainToken
 from typing import Literal, Union
 import subprocess
 import tempfile
 import shutil
+import cq_warehouse
 
 
 def increase_indent(amount: int, python_code: list[str]) -> list[str]:
@@ -278,18 +278,14 @@ def main(argv):
         for entry in pip_command.stdout.decode("utf-8").split("\n")
         if ":" in entry
     )
-    extensions_path = os.path.join(
-        pip_command_dictionary["Location"], "cq_warehouse/extensions.py"
-    )
+    extensions_path = cq_warehouse.__file__.replace("__init__.py", "extensions.py")
     with open(extensions_path) as doc_file:
         extensions_python_code = doc_file.readlines()
 
     # Organize the extensions monkeypatched code into class(s), method(s)
     extensions_code_dictionary = prepare_extensions(extensions_python_code)
 
-    doc_file_path = os.path.join(
-        pip_command_dictionary["Location"], "cq_warehouse/extensions_doc.py"
-    )
+    doc_file_path = cq_warehouse.__file__.replace("__init__.py", "extensions_doc.py")
     print(f"Creating extensions documentation file: {doc_file_path}")
     doc_file = open(doc_file_path, "w")
     doc_file.writelines(
@@ -298,6 +294,7 @@ def main(argv):
             "from fastener import Screw, Nut, Washer\n"
             "from bearing import Bearing\n"
             "class gp_Ax1:\n    pass\n",
+            "class gp_Trsf:\n    pass\n",
             "class T:\n    pass\n",
             "class Vector:\n    pass\n",
             "class VectorLike:\n    pass\n",
