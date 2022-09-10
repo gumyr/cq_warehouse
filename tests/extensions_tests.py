@@ -203,6 +203,18 @@ class ShapeTests(unittest.TestCase):
         difference = workplane_transformed.cut(shape_transformed).val().Volume()
         self.assertAlmostEqual(difference, 0.0, 7)
 
+    def test_copy(self):
+        test_face = cq.Face.makePlane(1, 1)
+        copy_of_test_face = test_face.copy()
+        self.assertEqual(type(test_face.wrapped), type(copy_of_test_face.wrapped))
+        test_solid = cq.Solid.makeBox(1, 1, 1)
+        test_solid.label = "test"
+        test_solid.forConstruction = True
+        copy_of_test_solid = test_solid.copy()
+        self.assertEqual(type(test_solid.wrapped), type(copy_of_test_solid.wrapped))
+        self.assertEqual(test_solid.label, copy_of_test_solid.label)
+        self.assertEqual(test_solid.forConstruction, copy_of_test_solid.forConstruction)
+
     def test_maxFillet(self):
         # Invalid object
         with self.assertRaises(Exception):

@@ -3538,7 +3538,7 @@ def shape_copy(self: "Shape") -> "Shape":
     # The wrapped object is a OCCT TopoDS_Shape which can't be pickled or copied
     # with the standard python copy/deepcopy, so create a deepcopy 'memo' with this
     # value already copied which causes deepcopy to skip it.
-    memo = {id(self.wrapped): BRepBuilderAPI_Copy(self.wrapped).Shape()}
+    memo = {id(self.wrapped): downcast(BRepBuilderAPI_Copy(self.wrapped).Shape())}
     copy_of_shape = copy.deepcopy(self, memo)
     return copy_of_shape
 
