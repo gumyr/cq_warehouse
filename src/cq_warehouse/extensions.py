@@ -39,8 +39,6 @@ import random
 from itertools import combinations
 from enum import Enum, auto
 from functools import reduce
-from token import OP
-from turtle import position
 from typing import Optional, Literal, Union, Tuple, Iterable
 from types import MethodType
 import cadquery as cq
@@ -3549,10 +3547,10 @@ Shape.copy = shape_copy
 def shape_clean(self: "Shape") -> "Shape":
     """clean - remove internal edges"""
 
-    upgrader = ShapeUpgrade_UnifySameDomain(self.wrapped, True, True, True)
+    shape_copy: "Shape" = self.copy()
+    upgrader = ShapeUpgrade_UnifySameDomain(shape_copy.wrapped, True, True, True)
     upgrader.AllowInternalEdges(False)
     upgrader.Build()
-    shape_copy: "Shape" = self.copy()
     shape_copy.wrapped = downcast(upgrader.Shape())
     return shape_copy
 
