@@ -33,11 +33,11 @@ visible to the IDE which makes working with them more difficult.
 The `build_cadquery_patch.py <https://github.com/gumyr/cq_warehouse/blob/main/scripts/build_cadquery_patch.py>`_
 script takes the cq_warehouse extensions.py file (from your pip install) and generates a patch file
 custom to the version of CadQuery that you're using (the version found with the python ``import cadquery``).
-The user needs to apply the patch for the changes to take effect. Reversing the patch will restore the four changed
+The user needs to apply the patch for the changes to take effect. Reversing the patch will restore the changed
 files. The patch command can also generate versioned backups of the changed files if
 the user wants even more security.
 
-Currently, cq_warehouse.extensions augments these four CadQuery source files:
+Currently, cq_warehouse.extensions augments these CadQuery source files:
 
 * assembly.py,
 * cq.py,
