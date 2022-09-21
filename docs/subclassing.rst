@@ -23,7 +23,7 @@ of Solid and is defined as follows:
     class Nut(ABC, Solid):
 
 and therefore inherits the methods of Solid and Shape. ``Nut`` is itself
-a base class for a whole series of different classes of nuts like ``DomedCadNut``
+a base class for a whole series of different classes of nuts like ``DomedCapNut``
 which is defined as follows:
 
 .. code-block:: python
