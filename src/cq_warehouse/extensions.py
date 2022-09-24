@@ -3546,13 +3546,18 @@ Shape.copy = shape_copy
 
 def shape_clean(self: "Shape") -> "Shape":
     """clean - remove internal edges"""
-
-    shape_copy: "Shape" = self.copy()
-    upgrader = ShapeUpgrade_UnifySameDomain(shape_copy.wrapped, True, True, True)
+    # Try BRepTools.RemoveInternals here
+    # shape_copy: "Shape" = self.copy()
+    # upgrader = ShapeUpgrade_UnifySameDomain(shape_copy.wrapped, True, True, True)
+    # upgrader.AllowInternalEdges(False)
+    # upgrader.Build()
+    # shape_copy.wrapped = downcast(upgrader.Shape())
+    # return shape_copy
+    upgrader = ShapeUpgrade_UnifySameDomain(self.wrapped, True, True, True)
     upgrader.AllowInternalEdges(False)
     upgrader.Build()
-    shape_copy.wrapped = downcast(upgrader.Shape())
-    return shape_copy
+    self.wrapped = downcast(upgrader.Shape())
+    return self
 
 
 Shape.clean = shape_clean
