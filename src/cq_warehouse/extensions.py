@@ -873,6 +873,7 @@ def _fastenerHole(
     material: Optional[Literal["Soft", "Hard"]] = None,
     counterSunk: Optional[bool] = True,
     captiveNut: Optional[bool] = False,
+    captiveHex: Optional[bool] = False,
     baseAssembly: Optional["Assembly"] = None,
     hand: Optional[Literal["right", "left"]] = None,
     simple: Optional[bool] = False,
@@ -893,6 +894,7 @@ def _fastenerHole(
         material: on of "Soft", "Hard" which determines tap hole size. Defaults to None.
         counterSunk: Is the fastener countersunk into the part?. Defaults to True.
         captiveNut: Countersink with a rectangular, filleted, hole. Defaults to False.
+        captiveHex: Countersink hex profile nuts with a hexagonal hole. Defaults to False. Can be used with or instead of captiveNut (if captiveHex==False then hole will be square).
         baseAssembly: Assembly to add faster to. Defaults to None.
         hand: tap hole twist direction either "right" or "left". Defaults to None.
         simple: tap hole thread complexity selector. Defaults to False.
@@ -924,13 +926,36 @@ def _fastenerHole(
     # Setscrews' countersink_profile is None so check if it exists
     # countersink_profile = fastener.countersink_profile(fit)
     countersink_profile = countersinkProfile
-    if captiveNut:
+    countersink_cutter = None
+    if captiveNut or captiveHex:
         clearance = fastener.clearance_hole_diameters[fit] - fastener.thread_diameter
         head_offset = countersink_profile.vertices(">Z").val().Z
         if isinstance(fastener, (DomedCapNut, HexNut, UnchamferedHexagonNut)):
+            if captiveHex:
+                hex_radius = fastener.nut_diameter/2 + clearance
+                countersink_cutter = (
+                    cq.Workplane("XY")
+                    .sketch()
+                    .regularPolygon(hex_radius, 6)
+                    .finalize()
+                    .extrude(-head_offset)
+                    .rotate((0,0,0), (0,0,1), 90)
+                    .val()
+                )
+            else:
             fillet_radius = fastener.nut_diameter / 4
             rect_width = fastener.nut_diameter + clearance
             rect_height = fastener.nut_diameter * math.sin(math.pi / 3) + clearance
+                countersink_cutter = (
+                cq.Workplane("XY")
+                .sketch()
+                .rect(rect_width, rect_height)
+                .vertices()
+                .fillet(fillet_radius)
+                .finalize()
+                .extrude(-head_offset)
+                .val()
+            )
         elif isinstance(fastener, SquareNut):
             fillet_radius = fastener.nut_diameter / 8
             rect_height = fastener.nut_diameter * math.sqrt(2) / 2 + clearance
@@ -1056,6 +1081,7 @@ def _clearanceHole(
     depth: Optional[float] = None,
     counterSunk: Optional[bool] = True,
     captiveNut: Optional[bool] = False,
+    captiveHex: Optional[bool] = False,
     baseAssembly: Optional["Assembly"] = None,
     clean: Optional[bool] = True,
 ) -> T:
@@ -1072,6 +1098,8 @@ def _clearanceHole(
         fit: one of "Close", "Normal", "Loose" which determines clearance hole diameter. Defaults to "Normal".
         depth: hole depth. Defaults to through part.
         counterSunk: Is the fastener countersunk into the part?. Defaults to True.
+        captiveNut: Countersink with a rectangular, filleted, hole. Defaults to False.
+        captiveHex: Countersink hex profile nuts with a hexagonal hole. Defaults to False. Can be used with or instead of captiveNut (if captiveHex==False then hole will be square).
         baseAssembly: Assembly to add faster to. Defaults to None.
         clean: execute a clean operation remove extraneous internal features. Defaults to True.
 
@@ -1088,7 +1116,7 @@ def _clearanceHole(
             "clearanceHole doesn't accept fasteners of type HeatSetNut - use insertHole instead"
         )
 
-    if captiveNut and not isinstance(
+    if (captiveNut or captiveHex) and not isinstance(
         fastener, (DomedCapNut, HexNut, UnchamferedHexagonNut, SquareNut)
     ):
         raise ValueError(
@@ -1104,6 +1132,7 @@ def _clearanceHole(
         depth=depth,
         counterSunk=counterSunk,
         captiveNut=captiveNut,
+        captiveHex=captiveHex,
         baseAssembly=baseAssembly,
         clean=clean,
     )
